@@ -1,0 +1,21 @@
+# Layer 6 Configuration — Proactive Engagement & Check-Ins
+#
+# Tunable parameters:
+#   intrusion_cost:
+#     - base_cost: notification send cost (default: 0.5)
+#     - time_sensitivity: more costly during work hours (default: 1.5x)
+#     - frequency_penalty: repeated notifications cost more (default: escalating)
+#
+#   notification_policy:
+#     - dnd_window_start: do not disturb hours (default: 22:00)
+#     - dnd_window_end: resume notifications (default: 08:00)
+#     - max_notifications_per_hour: frequency limit (default: 3)
+#     - min_interval_between_checks: seconds (default: 600)
+#
+#   pattern_detection:
+#     - min_repetitions_to_flag: pattern significance (default: 3)
+#     - temporal_window_hours: look-back window (default: 720 = 30 days)
+#
+#   check_in_triggers:
+#     - high_stress_salience: flag for check-in if > (default: 0.75)
+#     - milestone_significance_threshold: celebrate if > (default: 0.80)

@@ -1,0 +1,15 @@
+# Layer 3 Configuration — Reasoning & Cognitive Mode Routing
+#
+# Tunable parameters:
+#   system1_vs_system2:
+#     - emotional_intensity_threshold: arousal → System 2 (default: 0.7)
+#     - reasoning_required_threshold: semantic complexity (default: 0.6)
+#     - casual_cadence_threshold: if casual, use System 1 (default: 0.8)
+#
+#   emotion_classification:
+#     - valence_range: -1.0 to +1.0 (very negative to very positive)
+#     - arousal_range: 0.0 to 1.0 (calm to highly energized)
+#
+#   risk_override:
+#     - crisis_signal_triggers_system2: always use Groq (default: true)
+#     - vulnerable_topic_confidence_threshold: (default: 0.85)

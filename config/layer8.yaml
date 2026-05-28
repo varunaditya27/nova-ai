@@ -1,0 +1,20 @@
+# Layer 8 Configuration — Tool Use & Actions
+#
+# Tunable parameters:
+#   confirmation_tiers:
+#     - AUTO: Execute immediately (web search, read-only queries)
+#     - SOFT: Ask user, execute on timeout (calendar view, notes create)
+#     - HARD: Wait for explicit approval (send email, delete data)
+#
+#   tier_mapping:
+#     - reversibility: can undo? (reversible → AUTO/SOFT, irreversible → HARD)
+#     - risk_level: consequence severity? (low → AUTO, medium → SOFT, high → HARD)
+#
+#   parameter_resolver:
+#     - clarifying_questions_per_turn: max (default: 1)
+#     - inference_confidence_threshold: auto-fill if > (default: 0.85)
+#
+#   plugin_health_checks:
+#     - calendar_oauth_expiry_warning_days: (default: 7)
+#     - web_search_api_timeout_ms: (default: 5000)
+#     - email_draft_timeout_ms: (default: 10000)

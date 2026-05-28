@@ -1,0 +1,23 @@
+# Layer 2 Configuration — Memory & Cognition
+#
+# Tunable parameters:
+#   recall_weights:
+#     - alpha: semantic similarity weight (default: 0.25)
+#     - beta: emotional resonance weight (default: 0.25)
+#     - gamma: recency weight (default: 0.3)
+#     - delta: importance/centrality weight (default: 0.2)
+#
+#   softmax_temperature:
+#     - tau: recall distribution temperature (default: 1.0)
+#       - tau < 1.0: sharper distribution (favor top results)
+#       - tau > 1.0: softer distribution (more diversity)
+#
+#   context_gate:
+#     - salience_threshold_low: suppress low-salience context (default: 0.3)
+#     - salience_threshold_high: always include (default: 0.7)
+#
+#   forgetting_engine:
+#     - decay_rate_per_session: importance decay factor (default: 0.92)
+#     - consolidation_interval_sessions: run decay every N sessions (default: 5)
+#     - min_importance_threshold: min before deletion (default: 0.1)
+#     - clustering_distance_threshold: semantic distance for grouping (default: 0.3)

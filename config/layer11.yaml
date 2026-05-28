@@ -1,0 +1,27 @@
+# Layer 11 Configuration — Safety & Crisis Detection
+#
+# Tunable parameters:
+#   crisis_levels:
+#     - NONE: no crisis signals detected
+#     - MONITORING: watching for escalation (minor stress signals)
+#     - ELEVATED: warning signs present (depressive language, isolation)
+#     - CRISIS: high-risk situation (self-harm mention, severe distress)
+#     - IMMINENT: immediate danger (active self-harm, suicide plan)
+#
+#   signal_detection_thresholds:
+#     - text_pattern_confidence_min: text keywords (default: 0.7)
+#     - temporal_anomaly_severity: unusual absence (default: 3 days silence)
+#     - emotional_intensity_spike: arousal jump (default: +0.5 valence drop)
+#     - prior_vulnerability_reactivation: mention of past struggles (default: 0.8)
+#
+#   escalation_tiers:
+#     - tier_0: monitoring, gentle check-in
+#     - tier_1: offer resources, active listening
+#     - tier_2: 988 (suicide prevention line), emergency contact info
+#     - tier_3: contact emergency responder (if available)
+#
+#   safe_mode_disables:
+#     - micro_interactions: no backchannel, affirmation, warmth signals
+#     - emoji_markdown: plain text only
+#     - audio_output: no TTS
+#     - proactive_engagement: Layer 6 disabled

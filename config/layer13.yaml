@@ -1,0 +1,32 @@
+# Layer 13 Configuration — Onboarding & Cold Start
+#
+# Tunable parameters:
+#   graduation_criteria:
+#     - min_messages: (default: 10)
+#     - min_days: (default: 1)
+#     - min_context_completeness_score: (default: 0.6)
+#     - activity_check_days: must engage every N days (default: never stale)
+#
+#   feature_pacing:
+#     - basic_chat: always available (day 0)
+#     - relationships_feature_unlock_messages: (default: 2-3)
+#     - relationships_feature_unlock_days: (default: 1)
+#     - goals_feature_unlock_messages: (default: 5)
+#     - goals_feature_unlock_days: (default: 1)
+#     - proactivity_feature_unlock: post-graduation only
+#
+#   passive_elicitation:
+#     - extract_vocabulary: linguistic style
+#     - extract_punctuation: !? . , ; patterns
+#     - extract_emoji_usage: preferred emojis
+#     - extract_timezone: infer from timestamps
+#     - extract_emotional_register: formal/casual/warm/analytical
+#
+#   active_elicitation:
+#     - max_questions_per_session: (default: 1)
+#     - naturally_triggered: ask about goals when user mentions aspiration
+#     - avoid_repeating: track answered questions
+#
+#   context_constructor:
+#     - confidence_score_threshold: ready to graduate if > (default: 0.7)
+#     - readiness_per_feature: per-feature readiness assessment

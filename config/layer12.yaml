@@ -1,0 +1,30 @@
+# Layer 12 Configuration — Privacy & Data Infrastructure
+#
+# Tunable parameters:
+#   encryption:
+#     - cipher: AES-256-GCM
+#     - key_derivation: Scrypt (N=16384, r=8, p=1)
+#     - transport_protocol: TLS 1.3
+#
+#   key_hierarchy:
+#     - masterKey: derived from user password
+#     - memoryKey: encrypts episodic/semantic stores
+#     - sessionKey: single-session encryption
+#     - rotation_interval_days: (default: 90)
+#
+#   deletion_requests:
+#     - grace_period_days: undo window (default: 30)
+#     - types: forget_person, forget_topic, forget_session, forget_emotion, full_reset
+#
+#   audit_trail:
+#     - retention_days: keep logs for (default: 365)
+#     - immutable: all deletions append-only
+#
+#   sync_protocol:
+#     - delta_window_hours: batch deltas (default: 1)
+#     - conflict_resolution: most_recent_wins or user_decides (default: most_recent_wins)
+#     - server_knowledge: zero (server never decrypts)
+#
+#   integrity_checks:
+#     - merkle_verification_interval_hours: (default: 24)
+#     - corruption_alert_user: (default: true)

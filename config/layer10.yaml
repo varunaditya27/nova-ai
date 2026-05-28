@@ -1,0 +1,20 @@
+# Layer 10 Configuration — Longitudinal Life Layer
+#
+# Tunable parameters:
+#   summary_cycles:
+#     - weekly_summary_day: day of week (default: Sunday)
+#     - weekly_summary_time: time of day (default: 01:00 AM)
+#     - monthly_check_in_day: (default: 1st of month)
+#     - quarterly_retrospective_months: (default: every 3 months)
+#
+#   chapter_detection:
+#     - temporal_gap_hours: gap between chapters (default: 168 = 1 week)
+#     - life_event_significance_threshold: (default: 0.8)
+#     - emotional_shift_stddev_threshold: (default: 2.0)
+#
+#   life_dimensions:
+#     - career, relationships, health, mental_health, learning, creative, financial, leisure
+#     - progress_tracked_per_dimension: status updates
+#
+#   narrative_arc:
+#     - turning_point_criteria: milestone, relational shift, crisis resolved, explicit

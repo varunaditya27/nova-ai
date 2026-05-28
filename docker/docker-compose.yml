@@ -1,0 +1,36 @@
+# Docker Compose Configuration
+#
+# Orchestration: Multi-container setup for Nova AI system
+#
+# Services:
+#   1. backend:
+#      - Image: nova-ai:latest (from Dockerfile)
+#      - Port: 8000 (FastAPI)
+#      - Volumes: config/, nova-data/ (persistence)
+#      - Depends on: ollama, kokoro
+#      - Environment: From .env
+#
+#   2. ollama:
+#      - Image: ollama/ollama:latest
+#      - Port: 11434 (Ollama API)
+#      - Volumes: ollama-data (model cache)
+#      - Models: qwen2.5:7b, gemma3:4b, nomic-embed-text (pulled on startup)
+#
+#   3. kokoro:
+#      - Image: kokoro-tts:latest (custom Dockerfile)
+#      - Port: 8880 (OpenAI-compatible TTS API)
+#      - Volumes: none (stateless)
+#
+# Network:
+#   - All services on nova-network (bridge)
+#   - Backend connects to ollama:11434, kokoro:8880
+#
+# Volumes:
+#   - ollama-data: Model cache (persistent)
+#   - nova-data: Application data (persistent)
+#   - config: Configuration mount (writable)
+#
+# Usage:
+#   docker-compose up              # Start all services
+#   docker-compose down            # Stop all services
+#   docker-compose logs -f backend # Follow backend logs

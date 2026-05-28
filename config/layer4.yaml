@@ -1,0 +1,12 @@
+# Layer 4 Configuration — Persona & Personality Vector
+#
+# Tunable parameters:
+#   personality_vector:
+#     - core_values_centrality_min: core values locked if centrality > (default: 0.90)
+#     - communication_style_dimensions: openness, warmth, directness, humor
+#     - emotional_baseline: per-user calibration point
+#
+#   drift_controller:
+#     - max_drift_per_session: personality change limit (default: 0.05)
+#     - drift_gate_centrality_threshold: enforce if centrality > (default: 0.85)
+#     - controversial_boundary: reject if violates core value (default: 0.95 confidence)

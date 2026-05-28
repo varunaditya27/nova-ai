@@ -1,0 +1,37 @@
+# Layer 9 Configuration — Output Delivery & Interaction Orchestration
+#
+# Tunable parameters:
+#   typing_speeds_char_per_sec:
+#     - casual_mode: 55 (fast, conversational)
+#     - supportive_mode: 38 (slow, empathetic)
+#     - analytical_mode: 48 (thoughtful)
+#     - celebratory_mode: 62 (excited, fast)
+#
+#   thinking_pause:
+#     - base_duration_ms: 500
+#     - complexity_multiplier: high complexity → longer pause
+#     - emotional_intensity_factor: high emotion → longer pause
+#     - circadian_adjustment: time of day factor
+#
+#   length_targets_tokens:
+#     - short: 40 (brief acknowledgment)
+#     - medium: 80 (standard response)
+#     - long: 220 (detailed explanation)
+#
+#   micro_interactions:
+#     - backchannel_event_probability: (default: 0.3 if appropriate)
+#     - affirmation_event_probability: (default: 0.25)
+#     - empathy_signal_probability: (default: 0.4)
+#     - uncertainty_signal_probability: (default: 0.2)
+#     - thinking_signal_probability: (default: 0.15)
+#     - warmth_signal_probability: (default: 0.35)
+#
+#   format_decision_matrix:
+#     - register_levels: casual, formal, warm, analytical
+#     - markdown_use_threshold: (default: use if analysis/lists)
+#     - emoji_density: (default: 0.0-0.5 depending on mode)
+#
+#   tts_voice_parameters:
+#     - default_rate: 1.0 (can adjust to 0.5-1.5)
+#     - default_pitch: 1.0 (can adjust to 0.5-1.5)
+#     - kokoro_endpoint: localhost:8880 (Docker)

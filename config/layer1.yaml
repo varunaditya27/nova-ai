@@ -1,0 +1,22 @@
+# Layer 1 Configuration — Input Perception & Temporal Awareness
+#
+# Tunable parameters:
+#   circadian_bands:
+#     - morning: 6 AM - 12 PM
+#     - afternoon: 12 PM - 6 PM
+#     - evening: 6 PM - 10 PM
+#     - night: 10 PM - 6 AM
+#
+#   session_gap_categories:
+#     - minutes_5: 0-5 minutes (continuous context)
+#     - hours_1: 5 min - 1 hour (warm context)
+#     - hours_12: 1-12 hours (warm recency)
+#     - days_1: 12 hours - 1 day (daily context)
+#     - week: 1-7 days
+#     - month: 7-30 days
+#     - extended: 30+ days (cold start context)
+#
+#   anomaly_thresholds:
+#     - unusual_time_variance: std dev multiplier (default: 2.0)
+#     - rapid_mood_shift: valence delta threshold (default: 0.6)
+#     - silence_duration_hours: absence trigger (default: 72)

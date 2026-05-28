@@ -1,0 +1,21 @@
+# Layer 5 Configuration — Relationships & Social Intelligence
+#
+# Tunable parameters:
+#   relationship_stages:
+#     - acquaintance: just met
+#     - casual: low tie strength (0.0-0.3)
+#     - close: medium tie strength (0.3-0.7)
+#     - intimate: high tie strength (0.7-1.0)
+#     - estranged: conflict/distance
+#
+#   tie_strength_weights:
+#     - interaction_frequency: recent contacts boost (default: 0.3)
+#     - interaction_duration: long conversations boost (default: 0.2)
+#     - vulnerability_shared: willingness to disclose (default: 0.3)
+#     - reciprocity: mutual engagement (default: 0.2)
+#
+#   disclosure_gates:
+#     - surface_facts: acquaintance stage (shallow)
+#     - opinions: casual stage (moderate)
+#     - vulnerabilities: close stage (deep)
+#     - contingent_thoughts: intimate stage (very deep)

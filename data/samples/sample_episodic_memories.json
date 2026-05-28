@@ -1,0 +1,32 @@
+# Sample Episodic Memories
+#
+# Purpose: Example episodic memory records for testing and seeding
+#
+# Schema:
+#   {
+#     "id": "uuid",
+#     "user_id": "uuid",
+#     "session_id": "uuid",
+#     "timestamp": "ISO 8601",
+#     "content": "What happened",
+#     "emotion": { "valence": -0.5, "arousal": 0.7 },
+#     "salience": 0.8,
+#     "topics": ["work", "stress", "deadline"],
+#     "embedding": [0.1, 0.2, ...],  # 384-dim nomic-embed-text
+#     "importance": 0.85,
+#     "sessions_since_accessed": 0
+#   }
+#
+# Examples:
+#   - Stressful work meeting
+#   - Coffee with friend
+#   - Finished project milestone
+#   - Argument with family
+#   - Quiet morning reflection
+#   - Vacation planning
+#
+# Test coverage:
+#   - Diverse emotions (positive, negative, neutral)
+#   - Various topics (work, relationships, health, learning)
+#   - Temporal spread (recent + old memories)
+#   - Different salience levels

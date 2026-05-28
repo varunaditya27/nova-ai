@@ -1,0 +1,21 @@
+# Layer 7 Configuration — Goals & Life Management
+#
+# Tunable parameters:
+#   goal_states:
+#     - active: currently being worked on
+#     - paused: temporarily suspended
+#     - complete: achieved
+#     - abandoned: given up on
+#     - someday: aspirational (future)
+#
+#   conflict_detection:
+#     - resource_conflict: same time/money/energy (default: enable)
+#     - value_conflict: contradictory goals (default: enable)
+#     - identity_conflict: goal misaligned with self-image (default: enable)
+#     - temporal_conflict: deadline overlap (default: enable)
+#
+#   abstraction_levels:
+#     - big_picture: life-level goals (5-10 year horizon)
+#     - medium_term: 6-12 month goals
+#     - short_term: weekly/monthly goals
+#     - task_level: actionable steps

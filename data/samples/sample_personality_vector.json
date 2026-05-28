@@ -1,0 +1,37 @@
+# Sample Personality Vector
+#
+# Purpose: Example personality profile for testing and seeding
+#
+# Schema:
+#   {
+#     "id": "uuid",
+#     "user_id": "uuid",
+#     "core_values": [
+#       { "value": "family", "centrality": 0.95, "confidence": 0.9 },
+#       { "value": "honesty", "centrality": 0.92, "confidence": 0.88 },
+#       { "value": "growth", "centrality": 0.85, "confidence": 0.8 }
+#     ],
+#     "communication_style": {
+#       "openness": 0.7,        # 0 = reserved, 1 = very open
+#       "warmth": 0.8,          # 0 = cold, 1 = very warm
+#       "directness": 0.6,      # 0 = indirect, 1 = very direct
+#       "humor": 0.75           # 0 = serious, 1 = very humorous
+#     },
+#     "emotional_baseline": {
+#       "valence": 0.5,         # Typical mood
+#       "arousal": 0.4          # Typical energy level
+#     },
+#     "updated_at": "ISO 8601",
+#     "version": 1
+#   }
+#
+# Variations:
+#   - Introverted vs extroverted (warmth, openness)
+#   - Analytical vs intuitive (directness, humor)
+#   - Optimistic vs pragmatic (emotional baseline)
+#
+# Test coverage:
+#   - Different personality types
+#   - Varying centrality scores
+#   - Multiple core values
+#   - Different communication styles
