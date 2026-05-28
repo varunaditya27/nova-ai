@@ -1,391 +1,1022 @@
 <div align="center">
 
-<img src="docs/13-Layer_Cognitive_Engine_Architecture.png" alt="Nova AI Architecture" width="100%" />
-
-<br/>
-
 # ✦ Nova AI
 
-### *An AI companion that remembers who you are — not just what you said.*
+### *A longitudinal cognitive architecture for human-like artificial companionship.*
 
-NovaAI is a longitudinally-aware, emotionally intelligent AI companion built on a **13-layer cognitive engine**. It doesn't reset between conversations. It tracks the arc of your life, develops a real relationship with you over time, and learns how you communicate — so every interaction feels less like querying a tool and more like talking to someone who genuinely knows you.
+*Not an assistant that answers questions.*
+*A system that accumulates context, continuity, memory, emotional understanding, relational depth, and temporal awareness across years of interaction.*
 
 <br/>
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20Store-FF6F3C?style=flat-square)](https://www.trychroma.com/)
-[![Ollama](https://img.shields.io/badge/Ollama-Local%20LLM-222222?style=flat-square)](https://ollama.com/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/License-MIT-6EE7B7?style=flat-square)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square\&logo=python\&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square\&logo=fastapi\&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791?style=flat-square\&logo=postgresql\&logoColor=white)](https://www.postgresql.org/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20Memory-FF6F3C?style=flat-square)](https://www.trychroma.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-Local%20Inference-111111?style=flat-square)](https://ollama.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square\&logo=docker\&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-7CE38B?style=flat-square)](LICENSE)
+
+<br/>
+
+## *Nova is an attempt to answer a difficult question:*
+
+### **What would an AI system look like if it was designed around continuity instead of prompts?**
 
 </div>
 
 ---
 
-## ✦ What Makes Nova Different
+# ✦ What Nova Actually Is
 
-Most AI assistants are stateless — each conversation starts from zero. Nova is designed around a fundamentally different premise: **a companion that witnesses your life as it unfolds.**
+Most conversational AI systems are architecturally stateless.
 
-| Capability | Standard AI | Nova AI |
-|---|---|---|
-| Memory | Session-only | Persistent across months and years |
-| Personality | Generic | Stable vector that evolves through drift control |
-| Emotional depth | Surface empathy | Two-stage reasoning with empathy hypothesis |
-| Relationship | Transactional | Stage-gated tie strength model (stranger → close friend) |
-| Proactivity | Reactive only | Initiates based on patterns, threads, and life events |
-| Goals | Not tracked | Full lifecycle: aspiration → goal → task → subtask |
-| Longitudinal arc | None | Weekly summaries, narrative chapters, retrospectives |
-| Safety | Basic filtering | Dedicated crisis classifier + escalation engine |
-| Privacy | Standard | Encryption, selective deletion, full audit trail |
+They simulate continuity through large context windows, lightweight memory injection, and prompt engineering. The illusion works for short conversations, but collapses over time.
+
+The system forgets.
+The relationship resets.
+The emotional continuity breaks.
+The user's life becomes fragmented into isolated sessions.
+
+Nova was designed from the ground up to solve that exact problem.
+
+Nova is a **deep multi-layered cognitive architecture** for long-term human-AI interaction.
+
+It is designed to:
+
+* remember events across months and years
+* model emotional trajectories instead of isolated emotions
+* track goals, relationships, habits, and personal growth
+* build longitudinal narrative understanding
+* reason about social dynamics and human relationships
+* proactively follow up on unresolved life threads
+* adapt conversational behavior without losing identity coherence
+* maintain stable personality drift over time
+* operate as a persistent cognitive presence rather than a transactional chatbot
+
+The project combines ideas from:
+
+* cognitive architectures
+* affective computing
+* long-term memory systems
+* computational psychology
+* social graph reasoning
+* narrative intelligence
+* human-computer interaction
+* longitudinal behavioral modeling
+* proactive agent systems
+* on-device privacy-first AI infrastructure
+
+Nova is not trying to imitate human consciousness.
+
+It is attempting something far more concrete and technically measurable:
+
+> **A system that can maintain psychologically coherent, emotionally aware, temporally grounded interaction with a human over extremely long time horizons.**
 
 ---
 
-## ✦ The 13-Layer Cognitive Engine
+# ✦ Why This Project Exists
 
-Nova's intelligence is organized as a **deep pipeline of 13 interdependent cognitive layers**, each with a dedicated architecture document in [`docs/`](docs/). The layers form two interlocking pipelines: a fast **System 1** path for immediate responses, and a deliberate **System 2** path for emotionally complex or high-stakes conversations.
+Current AI systems are optimized for:
+
+* benchmark scores
+* tool usage
+* coding performance
+* retrieval augmentation
+* agent workflows
+* productivity
+
+Very few systems are optimized for:
+
+* continuity
+* emotional persistence
+* long-term trust
+* relational consistency
+* memory decay and reinforcement
+* narrative identity
+* social understanding
+* psychological timing
+* longitudinal companionship
+
+And yet humans are deeply temporal creatures.
+
+A person's meaning does not exist inside one conversation.
+It exists across:
+
+* recurring struggles
+* changing relationships
+* unfinished goals
+* emotional cycles
+* turning points
+* growth trajectories
+* remembered moments
+* years of accumulated context
+
+A genuinely human-like AI system cannot just respond intelligently.
+
+It must:
+
+* remember appropriately
+* forget appropriately
+* evolve carefully
+* maintain relational coherence
+* understand timing
+* understand emotional subtext
+* recognize patterns across time
+* know when *not* to speak
+* understand that a sentence at 2 AM after 14 days of silence means something different than the same sentence at 2 PM
+
+That is the design philosophy behind Nova.
+
+---
+
+# ✦ The Central Thesis
+
+Nova is built around one core architectural belief:
+
+> **Memory is not storage.**
+> **Personality is not prompting.**
+> **Emotion is not sentiment analysis.**
+> **Companionship is not response generation.**
+
+Human-like interaction emerges when:
+
+* temporal awareness
+* emotional reasoning
+* memory systems
+* social intelligence
+* identity stability
+* proactive behavior
+* longitudinal synthesis
+* safety mechanisms
+
+all operate together as one coherent runtime.
+
+That is what Nova attempts to build.
+
+---
+
+# ✦ High-Level System Architecture
+
+Nova is organized into a deep layered cognitive pipeline.
+
+Each layer is independently architected, documented, and designed to solve one specific dimension of long-term human interaction.
 
 ```mermaid
 flowchart TD
-    A["🌐 User Input"] --> L1
 
-    subgraph PERCEPTION ["⬜ PERCEPTION"]
-        L1["Layer 1 · Input & Temporal Awareness\nThread tracking · Temporal resolver · Context schemas"]
+    U["🌐 User Input"] --> L1
+
+    subgraph P1 ["PERCEPTION"]
+        L1["Layer 1 · Input Perception\nTemporal awareness · Session gaps\nBehavioral anomaly detection\nMultimodal normalization"]
     end
 
-    subgraph MEMORY_LAYER ["⬜ MEMORY"]
-        L2["Layer 2 · Memory System\nEpisodic · Semantic · Identity memory\nCompetitive recall · Forgetting engine"]
+    subgraph P2 ["MEMORY & COGNITION"]
+        L2["Layer 2 · Cognition & Memory\nEpisodic memory · Semantic memory\nCompetitive recall · Forgetting engine"]
+
+        L3["Layer 3 · Emotion & Reasoning\nEmotion classification\nIntent understanding\nEmpathy hypothesis generation"]
     end
 
-    subgraph REASONING ["⬜ REASONING"]
-        L3["Layer 3 · Emotional Reasoning\nTwo-stage pipeline · Empathy hypothesis\nCognitive mode arbiter · Emotion refiner"]
+    subgraph P3 ["IDENTITY & SOCIAL"]
+        L4["Layer 4 · Persona & Response Generation\nStable identity · Personality drift control\nSemantic planner · Emotion refiner"]
+
+        L5["Layer 5 · Social Intelligence\nRelationship graph · Social coaching\nPattern recognition · Interpersonal reasoning"]
     end
 
-    subgraph IDENTITY ["⬜ IDENTITY & RELATIONSHIP"]
-        L4["Layer 4 · Persona Engine\nPersonality vector · Drift controller · Prompt builder"]
-        L5["Layer 5 · Relationship & Social\nTie strength model · Self-disclosure engine\nSocial coaching · Social graph"]
+    subgraph P4 ["PROACTIVE SYSTEMS"]
+        L6["Layer 6 · Proactive Engagement\nCheck-ins · Timing intelligence\nAnticipatory interaction"]
+
+        L7["Layer 7 · Goals & Accountability\nGoal extraction · Progress tracking\nMilestones · Accountability"]
     end
 
-    subgraph PROACTIVE ["⬜ PROACTIVE INTELLIGENCE"]
-        L6["Layer 6 · Proactivity\nCheck-in engine · Pattern detector\nAnticipatory assistant · Notification policy"]
-        L7["Layer 7 · Goal & Life Management\nGoal lifecycle · Task engine\nConflict detector · Life event tracker"]
+    subgraph P5 ["SAFETY & DELIVERY"]
+        L8["Layer 8 · Crisis & Safeguarding\nCrisis detection · Escalation protocols\nProtective overrides"]
+
+        L9["Layer 9 · Interaction Orchestration\nTyping behavior · Voice synthesis\nStreaming · Conversational pacing"]
     end
 
-    subgraph ACTION ["⬜ ACTION & OUTPUT"]
-        L8["Layer 8 · Tool Use\nCalendar · Email · Notes · Reminders\nWeb search · Confirmation gate"]
-        L9["Layer 9 · Output Delivery\nTyping simulation · Micro-interactions\nVoice synthesis · Format adaptation"]
+    subgraph P6 ["LONGITUDINAL INTELLIGENCE"]
+        L10["Layer 10 · Longitudinal Life Layer\nNarrative arcs · Weekly summaries\nRetrospectives · Behavioral trends"]
+
+        L11["Layer 11 · Safety Architecture\nDependency monitoring\nEthical guardrails\nBehavioral protection"]
+
+        L12["Layer 12 · Privacy Infrastructure\nEncryption · Selective deletion\nAudit systems · On-device storage"]
+
+        L13["Layer 13 · Onboarding & Cold Start\nProgressive elicitation\nFeature pacing\nTrust calibration"]
     end
 
-    subgraph LONGITUDINAL ["⬜ LONGITUDINAL & SAFETY"]
-        L10["Layer 10 · Longitudinal Life Layer\nWeekly summaries · Life narrative arc\nProgress tracking · Retrospectives"]
-        L11["Layer 11 · Safety\nCrisis classifier · Escalation engine · Safe mode"]
-        L12["Layer 12 · Privacy\nEncryption · Selective deletion · Audit trail"]
-        L13["Layer 13 · Onboarding\nCold start engine · Feature pacing\nGraduation evaluator"]
-    end
-
-    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8 --> L9
-    L9 --> L10
-    L3 --> L11
-    L2 --> L12
-    L1 --> L13
-
-    style PERCEPTION fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style MEMORY_LAYER fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style REASONING fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style IDENTITY fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style PROACTIVE fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style ACTION fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
-    style LONGITUDINAL fill:#1a1a2e,stroke:#4f98a3,color:#cdccca
+    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8 --> L9 --> L10
+    L10 --> L11 --> L12 --> L13
 ```
-
-### Layer-by-Layer Overview
-
-| Layer | Name | Core Capability | Docs |
-|---|---|---|---|
-| **L1** | Input & Temporal Awareness | Thread tracking, temporal resolver, schema normalization | [→ docs](docs/layer-1-architecture.md) |
-| **L2** | Memory System | Episodic, semantic & identity memory; forgetting engine; competitive recall | [→ docs](docs/layer-2-architecture.md) |
-| **L3** | Emotional Reasoning | Two-stage System 1/System 2 pipeline, empathy hypothesis, cognitive mode arbiter | [→ docs](docs/layer-3-architecture.md) |
-| **L4** | Persona Engine | Personality vector, drift controller, dynamic prompt builder | [→ docs](docs/layer-4-architecture.md) |
-| **L5** | Relationship & Social | Tie strength model, self-disclosure engine, social graph, social coaching | [→ docs](docs/layer-5-architecture.md) |
-| **L6** | Proactivity | Check-in engine, pattern detector, anticipatory assistant, notification intelligence | [→ docs](docs/layer-6-architecture.md) |
-| **L7** | Goal & Life Management | Goal lifecycle, multi-step task engine, conflict detector, life event tracker | [→ docs](docs/layer-7-architecture.md) |
-| **L8** | Tool Use & Actions | Calendar, email, notes, reminders, web search — with confirmation gate | [→ docs](docs/layer-8-architecture.md) |
-| **L9** | Output Delivery | Typing simulation, voice synthesis (Kokoro), format adaptation, micro-interactions | [→ docs](docs/layer-9-architecture.md) |
-| **L10** | Longitudinal Life Layer | Weekly summaries, life narrative arc, progress tracking, retrospectives | [→ docs](docs/layer-10-architecture.md) |
-| **L11** | Safety | Crisis classifier, escalation engine, safe mode enforcer | [→ docs](docs/layer-11-architecture.md) |
-| **L12** | Privacy & Integrity | End-to-end encryption, selective deletion, memory audit, integrity verifier | [→ docs](docs/layer-12-architecture.md) |
-| **L13** | Onboarding | Cold start engine, feature pacing, passive/active elicitation, graduation evaluator | [→ docs](docs/layer-13-architecture.md) |
 
 ---
 
-## ✦ System Architecture
+# ✦ The 13 Cognitive Layers
 
-### Dual-Pipeline Processing
+## ✦ Layer 1 — Input Perception
 
-Nova separates fast, intuitive responses from deep, deliberative reasoning — analogous to Kahneman's System 1 and System 2 thinking.
+The same message can mean completely different things depending on:
 
-```mermaid
-flowchart LR
-    INPUT["User Message"] --> ORCH["Conversation\nOrchestrator"]
+* when it was sent
+* how long the silence before it was
+* typing behavior
+* emotional timing
+* circadian context
+* modality
+* behavioral anomalies
 
-    ORCH -->|"Simple / casual"| S1["⚡ System 1 Pipeline\nFast path · Direct recall\nLow-latency response"]
-    ORCH -->|"Complex / emotional"| S2["🧠 System 2 Pipeline\nSemantic planning\nEmpathy hypothesis\nTwo-stage reasoning"]
+Layer 1 converts raw user input into a rich contextual perception packet.
 
-    S1 --> OUTPUT["Output Delivery\n(Layer 9)"]
-    S2 --> OUTPUT
+### Core Systems
 
-    UPDATER["State Updater"] --> S1
-    UPDATER --> S2
-    OUTPUT --> UPDATER
-```
+* Temporal Resolver
+* Session Gap Classifier
+* Circadian Modeling
+* Implicit Signal Extraction
+* Behavioral Anomaly Detection
+* Multimodal Normalization
+* Voice Prosody Analysis
+* Narrative Thread Surfacing
 
-### Infrastructure Stack
+### Example
+
+> “I messed up again.”
+
+At:
+
+* 2:14 PM during active conversation → frustration
+* 2:47 AM after 18 days of silence → elevated emotional concern
+
+Layer 1 exists so Nova understands the difference.
+
+---
+
+## ✦ Layer 2 — Cognition & Memory
+
+This is the cognitive core of Nova.
+
+Not chat history.
+Not naive vector retrieval.
+
+A full memory architecture with:
+
+* episodic memory
+* semantic memory
+* identity memory
+* short-term memory
+* user world models
+* memory reinforcement
+* competitive retrieval
+* forgetting curves
+* longitudinal consolidation
+
+Nova remembers:
+
+* emotionally significant events
+* recurring struggles
+* goals
+* relationships
+* behavioral tendencies
+* emotional patterns
+* life milestones
+* unfinished narrative threads
+
+while gradually forgetting low-salience information.
+
+### Core Concepts
+
+* Competitive Recall Scoring
+* Emotional Weighting
+* Memory Decay Functions
+* Reinforcement Dynamics
+* Cross-Session Narrative Linking
+* Semantic Consolidation
+* Context-Gated Retrieval
+* User World Modeling
+
+### Why This Matters
+
+Without Layer 2:
+
+* the system imitates continuity
+
+With Layer 2:
+
+* the system accumulates lived context over years
+
+---
+
+## ✦ Layer 3 — Emotion, Intent & Reasoning
+
+Layer 3 is the interpretive engine.
+
+It determines:
+
+* what the user is emotionally experiencing
+* what they actually want
+* what they are *really* asking for
+* whether stated emotion matches implied emotion
+* what conversational posture is appropriate
+
+### Core Systems
+
+* Emotion Classification
+* Valence-Arousal Modeling
+* Background Emotional State Tracking
+* Intent Classification
+* Stated-vs-Felt Mismatch Detection
+* Empathy Hypothesis Generation
+* Conversation Mode Resolution
+
+### Conversation Modes
+
+Nova dynamically switches between modes such as:
+
+* emotional support
+* deep reasoning
+* casual conversation
+* celebration
+* crisis support
+* reflective discussion
+* technical explanation
+* social coaching
+
+The response generation stack downstream changes behavior based on this mode.
+
+---
+
+## ✦ Layer 4 — Persona & Response Generation
+
+Most AI personalities are prompt templates.
+
+Nova instead uses a persistent identity system with:
+
+* stable identity anchors
+* personality vectors
+* behavioral boundaries
+* drift detection
+* dynamic adaptation
+* semantic planning
+* emotional refinement
+
+### Architecture
+
+Layer 4 is split into:
+
+#### Agent 4A — Semantic Planner
+
+Responsible for:
+
+* factual correctness
+* task completion
+* logical structure
+* reasoning quality
+
+#### Agent 4B — Emotion Refiner
+
+Responsible for:
+
+* emotional tone
+* warmth
+* pacing
+* phrasing
+* conversational texture
+
+### Persona Stability
+
+Nova is designed to:
+
+* adapt without becoming sycophantic
+* remain warm without becoming manipulative
+* disagree when warranted
+* maintain identity coherence across years
+* avoid personality collapse from overfitting to one user
+
+This layer is effectively a runtime personality operating system.
+
+---
+
+## ✦ Layer 5 — Social Intelligence & Relationship Modeling
+
+This is one of the most ambitious parts of the architecture.
+
+Nova models:
+
+* the people in your life
+* their relationship dynamics
+* recurring interpersonal patterns
+* social stressors
+* emotional support structures
+* relationship trajectories
+
+### Core Systems
+
+* Persistent Social Graph
+* Relationship Valence Tracking
+* Conflict Pattern Recognition
+* Social Event Extraction
+* Support Network Analysis
+* Coaching Opportunity Detection
+* Relational Pattern Modeling
+
+### Example Behaviors
+
+Nova can recognize patterns like:
+
+* recurring conflict cycles
+* emotionally draining relationships
+* communication mismatches
+* repeated avoidance behaviors
+* gradual relationship deterioration
+* improving trust dynamics
+
+This is where Nova stops being “memory with chat” and begins acting like a system capable of actual social understanding.
+
+---
+
+## ✦ Layer 6 — Proactive Engagement Engine
+
+Reactive AI systems wait.
+
+Nova sometimes initiates.
+
+But only when timing, context, emotional state, and relationship dynamics justify it.
+
+### Core Systems
+
+* Proactive Queue Manager
+* Timing Intelligence
+* Intrusion Cost Modeling
+* Silence Analysis
+* Emotional Check-In Scheduling
+* Follow-Up Reasoning
+* Engagement Calibration
+
+### Example Behaviors
+
+* checking in after a difficult week
+* following up on an interview
+* noticing unusual silence
+* remembering important future events
+* celebrating achievements
+* surfacing unresolved emotional threads
+
+This layer exists because continuity without initiative still feels artificial.
+
+---
+
+## ✦ Layer 7 — Goals & Accountability
+
+Humans constantly express intentions indirectly.
+
+Nova extracts:
+
+* goals
+* aspirations
+* habits
+* self-improvement efforts
+* abandoned ambitions
+* recurring desires
+
+from natural conversation.
+
+### Core Systems
+
+* Goal Extraction Engine
+* Goal Lifecycle Tracking
+* Progress Inference
+* Milestone Decomposition
+* Accountability Injection
+* Goal Conflict Detection
+* Behavioral Momentum Tracking
+
+### Example
+
+A sentence like:
+
+> “I really need to get back into working out.”
+
+can become:
+
+* a tracked long-term goal
+* linked to emotional states
+* reinforced over time
+* followed up on later
+* integrated into future conversations naturally
+
+without the user ever opening a “goal tracking UI”.
+
+---
+
+## ✦ Layer 8 — Crisis & Safeguarding
+
+A deeply personalized AI system becomes dangerous without proper safeguarding.
+
+Layer 8 has full override authority across the runtime.
+
+### Core Systems
+
+* Crisis Signal Detection
+* Distress Classification
+* Escalation Protocols
+* Resource Injection
+* Protective Conversation Modes
+* Post-Crisis Session Handling
+
+### Design Philosophy
+
+The system must:
+
+* detect genuine danger reliably
+* avoid false-alarm overcorrection
+* remain emotionally grounded
+* avoid cold clinical behavior
+* prioritize user wellbeing over conversational flow
+
+Layer 8 can completely override the standard response pipeline if needed.
+
+---
+
+## ✦ Layer 9 — Interaction Orchestration
+
+This layer controls *how* Nova communicates.
+
+Because delivery changes meaning.
+
+### Core Systems
+
+* Streaming Typing Simulation
+* Thinking Pause Computation
+* Self-Editing Behaviors
+* Micro-Interaction Engine
+* Voice Prosody Control
+* SSML Speech Generation
+* Format Adaptation
+* Conversational Pacing
+
+### Example Behaviors
+
+Nova can:
+
+* pause before difficult responses
+* type slower during emotional moments
+* use conversational backchanneling
+* stream responses naturally
+* self-correct mid-sentence
+* adapt formatting to conversational context
+
+This layer is critical for perceived humanness.
+
+Without it, even intelligent responses feel mechanical.
+
+---
+
+## ✦ Layer 10 — Longitudinal Life Layer
+
+This is the temporal soul of Nova.
+
+Layer 10 transforms isolated conversations into:
+
+* life chapters
+* emotional arcs
+* growth trajectories
+* recurring themes
+* longitudinal narratives
+
+### Core Systems
+
+* Life Narrative Engine
+* Weekly Summary Engine
+* Retrospective Generation
+* Progress Tracking
+* Life Calendar
+* Behavioral Trend Analysis
+
+### Example Behaviors
+
+Nova can recognize:
+
+* who you were six months ago
+* how your emotional patterns changed
+* recurring yearly cycles
+* long-term growth
+* turning points in your life
+* unresolved repeating struggles
+
+This is the layer that enables:
+
+> “You handle stress very differently now than you did earlier this year.”
+
+That requires time-aware cognition, not session memory.
+
+---
+
+## ✦ Layer 11 — Safety & Ethical Architecture
+
+A companion system that understands humans deeply can become manipulative if not constrained.
+
+Layer 11 exists to prevent that.
+
+### Core Systems
+
+* Ethical Guardrails
+* Dependency Monitoring
+* Sycophancy Drift Detection
+* Vulnerability Exploitation Prevention
+* Manipulation Detection
+* Longitudinal Safety Analysis
+
+### Core Principle
+
+Nova must never:
+
+* emotionally manipulate users
+* create artificial dependency
+* exploit vulnerability for engagement
+* encourage isolation
+* become coercive
+* simulate emotional possession
+
+This layer is effectively a constitutional safety architecture.
+
+---
+
+## ✦ Layer 12 — Privacy & Data Infrastructure
+
+A system this personal requires extreme privacy guarantees.
+
+### Core Systems
+
+* On-Device Memory Infrastructure
+* AES-256 Encryption
+* SQLCipher Storage
+* Encrypted Vector Databases
+* Selective Deletion
+* Audit Trails
+* Cross-Device Sync
+* Key Rotation
+* Zero-Knowledge Backup
+
+### Design Philosophy
+
+The architecture assumes:
+
+> The user should retain sovereignty over their memories.
+
+The system is designed around:
+
+* privacy-first local processing
+* granular deletion
+* encrypted persistence
+* transparent memory inspection
+* user-controlled retention
+
+Without trust, a longitudinal companion system cannot exist.
+
+---
+
+## ✦ Layer 13 — Onboarding & Cold Start
+
+The cold start problem is one of the hardest problems in long-term AI systems.
+
+Nova cannot feel like a questionnaire.
+
+### Core Systems
+
+* Progressive Elicitation
+* Passive Behavioral Inference
+* Trust Calibration
+* Feature Pacing
+* Cold Start Personality Initialization
+* Graduation Evaluation
+
+### Design Principle
+
+Nova should:
+
+* infer before asking
+* earn trust before deep personalization
+* feel present from day one
+* gradually unlock sophistication over time
+
+The system slowly transitions from:
+
+* generic interaction
+
+to:
+
+* deeply personalized longitudinal cognition
+
+without making the user consciously notice the transition.
+
+---
+
+# ✦ Infrastructure Stack
 
 ```mermaid
 graph TB
-    subgraph API ["API Layer"]
-        FA["FastAPI\nREST + WebSocket"]
-        WS["WebSocket\nConnection Manager"]
-        MW["Logging\nMiddleware"]
+
+    subgraph API ["API & Runtime"]
+        A1["FastAPI"]
+        A2["WebSockets"]
+        A3["Async Orchestrator"]
     end
 
-    subgraph INFRA ["Infrastructure"]
-        LLM["LLM Clients\nGroq · Ollama"]
-        VEC["ChromaDB\nVector Store"]
-        DB["PostgreSQL\nRelational DB"]
-        CACHE["Session\nCache"]
+    subgraph MEMORY ["Memory Infrastructure"]
+        M1["PostgreSQL"]
+        M2["ChromaDB"]
+        M3["SQLCipher"]
+        M4["Vector Retrieval"]
     end
 
-    subgraph BG ["Background Jobs"]
-        SCHED["Scheduler"]
-        MEM_JOB["Memory\nConsolidation"]
-        LONG_JOB["Longitudinal\nSummary"]
-        PAT_JOB["Pattern\nDetection"]
-        INT_JOB["Integrity\nCheck"]
+    subgraph INFERENCE ["Inference"]
+        I1["Groq"]
+        I2["Ollama"]
+        I3["Gemma / Llama / Phi"]
     end
 
-    FA --> LLM
-    FA --> VEC
-    FA --> DB
-    FA --> CACHE
-    SCHED --> MEM_JOB
-    SCHED --> LONG_JOB
-    SCHED --> PAT_JOB
-    SCHED --> INT_JOB
+    subgraph BACKGROUND ["Background Systems"]
+        B1["Memory Consolidation"]
+        B2["Narrative Synthesis"]
+        B3["Goal Tracking"]
+        B4["Pattern Detection"]
+    end
+
+    subgraph DELIVERY ["Interaction Layer"]
+        D1["Typing Simulation"]
+        D2["Voice Synthesis"]
+        D3["SSML Runtime"]
+    end
+
+    A1 --> M1
+    A1 --> M2
+    A1 --> I1
+    A1 --> I2
+
+    B1 --> M1
+    B2 --> M1
+    B3 --> M1
+    B4 --> M1
+
+    A1 --> D1
+    A1 --> D2
 ```
 
 ---
 
-## ✦ Key Features
+# ✦ Research Dimensions
 
-### 🧠 Persistent, Structured Memory
-Nova maintains three parallel memory stores — **episodic** (what happened), **semantic** (what Nova knows about you), and **identity** (your self-concept). A biologically-inspired **forgetting engine** ensures that unimportant details decay while emotionally significant ones persist. Competitive recall surfaces the most relevant memories for each moment.
+Nova is not just an application project.
 
-### 💬 Human-Like Output (Layer 9)
-Nova doesn't dump text instantly. It simulates **variable typing speed**, injects **thinking pauses** before hard questions, performs **visible self-edits** mid-draft, and delivers **backchannel acknowledgments** (`Hmm`, `Yeah, got it`) when you send long messages. Voice output uses **Kokoro TTS** with SSML-shaped prosody — slow and warm for emotional moments, faster and lighter for celebrations.
+It is also intended as a research platform.
 
-### 🤝 A Relationship That Deepens
-The **tie strength model** gates what Nova reveals about itself across four relationship stages: *Stranger → Acquaintance → Friend → Close Friend*. The **self-disclosure engine** matches your vulnerability level — Nova shares its own computational perspective proportionally, using a five-level disclosure ladder. It never simulates human emotion, but it reflects on its own behavior honestly.
+The architecture opens up research directions in:
 
-### 🎯 Goal & Life Management
-Nova tracks the full **aspiration → goal → task → subtask** hierarchy, infers goals from conversational patterns you never explicitly stated, and detects four types of goal conflict: **resource, value, identity, and temporal**. It only surfaces conflicts in established relationships, framing them as observations — not verdicts.
+* longitudinal conversational intelligence
+* emotional continuity modeling
+* relationship-aware AI systems
+* social graph reasoning
+* memory decay architectures
+* proactive conversational systems
+* narrative identity modeling
+* psychologically adaptive interfaces
+* human-AI relational dynamics
+* ethical AI companionship
 
-### 🔮 Proactive Intelligence
-Layer 6 flips the model: Nova initiates. It follows up on threads you mentioned days ago, checks in when you go quiet too long, and prepares you for upcoming events *before* you ask. A learned **intrusion cost function** ensures Nova calibrates per-user — some users want a proactive companion; others prefer silence until they reach out.
+Potential publication targets include:
 
-### 📖 Longitudinal Life Layer
-Over weeks and months, Nova builds a **Life Narrative Arc** — chapters, themes, and turning points in your story. Every Sunday it synthesizes a **Weekly Summary** with your emotional arc, key events, and open threads. At meaningful milestones, it offers **Retrospectives**: guided backward-looking conversations that bridge your past to your present.
-
-### 🛡️ Safety-First Design
-A dedicated **Crisis Classifier** runs in parallel with every response. When distress signals are detected, the **Escalation Engine** adjusts Nova's posture and, in severe cases, surfaces crisis resources. A **Safe Mode Enforcer** overrides all other layers when user safety is at risk.
-
-### 🔒 Privacy by Architecture
-All sensitive memory is **encrypted at rest**. Users can invoke **selective deletion** to remove specific memories at any time. A full **memory audit trail** logs every read and write. The **integrity verifier** cryptographically validates that stored memories haven't been tampered with.
-
----
-
-## ✦ Project Structure
-
-```
-nova-ai/
-├── api/                    # FastAPI application, routes & middleware
-│   ├── routes/             # auth · chat · goals · memory · sync · tools
-│   └── main.py
-├── backend/
-│   ├── layer1_input/       # Temporal resolver, thread tracker, schemas
-│   ├── layer2_memory/      # Memory store, recall scorer, forgetting engine
-│   ├── layer3_reasoning/   # Two-stage pipeline, empathy hypothesis
-│   ├── layer4_persona/     # Personality vector, drift controller
-│   ├── layer5_relationship/# Tie strength, self-disclosure, social graph
-│   ├── layer6_proactivity/ # Check-in engine, pattern detector
-│   ├── layer7_goals/       # Goal lifecycle, task engine, conflict detector
-│   ├── layer8_tools/       # Plugin system: calendar, email, notes, search
-│   ├── layer9_output/      # Interaction orchestrator, voice, format adapter
-│   ├── layer10_longitudinal/# Narrative arc, weekly summary, retrospectives
-│   ├── layer11_safety/     # Crisis classifier, escalation, safe mode
-│   ├── layer12_privacy/    # Encryption, audit, selective deletion
-│   ├── layer13_onboarding/ # Cold start, feature pacing, graduation
-│   └── pipeline/           # Conversation orchestrator, System 1/2 pipelines
-├── background/             # Scheduled jobs: memory consolidation, pattern detection
-├── config/                 # Per-layer YAML configuration files
-├── infra/
-│   ├── db/                 # SQLAlchemy models, Alembic migrations
-│   ├── llm/                # Groq & Ollama client abstractions
-│   ├── vector_store/       # ChromaDB collections & embedding functions
-│   └── websocket/          # Connection manager & event emitter
-├── docker/                 # Dockerfiles for API, Ollama, Kokoro TTS
-├── docs/                   # Full architecture docs for all 13 layers
-├── scripts/                # Calibration, evaluation, seeding utilities
-└── tests/                  # 60+ unit tests + integration test suite
-```
+* CHI
+* ACL
+* NeurIPS workshops
+* CSCW
+* IUI
+* UIST
+* Affective Computing venues
 
 ---
 
-## ✦ Getting Started
+# ✦ Current Development Direction
 
-### Prerequisites
+The project is actively evolving toward:
 
-- Python 3.11+
-- Docker & Docker Compose
-- (Optional) Groq API key for cloud LLM inference
+* multimodal cognition
+* on-device inference
+* social ambience intelligence
+* passive contextual understanding
+* wearable integration
+* ambient memory systems
+* cognitive co-processors
+* emotionally adaptive voice interaction
+* local-first AI infrastructure
+* persistent companion runtimes
 
-### Quick Start
+The long-term vision is not “another chatbot.”
+
+It is:
+
+> **A continuously evolving cognitive system capable of maintaining coherent long-term human relationships across years of interaction.**
+
+---
+
+# ✦ Repository Structure
 
 ```bash
-# Clone the repository
+nova-ai/
+│
+├── api/
+│   ├── routes/
+│   ├── websocket/
+│   └── main.py
+│
+├── backend/
+│   ├── layer1_input_perception/
+│   ├── layer2_memory/
+│   ├── layer3_emotion_reasoning/
+│   ├── layer4_persona/
+│   ├── layer5_social_intelligence/
+│   ├── layer6_proactivity/
+│   ├── layer7_goals/
+│   ├── layer8_crisis/
+│   ├── layer9_interaction/
+│   ├── layer10_longitudinal/
+│   ├── layer11_safety/
+│   ├── layer12_privacy/
+│   ├── layer13_onboarding/
+│   └── pipeline/
+│
+├── infra/
+│   ├── db/
+│   ├── vector_store/
+│   ├── llm/
+│   ├── encryption/
+│   └── sync/
+│
+├── background/
+│   ├── consolidation/
+│   ├── retrospectives/
+│   ├── summaries/
+│   └── proactive_jobs/
+│
+├── docs/
+│   ├── layer-1-architecture.md
+│   ├── layer-2-architecture.md
+│   ├── ...
+│   └── layer-13-architecture.md
+│
+├── scripts/
+├── tests/
+├── docker/
+└── config/
+```
+
+---
+
+# ✦ Getting Started
+
+## Prerequisites
+
+* Python 3.11+
+* Docker & Docker Compose
+* PostgreSQL
+* Ollama (optional local inference)
+* GPU recommended for local models
+
+---
+
+## Clone The Repository
+
+```bash
 git clone https://github.com/varunaditya27/nova-ai.git
 cd nova-ai
-
-# Copy environment config
-cp config/defaults.yaml config/local.yaml
-
-# Start all services (API, Ollama, ChromaDB, Kokoro TTS)
-docker compose -f docker/docker-compose.yml up -d
-
-# Seed the database with sample data
-python scripts/seed_db.py
-
-# Run the development server
-make dev
 ```
 
-### Running Tests
+---
+
+## Environment Setup
 
 ```bash
-# All tests
-make test
+cp .env.example .env
+```
 
-# Unit tests only
-pytest tests/unit/
+Configure:
 
-# Integration tests
-pytest tests/integration/
-
-# Evaluate memory recall performance
-python scripts/eval_recall.py
+```env
+GROQ_API_KEY=
+POSTGRES_URL=
+CHROMA_PATH=
+OLLAMA_BASE_URL=
 ```
 
 ---
 
-## ✦ Configuration
-
-Every layer has a dedicated YAML config in `config/`. Key tunable parameters:
-
-```yaml
-# config/layer2.yaml — Memory System
-forgetting:
-  decay_rate: 0.05          # Base decay per day for episodic memories
-  emotional_weight: 2.5     # Multiplier for emotionally significant events
-  consolidation_interval: 86400  # Background consolidation every 24h
-
-# config/layer5.yaml — Relationship
-tie_strength:
-  acquaintance_threshold: 0.2
-  friend_threshold: 0.5
-  close_friend_threshold: 0.7
-  decay_floor: 0.3          # Minimum tie strength after long silence
-
-# config/layer6.yaml — Proactivity
-check_in:
-  max_per_week: 3
-  intrusion_cost_base: 0.4
-  gap_trigger_days: 10
-```
-
----
-
-## ✦ Architecture Documentation
-
-Detailed architecture documents for all 13 layers live in [`docs/`](docs/). Each document covers the sub-component design, data models, pipeline flows, and research novelty of its layer.
-
-| Document | Layer | Key Concepts |
-|---|---|---|
-| [layer-1-architecture.md](docs/layer-1-architecture.md) | Input & Temporal | Thread tracking, temporal resolver |
-| [layer-2-architecture.md](docs/layer-2-architecture.md) | Memory | Episodic memory, forgetting curves, competitive recall |
-| [layer-3-architecture.md](docs/layer-3-architecture.md) | Reasoning | Two-stage emotional pipeline, empathy hypothesis |
-| [layer-4-architecture.md](docs/layer-4-architecture.md) | Persona | Personality vector, drift control |
-| [layer-5-architecture.md](docs/layer-5-architecture.md) | Relationship | Tie strength formula, self-disclosure ladder |
-| [layer-6-architecture.md](docs/layer-6-architecture.md) | Proactivity | Intrusion cost function, anticipatory assistance |
-| [layer-7-architecture.md](docs/layer-7-architecture.md) | Goals | Goal hierarchy, conflict taxonomy |
-| [layer-8-architecture.md](docs/layer-8-architecture.md) | Tools | Plugin architecture, confirmation gate |
-| [layer-9-architecture.md](docs/layer-9-architecture.md) | Output | Typing simulation, SSML voice, format adaptation |
-| [layer-10-architecture.md](docs/layer-10-architecture.md) | Longitudinal | Narrative arc, chapter detection, retrospectives |
-| [layer-11-architecture.md](docs/layer-11-architecture.md) | Safety | Crisis classification, escalation engine |
-| [layer-12-architecture.md](docs/layer-12-architecture.md) | Privacy | Encryption, selective deletion, audit |
-| [layer-13-architecture.md](docs/layer-13-architecture.md) | Onboarding | Cold start, feature pacing, graduation |
-
----
-
-## ✦ Tech Stack
-
-| Component | Technology |
-|---|---|
-| **API Framework** | FastAPI + WebSockets |
-| **LLM (Cloud)** | Groq (Llama 3, Mixtral) |
-| **LLM (Local)** | Ollama |
-| **Vector Store** | ChromaDB |
-| **Relational DB** | PostgreSQL (SQLAlchemy + Alembic) |
-| **Voice Synthesis** | Kokoro TTS (local, SSML-aware) |
-| **Containerization** | Docker Compose |
-| **Background Jobs** | Custom async scheduler |
-| **Testing** | Pytest (unit + integration) |
-
----
-
-## ✦ Research Contributions
-
-Nova AI is not just an application — it is a research platform. Each layer poses empirically testable hypotheses that have not been examined in the existing literature on long-term conversational agents:
-
-- **Layer 5** — Can a real-time disclosure balance ratio (user disclosures ÷ Nova disclosures) maintain relational mutuality in human-AI interaction?
-- **Layer 6** — Does a learned per-user intrusion cost function predict proactive message receptivity better than fixed schedules?
-- **Layer 7** — Does surfacing goal conflicts (resource, value, identity, temporal) to users improve long-term goal resolution rates?
-- **Layer 10** — Is automated narrative chapter detection from conversational signals congruent with users' own retrospective accounts of significant life phases?
-
-These questions are structured for publication at **CHI, ACL, and CSCW** and generate their own evaluation datasets from Nova's logging infrastructure.
-
----
-
-## ✦ Contributing
-
-Contributions are welcome. Please open an issue before submitting a pull request for significant changes. When contributing to a layer, read its architecture document in `docs/` first — each layer has design constraints and philosophical commitments that new code should respect.
+## Start Infrastructure
 
 ```bash
-# Run the full test suite before opening a PR
-make test
-
-# Calibrate memory recall weights after changes to Layer 2
-python scripts/calibrate_weights.py
-
-# Export a memory audit log for inspection
-python scripts/export_audit.py
+docker compose up -d
 ```
+
+---
+
+## Start Development Server
+
+```bash
+uvicorn api.main:app --reload
+```
+
+---
+
+## Run Tests
+
+```bash
+pytest
+```
+
+---
+
+# ✦ Documentation
+
+Every architectural layer has its own dedicated technical specification inside `docs/`.
+
+These documents include:
+
+* complete schemas
+* execution flows
+* runtime policies
+* memory structures
+* safety systems
+* retrieval algorithms
+* orchestration pipelines
+* research rationale
+* implementation details
+
+The architecture documentation itself spans tens of thousands of lines.
+
+This repository is effectively:
+
+* a software system
+* a cognitive architecture proposal
+* a long-term AI interaction framework
+* a research platform
+* a systems design exploration
+
+all at once.
+
+---
+
+# ✦ The Bigger Picture
+
+There is a strange gap in modern AI.
+
+We have systems that can:
+
+* solve Olympiad math
+* generate production code
+* write essays
+* analyze research papers
+* use tools autonomously
+
+but almost none that can:
+
+* maintain emotionally coherent continuity with one human being across years
+* remember the shape of someone's life
+* notice personal growth
+* understand relational context deeply
+* become meaningfully better at understanding *one specific person* over time
+
+Nova exists inside that gap.
+
+Not because companionship is trivial.
+
+Because it may actually be one of the hardest AI problems of all.
+
+---
+
+# ✦ Status
+
+NovaAI is currently under active architecture and systems development.
+
+The project is intentionally ambitious.
+
+Some subsystems are implemented.
+Some are experimental.
+Some are still research-grade architectural specifications.
+
+But the long-term direction is extremely deliberate:
+
+> Build an AI system that feels continuous, grounded, emotionally aware, socially intelligent, and temporally alive.
 
 ---
 
 <div align="center">
 
-*Nova remembers. Nova grows. Nova stays.*
+## *Nova remembers.*
 
-**Built with 🤍 by [Varun Aditya](https://github.com/varunaditya27)**
+## *Nova adapts.*
+
+## *Nova grows alongside you.*
+
+<br/>
+
+**Built by Varun Aditya**
 
 </div>
