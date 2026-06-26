@@ -114,6 +114,8 @@ The gap since the user's last message (or last session end, defined as 30+ minut
 
 The `session_gap_seconds` (raw) and `gap_category` (enum) are both stored in the output packet. The `human_readable_gap_label` is the fuzzy string Nova uses in language — never the raw number.
 
+**Boundary assignment (implementation-defined):** the human-readable durations above overlap at the edges (e.g. "1–3 days" vs "4–14 days"). Classification is unambiguous because it uses strict ascending upper bounds in seconds — a gap is assigned to the first bucket whose upper bound it falls *strictly below*: `same_session` < 1800, `short_break` < 14400, `same_day` < 86400, `few_days` < 259200 (3d), `week_or_two` < 1209600 (14d), `long_absence` < 7776000 (90d), else `very_long_absence`. `is_new_session` is `True` for any gap ≥ 1800 s (i.e. any category other than `same_session`).
+
 **Gap-driven opening logic** (consumed by Layer 4, Persona Enforcer):
 
 - `same_session` / `short_break` → continue topic seamlessly
@@ -373,7 +375,9 @@ def compute_implicit_emotional_intensity(
     return min(score, 1.0)
 ```
 
-This score is **not** a diagnosis. It is a weighted pre-signal that shifts Layer 3's emotional prior before any content analysis. At score 0.0, Layer 3 starts neutral. At score 0.8+, Layer 3 enters the message expecting significant emotional content and calibrates accordingly.
+This score is **not** a diagnosis. It is a weighted pre-signal that shifts Layer 3's emotional prior before any content analysis. At score 0.0, Layer 3 starts neutral. At the upper end, Layer 3 enters the message expecting significant emotional content and calibrates accordingly.
+
+> **Range note (implementation-verified):** With the weights above, the score's *effective maximum is 0.70* (latency 0.15 + deletion 0.20 + length 0.25 + initiation 0.10), not 1.0. The trailing `min(score, 1.0)` is therefore a defensive clamp that never fires in practice. Downstream thresholds must be read against the real `[0, 0.70]` range — treat **≥ 0.50** as "strongly emotionally loaded," not 0.8.
 
 ---
 
@@ -456,7 +460,11 @@ class DocumentSummary:
 
 ```python
 class ModalityContext:
-    primary_modality: Literal["text", "image", "voice", "document", "location", "video", "reaction", "mixed"]
+    primary_modality: Literal[
+        "text", "image", "voice", "document", "location", "video", "reaction", "mixed",
+        # Degraded-mode fallbacks emitted when a backend fails or is unavailable (§11):
+        "image_unprocessed", "voice_untranscribed",
+    ]
     text_content: Optional[str]              # transcribed/extracted text if applicable
     semantic_description: Optional[str]     # natural language description of non-text content
     ocr_text: Optional[str]                  # text visible in image/screenshot
@@ -565,6 +573,11 @@ When signals from different sub-components are in tension, the following resolut
 | Voice note transcript is very short (< 10 words) but prosody features are expressive | Flag as `high_prosody_low_text`; the prosody signal carries more interpretive weight |
 | Multiple modalities present (text + image) | `primary_modality = "mixed"`; both are included; text is prioritized for semantic content, image for emotional context |
 
+**Ordering (implementation-defined, resolves the §7.2 / §7.4 overlap):** conflict resolution runs *before* the composite prior, and produces the *inputs* the §7.4 formula consumes — it does not compute a second, competing prior. Concretely:
+
+1. **Rule 1** yields the **effective circadian prior**. A band counts as "low vulnerability" when its prior is `< 0.30` (morning, afternoon); "very high" implicit intensity is `≥ 0.60`. When both hold, `effective_circadian = max(circadian_prior, implicit_intensity × 0.8)`; otherwise `effective_circadian = circadian_prior`. The §7.4 formula then uses `effective_circadian` in place of the raw `circadian_mood_prior`.
+2. **Rule 2** (`signal_mismatch`): Layer 1 cannot evaluate text sentiment — that is Layer 3's job — so it raises the flag purely from the prosodic channel (valence `≤ -0.30`, or a `dominant_signal` of `anxious`/`distressed`). Layer 3 performs the actual stated-vs-felt comparison against message content.
+
 ### 7.3 Complete Output Schema — InputPerceptionPacket
 
 This is the formal contract Layer 1 hands to every downstream layer. No field is optional in a completed assembly — all fields have explicit defaults if the relevant sub-component did not fire.
@@ -637,6 +650,10 @@ class InputPerceptionPacket:
     # and prosody_emotion_estimate (if present).
     composite_emotional_prior: float         # 0–1; Layer 3 uses as Bayesian prior
     prior_confidence: float                  # 0–1; higher when more signals contributed
+
+    # ── Diagnostic flags (set by the fallback paths in §11) ────────────────────
+    cold_start_profile: bool                 # True when no temporal profile existed (new user)
+    timezone_confidence: str                 # "high" | "low"; "low" until timezone is inferred
 ```
 
 ### 7.4 The Composite Emotional Prior
@@ -695,6 +712,20 @@ Layer 1 is **stateless in execution** but requires access to per-user state that
 | `VoiceCalibrationProfile` | SQLite (user_meta.db) | Read on voice input, write after each voice session | On-device |
 | Per-user message latency history | SQLite (user_meta.db) | Read every text message, append after each message | On-device |
 | Per-user message length history | SQLite (user_meta.db) | Read every message, append after each message | On-device |
+
+The three rolling histories (latency median over the last 50 messages, message-length median
+over the last 100, and the shortest gap in the last 30 days) are read into a single
+`UserBehaviorBaseline` value object that SC-2 and SC-1 consume each turn:
+
+```python
+class UserBehaviorBaseline:
+    latency_median_ms: Optional[float]            # rolling median, last 50 messages (§4.2)
+    message_length_median_chars: Optional[float]  # rolling median, last 100 messages (§4.4)
+    shortest_recent_gap_seconds: Optional[float]  # shortest gap in last 30 days (§3.4)
+```
+
+`None` fields mean "no baseline yet" (new user) and yield neutral signals (latency deviation
+`None`, length ratio `1.0`, no rapid-return anomaly).
 
 **Write timing:** All state updates (updating `UserTemporalProfile`, appending latency/length history) happen **after** the `InputPerceptionPacket` is emitted. Layer 1 reads the state it needs, fires the packet, then the State Updater (end of pipeline, Layer 2's responsibility) handles persistence. Layer 1 never blocks on a write.
 
@@ -799,8 +830,15 @@ class ClientMetadata:
     is_burst: bool
     burst_count: int
     burst_messages: Optional[list[str]]          # all messages in burst if applicable
+    last_nova_message_was_proactive: bool        # was the previous Nova turn a proactive reach-out?
+    is_reply_to_proactive: bool                  # is this message a direct reply to that reach-out?
     session_id: UUID
 ```
+
+The two `*_proactive` fields let SC-2 resolve `initiation_type` (§4.5) without reaching into
+Layer 6: the server cannot otherwise tell whether the prior Nova turn was a proactive check-in.
+`initiation_type = "continuation"` is derived from SC-1's single `is_new_session` decision
+(`not is_new_session`) rather than re-deriving the 30-minute gap threshold independently.
 
 The client is responsible for measuring and reporting `ClientMetadata`. The server cannot derive message latency or deletion behavior post-hoc — these must be sent from the client at message time.
 
@@ -849,6 +887,53 @@ These principles are constraints that must be honored in every implementation de
 5. **Fail gracefully, always emit.** Layer 1 never blocks the conversation pipeline. A partial packet with explicit `None` values is always preferable to a missing packet.
 
 6. **The asymmetry fix.** Layer 9 generates implicit signals (typing simulation, deletion, backchannels) as output. Layer 1 reads equivalent signals as input. The system is now symmetrical: Nova performs what it also reads.
+
+---
+
+## 15. Implementation Notes (as-built)
+
+Layer 1 is implemented end-to-end in `backend/layer1_input/`. The core path (SC-1, SC-2, SC-5)
+is pure-Python, zero-dependency, and fully deterministic, honouring §14 principle 1.
+
+**Module map:**
+
+| Module | Sub-component | Notes |
+|---|---|---|
+| `schemas.py` | All contract types | stdlib `@dataclass` + `str`-`Enum`; no pydantic/ORM |
+| `temporal_resolver.py` | SC-1 | circadian, gap, anomaly, `gap_vs_baseline_ratio`, `make_fuzzy_labeler` |
+| `thread_tracker.py` | SC-1 (threads) | `ThreadStore` Protocol + `InMemoryThreadStore`; `get_due_threads` |
+| `implicit_signals.py` | SC-2 | latency/deletion/length/initiation/burst + intensity formula (§4.7) |
+| `multimodal_normalizer.py` | SC-3 | injectable image/voice/document backends; deterministic reaction/location |
+| `prosody_extractor.py` | SC-4 | injectable prosody backend; calibrated deviation |
+| `assembler.py` | SC-5 | conflict resolution + composite prior + packet build |
+| `service.py` | Orchestrator | `process_input_event`; `ProfileStore`/`ThreadStore`/`Layer1Backends` injection |
+
+**Backend injection.** The heavy models named in §5/§6/§12.1 (LLaVA/GPT-4o Vision, Whisper.cpp,
+Apache Tika, SpeechBrain) are abstracted behind `Protocol` backends (`ImageBackend`,
+`VoiceBackend`, `DocumentBackend`, `ProsodyBackend`) injected via `Layer1Backends`. When a
+backend is absent or raises, the relevant sub-component degrades to the exact fallback defined
+in §11 (`image_unprocessed`, `voice_untranscribed`, etc.) and the packet is still emitted. This
+lets the full pipeline run — and be tested — with no GPU or network, while real backends drop in
+without touching pipeline code.
+
+**State stores.** `ProfileStore` (UserTemporalProfile) and `ThreadStore` (NarrativeThread) are
+Protocols with in-memory default implementations; production SQLite/SQLCipher stores (§8) swap
+in by dependency injection. Layer 1 only reads — the Layer 2 State Updater owns all writes (§13).
+
+**Reconciliations applied during implementation** (the doc above already reflects these):
+- `ClientMetadata` gained `last_nova_message_was_proactive` / `is_reply_to_proactive` (§12.2).
+- `InputPerceptionPacket` gained the `cold_start_profile` / `timezone_confidence` flags (§7.3).
+- `UserBehaviorBaseline` formalises the latency/length/gap rolling histories (§8).
+- The §4.7 intensity score's effective ceiling is **0.70**, not 1.0 (§4.7 range note).
+- Conflict resolution (§7.2) feeds the composite-prior formula (§7.4) via an *effective*
+  circadian prior; the two are one ordered computation, not two competing priors.
+
+**Test coverage.** 137 unit tests in `tests/unit/` (`test_temporal_resolver.py`,
+`test_thread_tracker.py`, `test_implicit_signals.py`, `test_multimodal_normalizer.py`,
+`test_prosody_extractor.py`, `test_assembler.py`, `test_layer1_service.py`) cover the §12.3
+requirements: full 24-hour band mapping, all seven gap boundaries, every anomaly condition,
+thread-priority ordering, fuzzy-label buckets, the intensity formula, multimodal/prosody
+success **and** degraded paths, full-assembly completeness, and the §11 always-emit guarantee.
 
 ---
 
