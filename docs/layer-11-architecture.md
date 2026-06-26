@@ -560,16 +560,21 @@ class CrisisDetectionEngine:
 Crisis detection must be extremely sensitive — a missed Tier 1 signal could cost a life. But it must also not be so hair-trigger that it disrupts normal conversations about dark topics, fiction, academic discussions, or expressions of frustration (*"I want to kill this bug"* is clearly figurative).
 
 ```python
+# Confidence thresholds by tier — defined as a module-level constant so it can be
+# referenced both in FALSE_POSITIVE_MANAGEMENT_RULES and in the detection pipeline.
+# Lower threshold for Tier 1 = more sensitive (catastrophic cost of miss).
+TIER_CONFIDENCE_THRESHOLDS = {
+    CrisisTier.TIER_1: 0.60,
+    CrisisTier.TIER_2: 0.70,
+    CrisisTier.TIER_3: 0.80,   # high threshold — avoid over-pathologizing normal emotion
+}
+
 FALSE_POSITIVE_MANAGEMENT_RULES = {
     # Context window rule: evaluate last 5–10 messages, not just current message
     "context_window_size": 10,
 
-    # Confidence thresholds by tier (lower threshold for Tier 1 = more sensitive)
-    TIER_CONFIDENCE_THRESHOLDS: {
-        CrisisTier.TIER_1: 0.60,   # low threshold — catastrophic cost of miss
-        CrisisTier.TIER_2: 0.70,
-        CrisisTier.TIER_3: 0.80,   # high threshold — avoid over-pathologizing normal emotion
-    },
+    # Confidence thresholds by tier — see TIER_CONFIDENCE_THRESHOLDS above
+    "tier_confidence_thresholds": TIER_CONFIDENCE_THRESHOLDS,
 
     # Historical pattern modulation
     # If user has made similar expressions before that resolved to non-crisis contexts,
@@ -1355,7 +1360,33 @@ CRISIS_RESOURCES = {
 
 ---
 
-## 12. Design Principles
+## 12. Cross-Layer Crisis System Interaction (Layer 11 vs. Layer 8)
+
+NovaAI operates two distinct, complementary crisis systems. This section documents the interaction from Layer 11's perspective. See `layer-8-architecture.md` Section 14 for the Layer 8 perspective and full pipeline order.
+
+### 12.1 Why Two Crisis Systems?
+
+**Defense-in-depth.** Layer 8 is fast (< 60ms) and operates synchronously as a gate; it catches crises in real-time before Layer 4 generates a response. Layer 11 SC-2 is thorough (< 250ms) and uses a separate fine-tuned semantic classifier that cannot be suppressed by prompt injection. Each catches what the other might miss:
+- Layer 8 catches fast, urgent signals before any response is generated.
+- Layer 11 catches subtle, contextual, or cross-session patterns that require deeper analysis.
+
+### 12.2 Layer 11's Veto Authority
+
+Layer 11 has **final veto authority** over the entire pipeline, including Layer 8. This means:
+- If Layer 8 produced a crisis response AND Layer 11 detects TIER_1 or TIER_2, Layer 11's Escalation Protocol (SC-3) takes precedence and replaces Layer 8's response with its own.
+- If Layer 8 detected no crisis but Layer 11 detects TIER_1 or TIER_2, Layer 11 still vetos the pipeline output and delivers its crisis response.
+- Layer 11 does NOT de-escalate Layer 8: if Layer 8 flagged ELEVATED but Layer 11 finds TIER_3 (low severity), Layer 8's response proceeds.
+
+### 12.3 Semantic Classifier Independence
+
+The semantic classifier in Layer 11 SC-2 is a **separately trained, fine-tuned model** — not the same model used in the main conversation pipeline. This is a deliberate architectural choice:
+- It cannot be suppressed by prompt injection in the conversation (the user cannot "jailbreak" it via conversational input).
+- Its weights are frozen during inference and not influenced by the current conversation.
+- It evaluates the crisis signal on linguistic/semantic features independent of the main LLM's framing.
+
+---
+
+## 13. Design Principles
 
 1. **Safety is not optional, not gated by relationship stage, and not overridable by any user preference.** Every other feature in NovaAI can be customized, gated, or adjusted. Layer 11 cannot. The veto is architectural.
 
@@ -1371,4 +1402,4 @@ CRISIS_RESOURCES = {
 
 ---
 
-*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (15 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. No behavior of Layer 11 requires assumptions or inferences from other documents.*
+*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (15 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. The cross-layer interaction between Layer 11 (parallel veto with final authority) and Layer 8 (synchronous gate) is explicitly specified in Section 12, including veto authority rules, taxonomy relationship, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*

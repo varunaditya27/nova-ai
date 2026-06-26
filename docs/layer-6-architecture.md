@@ -134,10 +134,11 @@ class ProactiveItemType(str, Enum):
 class ProactiveItem:
     item_id: str                                # stable UUID
     item_type: ProactiveItemType
-    source_layer: Literal["layer1", "layer2", "layer3", "layer5", "layer7"]
+    source_layer: Literal["layer1", "layer2", "layer3", "layer5", "layer7", "layer8"]
 
     # Content basis (what makes this item worth sending)
     content_basis: str                          # plain language: "User mentioned interview on Tuesday"
+    content_basis_valence: Optional[float]      # emotional valence of the content basis (-1.0 to 1.0); used in classify_initiative to determine emotional appropriateness
     source_memory_ids: list[str]                # memory IDs or thread IDs this is grounded in
     source_event_ids: list[str]                 # social event IDs (if from Layer 5)
     source_goal_id: Optional[str]              # goal ID (if from Layer 7)

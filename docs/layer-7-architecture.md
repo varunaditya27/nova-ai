@@ -744,7 +744,9 @@ def decide_goal_reference(
 ) -> GoalContextPacket:
 
     # NEVER reference goals in these modes
-    BLOCKED_MODES = ["crisis", "grief", "venting_only", "casual_smalltalk"]
+    BLOCKED_MODES = ["crisis", "emotional_support", "casual"]
+    # Uses Layer 3's ConversationMode taxonomy: "crisis" (safety gate), "emotional_support"
+    # (user needs support not goal pressure), "casual" (not the right context for goal references)
     if conversation_mode in BLOCKED_MODES:
         return GoalContextPacket(should_reference_goal=False, reference_type="none")
 

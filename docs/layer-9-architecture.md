@@ -623,7 +623,7 @@ def generate_ssml(
         annotated_text = inject_fillers(annotated_text, conversation_mode, emotional_state)
 
     ssml = f"""<speak>
-  <prosody rate="{prosody_params.rate}" pitch="{prosody_params.pitch}dst">
+  <prosody rate="{prosody_params.rate}" pitch="{prosody_params.pitch}st">
     {annotated_text}
   </prosody>
 </speak>"""

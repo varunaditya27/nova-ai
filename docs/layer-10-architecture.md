@@ -168,6 +168,31 @@ class NarrativeArc:
     narrative_version: int
     last_full_synthesis_at: datetime
 
+class LifeEvent:
+    """
+    A discrete life event detected or reported during a session.
+    High-significance occurrences that serve as chapter boundaries or narrative anchors.
+    Detected by Layer 7 (Goal & Life Management) and stored in goals.db (life_events table).
+    """
+    event_id: UUID
+    user_id: str
+    title: str                          # e.g., "Started new job at Infosys"
+    category: Literal[
+        "career_transition",            # new job, job loss, promotion, career pivot
+        "educational_transition",       # new degree program, graduation, dropping out
+        "relational_major",             # new relationship, breakup, marriage, divorce
+        "geographic_relocation",        # moving to a new city or country
+        "major_loss",                   # death, significant relationship end
+        "health_major",                 # significant diagnosis or recovery milestone
+        "other",                        # significant event not fitting above categories
+    ]
+    event_date: date                    # when the event occurred (not when detected)
+    detected_at: datetime               # when Nova became aware of this event
+    significance_score: float           # 0.0–1.0; used for calendar priority and chapter triggering
+    source_session_id: UUID             # session in which the event was detected
+    associated_goal_id: Optional[UUID]  # if the event is tied to a Goal (Layer 7)
+    description: Optional[str]          # brief narrative description
+
 class EmotionalArcSummary:
     """How emotional state evolved within a chapter or period."""
     opening_valence: float                  # emotional tone at chapter start (-1.0 to 1.0)
@@ -196,7 +221,7 @@ def synthesize_chapter(
     chapter: LifeChapter,
     episodic_memories: list[EpisodicMemory],
     life_events: list[LifeEvent],
-    goals: list[GoalObject],
+    goals: list[Goal],
     emotional_history: list[EmotionalRecord]
 ) -> ChapterSynthesis:
     """
@@ -392,7 +417,7 @@ def generate_weekly_summary(
     episodic_memories: list[EpisodicMemory],
     emotional_records: list[EmotionalRecord],
     sessions: list[SessionRecord],
-    goals: list[GoalObject],
+    goals: list[Goal],
     pending_threads: list[PendingThread],
     previous_week_summary: Optional[WeeklySummary]
 ) -> WeeklySummary:
@@ -766,7 +791,7 @@ def generate_retrospective(
     narrative_arc: NarrativeArc,
     weekly_summaries: list[WeeklySummary],
     progress_record: LongitudinalProgressRecord,
-    goals: list[GoalObject],
+    goals: list[Goal],
     episodic_memories: list[EpisodicMemory]
 ) -> RetrospectivePacket:
 
@@ -856,7 +881,7 @@ def generate_year_in_review(
     narrative_arc: NarrativeArc,
     all_weekly_summaries: list[WeeklySummary],
     progress_record: LongitudinalProgressRecord,
-    goals: list[GoalObject],
+    goals: list[Goal],
 ) -> YearInReview:
     """
     Annual synthesis — the single most significant Layer 10 output.
@@ -943,7 +968,7 @@ class CalendarEntry:
     entry_type: CalendarEntryType
     title: str
     description: str
-    associated_id: UUID             # GoalObject, LifeEvent, NarrativeMoment, etc.
+    associated_id: UUID             # Goal, LifeEvent, NarrativeMoment, etc.
     priority: float                 # 0.0–1.0; controls surfacing decisions in Layer 6
     is_recurring: bool
     recurrence_rule: Optional[str]  # "annually", "monthly", etc.
@@ -1246,4 +1271,4 @@ LAYER10_DATA_POLICY = {
 
 ---
 
-*This document specifies Layer 10 completely. All five sub-components — the Life Narrative Engine (chapter schema, narrative moment taxonomy, synthesis algorithm, chapter boundary detection), the Weekly Summary Engine (full schema, generation algorithm, delivery policy), the Progress & Pattern Tracker (all tracked dimensions with complete schemas, pattern detection algorithm), the Retrospective Engine (all retrospective types, RetrospectivePacket schema, generation logic, Year in Review special case, surfacing window table), and the Life Calendar (CalendarEntry schema, CalendarEntryType taxonomy, Layer6Action contract, scheduler logic, new-user registration, life-event anniversary registration) — are fully specified. The Layer 10 output contract (Layer10ContextPacket), pipeline integration write and read paths, privacy and retention policy, error handling for all failure cases, and performance targets are all explicitly defined. No behavior of Layer 10 requires assumptions or inferences from other documents.*
+*This document specifies Layer 10 completely. All five sub-components — the Life Narrative Engine (chapter schema, narrative moment taxonomy, LifeEvent schema defined in Section 3.2, synthesis algorithm, chapter boundary detection), the Weekly Summary Engine (full schema, generation algorithm, delivery policy), the Progress & Pattern Tracker (all tracked dimensions with complete schemas, pattern detection algorithm), the Retrospective Engine (all retrospective types, RetrospectivePacket schema, generation logic, Year in Review special case, surfacing window table), and the Life Calendar (CalendarEntry schema, CalendarEntryType taxonomy, Layer6Action contract, scheduler logic, new-user registration, life-event anniversary registration) — are fully specified. Goal objects are referenced as `Goal` (the canonical class name from layer-7-architecture.md); the `goal_objects` table in `goals.db` (Layer 12) stores instances of this class. The Layer 10 output contract (Layer10ContextPacket), pipeline integration write and read paths, privacy and retention policy, error handling for all failure cases, and performance targets are all explicitly defined. No behavior of Layer 10 requires assumptions or inferences from other documents.*

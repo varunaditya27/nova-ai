@@ -412,6 +412,7 @@ class CrisisSignalResult:
     signals_detected: list[SignalMatch]
     immediate_flag: bool        # Category 1 signal present
     imminent_flag: bool         # IMMINENT-level signal present
+    help_seeking_signal_present: bool   # True if user expressed desire for help/resources
     contextual_check_ran: bool
     contextual_framing: Optional[str]   # "genuine | hyperbolic | historical | unknown"
     contextual_confidence: Optional[float]
@@ -441,6 +442,7 @@ class CrisisState:
     session_id: str
     session_crisis_detected: bool   # True if any level >= ELEVATED this session
     session_peak_level: CrisisLevel # highest level reached this session
+    session_peak_score: float       # raw signal score at the session peak (0.0–1.0); used in post-crisis memory write
     session_crisis_at: Optional[datetime]
 
     # History
@@ -1132,7 +1134,61 @@ User preferences (the ability to toggle features off) do **not** apply to Layer 
 
 ---
 
-## 14. Design Principles Summary
+## 14. Cross-Layer Crisis System Interaction (Layer 8 vs. Layer 11)
+
+NovaAI operates two distinct, complementary crisis systems. This is intentional defense-in-depth, not redundancy. Understanding how they interact is critical for implementation.
+
+### 14.1 The Two Systems
+
+| Property | Layer 8 (Crisis Detection Engine) | Layer 11 SC-2 (Safety Agent Crisis Engine) |
+|---|---|---|
+| **Role** | In-session synchronous gate | Parallel pipeline safety veto |
+| **Position** | BETWEEN Layer 3 and Layer 4 (blocking) | Runs in parallel with the entire main pipeline |
+| **Taxonomy** | 5 levels: NONE / MONITORING / ELEVATED / ACUTE / IMMINENT | 3 tiers: TIER_1 (most severe) / TIER_2 / TIER_3 |
+| **Detection method** | Weighted lexical scoring + optional LLM contextual check | Three layers: lexical → fine-tuned semantic classifier → longitudinal pattern analysis |
+| **Output** | `Layer8Output` with `bypass_layer4` flag; controls SC-3 response | `SafetyAgentDecision` with veto authority |
+| **When active** | Every message; fast path (< 15ms) | Every message; in parallel (< 250ms) |
+| **Injection resistance** | Standard (same LLM call path) | High (semantic classifier is a separate fine-tuned model, not the main LLM) |
+
+### 14.2 Pipeline Execution Order
+
+```
+L1 → L2 → L3 → [Layer 8 gate] → L4 → L5/6/7 → L9
+                                        ↑
+                         Layer 11 runs in parallel with all of the above
+```
+
+1. Layer 3 emits a CrisisAlert to both Layer 8 AND Layer 11 simultaneously when `crisis_flag=True`.
+2. Layer 8 acts as a synchronous gate: if `crisis_level >= ELEVATED`, it bypasses Layer 4 and takes direct control of the response.
+3. Layer 11 runs asynchronously in parallel: it completes its three-layer detection pipeline and produces a `SafetyAgentDecision`.
+4. If Layer 11 produces a TIER_1 or TIER_2 signal, it issues a veto that overrides ANY pipeline output — including Layer 8's response.
+
+### 14.3 When Both Fire Simultaneously
+
+If both Layer 8 AND Layer 11 independently detect a crisis for the same message:
+
+1. **Layer 8 acts first** (it is faster, < 60ms) — it may already be assembling a crisis response.
+2. **Layer 11 evaluates in parallel** — its semantic classifier and longitudinal analysis produce a higher-confidence, lower-false-positive signal.
+3. **Layer 11 has final veto authority** — if Layer 11's detection contradicts Layer 8's (e.g., Layer 8 detected ELEVATED but Layer 11 classifies as TIER_1), Layer 11's escalation protocol takes precedence.
+4. **They cannot contradict downward** — if Layer 11 determines NO crisis (Tier_3 with low confidence), but Layer 8 detected ELEVATED, the Layer 8 response still proceeds (Layer 11 does not de-escalate Layer 8).
+
+### 14.4 Taxonomy Mapping
+
+The two systems use different taxonomies. Approximate correspondence:
+
+| Layer 8 Level | Layer 11 Tier |
+|---|---|
+| IMMINENT | TIER_1 |
+| ACUTE | TIER_1 / TIER_2 boundary |
+| ELEVATED | TIER_2 |
+| MONITORING | TIER_3 |
+| NONE | NONE |
+
+These are approximate — Layer 11's taxonomy is independent and based on evidence across all three detection layers, not a direct translation from Layer 8's score.
+
+---
+
+## 15. Design Principles Summary
 
 1. **Err toward care, never toward efficiency.** When a signal is ambiguous, the system responds with more care, not less. A false positive at MONITORING level costs nothing. A false negative at ACUTE level is irreversible.
 
@@ -1146,4 +1202,4 @@ User preferences (the ability to toggle features off) do **not** apply to Layer 
 
 ---
 
-*This document specifies Layer 8 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the crisis signal taxonomy and weighted scoring, the contextual LLM check, the five-level crisis taxonomy, the state machine with lock durations and de-escalation thresholds, all three response modes (ELEVATED/ACUTE/IMMINENT) with prompts and prohibitions, the resource database schema with country-specific defaults, the resource surfacing decision logic and framing templates, post-crisis memory write and Layer 6 handoff, re-entry context note, pipeline integration order, and all ethical constraints — are fully resolved. No behavior of Layer 8 requires assumptions or inferences from other documents.*
+*This document specifies Layer 8 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the crisis signal taxonomy and weighted scoring, the contextual LLM check, the five-level crisis taxonomy, the state machine with lock durations and de-escalation thresholds, all three response modes (ELEVATED/ACUTE/IMMINENT) with prompts and prohibitions, the resource database schema with country-specific defaults, the resource surfacing decision logic and framing templates, post-crisis memory write and Layer 6 handoff, re-entry context note, pipeline integration order, and all ethical constraints — are fully resolved. The cross-layer interaction between Layer 8 (synchronous gate) and Layer 11 (parallel veto) is explicitly specified in Section 14, including the dual-fire scenario and taxonomy mapping. No behavior of Layer 8 requires assumptions or inferences from other documents.*
