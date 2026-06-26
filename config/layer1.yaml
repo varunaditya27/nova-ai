@@ -1,22 +1,96 @@
 # Layer 1 Configuration — Input Perception & Temporal Awareness
 #
-# Tunable parameters:
-#   circadian_bands:
-#     - morning: 6 AM - 12 PM
-#     - afternoon: 12 PM - 6 PM
-#     - evening: 6 PM - 10 PM
-#     - night: 10 PM - 6 AM
-#
-#   session_gap_categories:
-#     - minutes_5: 0-5 minutes (continuous context)
-#     - hours_1: 5 min - 1 hour (warm context)
-#     - hours_12: 1-12 hours (warm recency)
-#     - days_1: 12 hours - 1 day (daily context)
-#     - week: 1-7 days
-#     - month: 7-30 days
-#     - extended: 30+ days (cold start context)
-#
-#   anomaly_thresholds:
-#     - unusual_time_variance: std dev multiplier (default: 2.0)
-#     - rapid_mood_shift: valence delta threshold (default: 0.6)
-#     - silence_duration_hours: absence trigger (default: 72)
+# These values mirror the module-level constants in backend/layer1_input/ (the code is the
+# single source of truth). They are reproduced here as real, machine-readable YAML so the
+# pipeline can be re-tuned without a code change once a config loader is wired. Every value
+# matches docs/layer-1-architecture.md.
+
+layer1:
+
+  # ── SC-1 Temporal Resolver ────────────────────────────────────────────────
+  # Six circadian bands fully partition the 24h clock (doc §3.2).
+  circadian_bands:
+    late_night:    { start_hour: 23, end_hour: 3 }    # wraps midnight
+    early_morning: { start_hour: 3,  end_hour: 6 }
+    morning:       { start_hour: 6,  end_hour: 12 }
+    afternoon:     { start_hour: 12, end_hour: 17 }
+    evening:       { start_hour: 17, end_hour: 21 }
+    night:         { start_hour: 21, end_hour: 23 }
+
+  # Population-level vulnerability priors [0,1] per band; personalized after 20+ sessions.
+  circadian_mood_prior:
+    late_night:    0.75
+    early_morning: 0.80
+    morning:       0.20
+    afternoon:     0.25
+    evening:       0.40
+    night:         0.55
+  personalized_prior_min_sessions: 20
+
+  # Seven session-gap buckets by upper bound in seconds (doc §3.3). A gap is assigned to the
+  # first bucket whose upper bound it falls strictly below; >= the last bound is very_long.
+  session_gap_categories:
+    same_session:      1800        # < 30 min
+    short_break:       14400       # < 4 hrs
+    same_day:          86400       # < 24 hrs
+    few_days:          259200      # < 3 days
+    week_or_two:       1209600     # < 14 days
+    long_absence:      7776000     # < 90 days (~3 months)
+    # very_long_absence: everything >= 7776000
+  new_session_threshold_seconds: 1800
+
+  # Anomaly detection (doc §3.4); suppressed until the user has 5+ sessions of history.
+  anomaly:
+    min_sessions: 5
+    atypical_band_frequency: 0.05  # band < 5% of history → atypical
+    long_gap_multiplier: 2.5       # gap > avg_frequency × 2.5 → anomalous
+    rapid_return_ratio: 0.10       # gap < 10% of shortest recent gap → anomalous
+
+  # ── SC-2 Implicit Signal Extractor ────────────────────────────────────────
+  # Latency interpretation buckets by upper bound in ms (doc §4.2).
+  latency_thresholds_ms:
+    reactive:   3000       # < 3 s
+    quick:      15000      # 3–15 s
+    considered: 60000      # 15–60 s
+    reflective: 300000     # 1–5 min
+    delayed:    1200000    # 5–20 min
+    # break: everything >= 1200000 (> 20 min) — triggers re-entry posture
+  latency_deviation_flag: { high: 3.0, low: 0.3 }  # vs rolling median baseline
+
+  # Weights in the implicit_emotional_intensity_score formula (doc §4.7).
+  # Note: the formula's effective maximum is 0.70, not 1.0 (see doc §4.7).
+  implicit_intensity_weights:
+    latency: { reactive: 0.6, quick: 0.2, considered: 0.0, reflective: 0.1, delayed: 0.2, break: 0.0 }
+    latency_scale: 0.25
+    deletion_scale: 0.20
+    length_long_scale: 0.25     # applied when length_ratio > 4.0
+    length_withdrawal: 0.20     # applied when length_ratio < 0.2
+    initiation_cold: 0.10
+
+  burst_window_seconds: 45      # messages within this window bundle into one burst (doc §4.6)
+
+  # ── SC-3 Multimodal Normalizer ────────────────────────────────────────────
+  multimodal:
+    min_transcription_confidence: 0.5    # below → voice_untranscribed, SC-4 skipped (doc §11)
+    document_extract_max_chars: 10000
+    face_recognition_enabled: false      # hard constraint, never configurable on (doc §5.3)
+
+  # ── SC-4 Voice Prosody Extractor ──────────────────────────────────────────
+  prosody:
+    calibration_min_confidence: 0.5      # deviation baseline trusted above this (doc §6.3)
+    calibration_min_samples: 5
+    persist_raw_audio: false             # hard constraint — RAM only (doc §6.4)
+
+  # ── SC-5 Assembler — conflict resolution & composite prior (doc §7.2, §7.4) ─
+  assembler:
+    low_vulnerability_prior: 0.30        # bands below this are "low vulnerability"
+    high_implicit_intensity: 0.60        # implicit intensity at/above this is "very high"
+    prosody_min_confidence: 0.40         # prosody contributes to composite above this
+    distress_valence_threshold: -0.30    # prosody valence at/below this → signal_mismatch
+    composite_weights: { circadian: 0.15, implicit: 0.35, prosody: 0.50 }
+    anomaly_signal_bonus: 0.08
+
+  # ── Pending threads (doc §3.5) ────────────────────────────────────────────
+  threads:
+    max_surfaced_per_session: 2
+    importance_tier_score: { critical: 1.0, high: 0.75, medium: 0.50, low: 0.25 }
