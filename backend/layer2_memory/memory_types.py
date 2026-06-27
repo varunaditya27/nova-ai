@@ -1,19 +1,26 @@
-# Layer 2, Sub-Component: Memory Types
-#
-# Responsibility: Define the five memory type classes with full lifecycle support
-# (creation, retrieval, decay, consolidation, archival).
-#
-# Each memory type has distinct:
-#   - Storage backend (ChromaDB for episodic/semantic/identity, SQLite for procedural/identity)
-#   - Decay dynamics (episodic decays fast, semantic/identity decay slow, procedural updates on pattern confirmation)
-#   - Recall trigger conditions (episodic = query similarity, semantic = explicit fact request, identity = self-model questions)
-#
-# Classes:
-#   - EpisodicMemory: "(date, topic, emotion_vector, importance, embedding)"
-#   - SemanticMemory: "(fact_type, value, confidence, last_updated, source_session)"
-#   - IdentityMemory: "(belief_type, value, centrality, confidence, evidence_strength, last_updated)"
-#   - ProceduralMemory: "(pattern_type, pattern_vector, confidence, application_count)"
-#   - WorkingMemory: "(session_id, turn_buffer, char_limit, eviction_policy)"
-#
-# Design: Each class enforces immutability after persistence. Updates are non-destructive
-# (old versions kept in audit trail). Deletions are logical only (flagged as deleted, not removed).
+"""Layer 2 memory type classes (re-exported from :mod:`schemas`).
+
+The five memory types of the architecture doc live in ``schemas`` as the single source of
+truth. This module re-exports them for callers that import by the conventional name.
+
+Note: the architecture defines five types as Short-Term buffer, Episodic, Semantic, Identity,
+and the User World Model. The earlier scaffold's "ProceduralMemory" is not part of the spec —
+communication/behavioral patterns are modelled in the UWM's communication/psychological models
+and as SemanticMemory entries.
+"""
+
+from .schemas import (  # noqa: F401
+    EpisodicMemory,
+    IdentityMemory,
+    SemanticMemory,
+    ShortTermMemoryBuffer,
+    UserWorldModel,
+)
+
+__all__ = [
+    "ShortTermMemoryBuffer",
+    "EpisodicMemory",
+    "SemanticMemory",
+    "IdentityMemory",
+    "UserWorldModel",
+]
