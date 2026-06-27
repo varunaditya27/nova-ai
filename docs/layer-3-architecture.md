@@ -1244,4 +1244,51 @@ One model call. Two classification outputs. This is the correct optimization.
 
 ---
 
+## 16. Implementation Notes (as-built)
+
+This section records how the shipped code in `backend/layer3_reasoning/` realises the spec above, and the few places where the as-built differs from or sharpens the text. **The code is the single source of truth**; this doc and `config/layer3.yaml` mirror it.
+
+### 16.1 Module Map
+
+| File | Sub-component | Spec |
+|---|---|---|
+| `schemas.py` | All Layer 3 dataclasses/enums + `EmotionIntentPacket` | §3.5, §4.3, §5, §6.2, §7.2, §9 |
+| `emotion_classifier.py` | SC-1 Primary Emotion Classifier | §3 |
+| `background_state.py` | SC-2 Background Emotional State Tracker | §4 |
+| `intent_classifier.py` | SC-3 Intent Classifier | §5 |
+| `mismatch_detector.py` | SC-4 Stated-vs-Felt Mismatch Detector | §6 |
+| `empathy_hypothesis.py` | SC-5 Empathy Hypothesis Generator | §7 |
+| `mode_resolver.py` | SC-6 Conversation Mode Resolver | §8 |
+| `packet_builder.py` | Orchestrator → `EmotionIntentPacket` + §9.1 instruction construction + §12 fallbacks | §9, §12 |
+
+The single public entry point is `packet_builder.build_emotion_intent_packet(...)` (re-exported from the package as `build_emotion_intent_packet`).
+
+### 16.2 Type Reuse (single source of truth)
+
+`EmotionVector` and the eight-mode `ConversationMode` enum are **imported from Layer 2** (`backend/layer2_memory/schemas.py`), not redefined. The pipeline runs L1→L2→L3, so Layer 3 may depend on downstream-safe Layer 2 types; this keeps one canonical emotion vector and one canonical mode taxonomy across the codebase. Upstream signals (`ProsodyEmotionEstimate`, the composite prior, `signal_mismatch`) come from Layer 1; `EpisodicMemory`, `Stressor`, and `PsychologicalModel` (for the BES) come from Layer 2.
+
+### 16.3 Dependency Injection for Offline Testability
+
+The non-deterministic/heavy dependencies are injected as plain callables so the entire layer runs and is unit-tested with zero external services:
+
+- `llm_fn(message) -> LLMClassificationOutput` — the shared SC-1+SC-3 small-model call (§14.2). When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
+- `alert_fn(CrisisAlert) -> None` — the parallel crisis emitter to Layer 8 + Layer 11 (§3.6). The production wiring is async (§14.1); Layer 3 only guarantees the callback fires **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5). The alert is fired from the heuristic pre-filter result, so it survives an LLM failure (verified by test).
+
+The default in-process behaviour (no `llm_fn`) is pure-stdlib — the spec's NumPy/SQLite mention in §14.1 is an aspirational backend; the BES arithmetic is implemented in plain Python and the metadata reads are abstracted behind the injected memory inputs.
+
+### 16.4 Two Clarifications Over the Spec Text
+
+1. **`classification_confidence_overall` (§9).** The text says "minimum of all component confidences." The as-built computes `min(primary_emotion.confidence, intent.intent_confidence)` — the two genuine *classification* confidences. The BES `confidence` field is deliberately excluded because it measures *data availability* (it is near-zero for new users with little history), not classification quality; folding it in would peg the overall confidence to account age rather than to how well this message was understood.
+2. **Mismatch type vs. detection (§6.2).** Linguistic hedging (`len(hedges) >= 2`) classifies the *type* of an already-detected mismatch; it is not itself a detection trigger. Detection fires only on the three §6.2 conditions (magnitude > 0.45, the Layer 1 `signal_mismatch` flag, or a deflection phrase under a negative BES). This matches the algorithm exactly and is asserted in the tests.
+
+### 16.5 Scaffold Reconciliation — Agent 4a/4b Relocation
+
+The earlier (pre-implementation) scaffold placed `semantic_planner.py` (Agent 4a), `emotion_refiner.py` (Agent 4b), `two_stage_pipeline.py`, and `cognitive_mode_arbiter.py` (System 1/2 routing) inside `backend/layer3_reasoning/`. These describe **response generation** and **pipeline routing**, which §11 of this document explicitly assigns *downstream* of Layer 3 (Layer 4 owns the Semantic Planner / Emotion Refiner; `backend/pipeline/` owns System 1/2 routing). Keeping those stubs here would contradict the layer's read-only, classification-only contract, so they were removed from this package; their behaviour belongs to `backend/layer4_persona/` and `backend/pipeline/` respectively. Layer 3 defines only the *interface* those stages consume (§11.1, §11.2).
+
+### 16.6 Test Coverage
+
+96 unit tests across `tests/unit/test_emotion_classifier.py`, `test_background_state.py`, `test_intent_classifier.py`, `test_mismatch_detector.py`, `test_empathy_hypothesis.py`, `test_mode_resolver.py`, and `test_packet_builder.py` cover the §14.3 testing requirements: every crisis-keyword path, the neutral skip-LLM path, prior/prosody integration direction and magnitude, BES trend slope sign, the "I'm fine" + high-prior mismatch, the full posture-selection table, all eight conversation modes, the parallel crisis-alert emission (including under LLM failure), the refinement-skip conditions, and `EmotionIntentPacket` completeness on degraded inputs.
+
+---
+
 *This document specifies Layer 3 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (stated-vs-felt mismatch handling, Background Emotional State derivation, crisis detection mechanism, Empathy Hypothesis schema) are resolved. No behavior of Layer 3 requires assumptions or inferences from other documents.*
