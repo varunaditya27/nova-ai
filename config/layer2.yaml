@@ -1,23 +1,94 @@
-# Layer 2 Configuration — Memory & Cognition
+# Layer 2 Configuration — Cognition & Memory
 #
-# Tunable parameters:
-#   recall_weights:
-#     - alpha: semantic similarity weight (default: 0.25)
-#     - beta: emotional resonance weight (default: 0.25)
-#     - gamma: recency weight (default: 0.3)
-#     - delta: importance/centrality weight (default: 0.2)
-#
-#   softmax_temperature:
-#     - tau: recall distribution temperature (default: 1.0)
-#       - tau < 1.0: sharper distribution (favor top results)
-#       - tau > 1.0: softer distribution (more diversity)
-#
-#   context_gate:
-#     - salience_threshold_low: suppress low-salience context (default: 0.3)
-#     - salience_threshold_high: always include (default: 0.7)
-#
-#   forgetting_engine:
-#     - decay_rate_per_session: importance decay factor (default: 0.92)
-#     - consolidation_interval_sessions: run decay every N sessions (default: 5)
-#     - min_importance_threshold: min before deletion (default: 0.1)
-#     - clustering_distance_threshold: semantic distance for grouping (default: 0.3)
+# These values mirror the module-level constants in backend/layer2_memory/ (the code is the
+# single source of truth) and match docs/layer-2-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
+
+layer2:
+
+  # ── SC-6 Recall Scoring Engine (§8.2) ─────────────────────────────────────
+  # Four-component recall score: α·Semantic + β·Emotional + γ·Temporal + δ·Importance.
+  # Weights MUST sum to 1.0. (Canonical values; the prior 0.25/0.25/0.3/0.2 were stale.)
+  recall_weights:
+    alpha: 0.40   # semantic similarity
+    beta:  0.30   # emotional resonance (mood-congruent recall — first-class)
+    gamma: 0.20   # temporal recency
+    delta: 0.10   # importance × current vitality
+  lambda_e: 2.0   # emotional-distance sharpness in exp(−λ_e·‖m−e‖²)
+
+  # Softmax temperature τ by conversation mode (§8.4). Lower τ → sharper/near-deterministic.
+  softmax_temperature:
+    default: 0.7
+    by_mode:
+      technical_discussion: 0.3
+      casual: 0.5
+      goal_planning: 0.5
+      emotional_support: 0.7
+      crisis: 0.7
+      social_coaching: 0.7
+      life_review: 0.7
+      celebration: 0.7
+
+  max_recall: 3   # maximum memories surfaced per retrieval call (§8.6)
+
+  # Context gate: conversation_mode × memory_kind → gate multiplier (§8.5). Keyed on Layer 3's
+  # canonical modes (casual, crisis, +celebration — reconciled from casual_small_talk /
+  # crisis_detected and the missing celebration row).
+  context_gate:
+    episodic_emotional_threshold: 0.4   # emotional_weight split for episodic kind
+    table:
+      casual:               {episodic_emotional: 0.10, episodic_factual: 0.20, semantic: 0.50, identity: 0.20}
+      emotional_support:    {episodic_emotional: 1.00, episodic_factual: 0.30, semantic: 0.60, identity: 0.20}
+      crisis:               {episodic_emotional: 1.00, episodic_factual: 0.10, semantic: 0.40, identity: 0.10}
+      technical_discussion: {episodic_emotional: 0.10, episodic_factual: 0.70, semantic: 0.80, identity: 0.30}
+      goal_planning:        {episodic_emotional: 0.40, episodic_factual: 0.70, semantic: 0.90, identity: 0.30}
+      social_coaching:      {episodic_emotional: 0.60, episodic_factual: 0.50, semantic: 0.80, identity: 0.20}
+      life_review:          {episodic_emotional: 0.90, episodic_factual: 0.90, semantic: 0.70, identity: 0.30}
+      celebration:          {episodic_emotional: 0.90, episodic_factual: 0.30, semantic: 0.50, identity: 0.20}
+
+  # ── Memory strength decay model (§8.3) ────────────────────────────────────
+  memory_strength:
+    s0_weights: {base_importance: 0.5, emotional_weight: 0.3, novelty: 0.2}
+    base_decay: 0.10                # λ = base_decay × (1 − importance)
+    weak_threshold: 0.1             # S(t) below this → delete/archive
+    archive_importance: 0.5         # weak but importance ≥ this → archive instead of delete
+    semantic_decay_rate: 0.005      # semantic memories decay very slowly
+
+  # ── SC-7 Forgetting & Consolidation Engine (§9) ───────────────────────────
+  forgetting_engine:
+    trigger_episode_count: 50       # new episodes since last run
+    trigger_session_count: 25       # sessions since last run
+    trigger_calendar_days: 14       # days since last run
+    clustering_similarity_threshold: 0.85   # cosine; agglomerative complete linkage
+    cluster_min_members: 3          # a pattern requires repetition
+    initial_confidence: "0.5 + 0.05*cluster_size, capped at 0.95"
+
+  # ── SC-3 Semantic memory contradiction (§5.3) ─────────────────────────────
+  semantic_memory:
+    contradiction_confidence_penalty: 0.15
+    confidence_floor: 0.1
+    # required contradictions = ceil(2 + confidence*6)
+
+  # ── SC-4 Identity memory (§6.3) ───────────────────────────────────────────
+  identity:
+    update_threshold_formula: "0.5 * (1 + centrality^2)"
+
+  # ── SC-1 Short-Term buffer (§3) ───────────────────────────────────────────
+  short_term_buffer:
+    max_turns: 40
+    char_limit: 12000
+    promotion_arousal_threshold: 0.6
+
+  # ── SC-8 Narrative linking (§10.3) ────────────────────────────────────────
+  narrative_links:
+    semantic_weight: 0.6
+    entity_weight: 0.4
+    link_score_threshold: 0.65
+
+  # ── Storage (§13, §17.1) — on-device, in-process, no server ───────────────
+  storage:
+    metadata_store: "SQLite + SQLCipher (on-device, encrypted at rest)"
+    vector_store: "hnswlib (in-process, on-device; all-MiniLM-L6-v2, 384-dim, cosine)"
+    embedding_model: "all-MiniLM-L6-v2"
+    embedding_dim: 384
+    uwm_cloud_sync: false           # User World Model is on-device only, never cloud

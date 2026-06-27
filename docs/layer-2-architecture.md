@@ -196,10 +196,14 @@ Base importance is assigned at creation time by the Episodic Memory Extractor ba
 
 ### 4.4 Storage Backend
 
-- **Vector store**: pgvector extension on PostgreSQL, or Chroma DB (embedded mode for on-device)
-- **Metadata store**: PostgreSQL table (all non-vector fields)
-- **Index**: HNSW index on embedding column; B-tree index on `user_id`, `created_at`, `importance_score`
-- **Encryption**: SQLCipher (on-device) or AES-256 at rest (server-side)
+- **Vector store**: **hnswlib** — in-process, on-device, no server/network; `memory.vdb`; 384-dim all-MiniLM-L6-v2; cosine space, `ef_construction=200`, `M=16` (the canonical store across the architecture; the earlier "pgvector / Chroma" mention is superseded)
+- **Metadata store**: SQLite (all non-vector fields), with B-tree indexes on `user_id`, `created_at`, `importance_score`
+- **Encryption**: SQLCipher (on-device, encrypted at rest)
+
+> **Implementation note:** the engine talks to the index through a `VectorIndex` protocol, so a
+> dependency-free brute-force cosine index drives tests/offline dev and hnswlib drops in for
+> production without code changes. (`conftest.py` currently mocks ChromaDB — the architecture
+> spec is hnswlib; tests are updated accordingly when wiring the DB-backed store.)
 
 All episodic memories are stored on-device by default. Cloud sync is opt-in and requires explicit user consent (governed by Layer 12).
 
@@ -267,8 +271,9 @@ def handle_contradiction(semantic: SemanticMemory, new_evidence: EpisodicMemory)
     # Simple threshold: contradictions must accumulate to force deprecation
     # Required contradictions scale with confidence (high-confidence facts are harder to overturn)
     required_contradictions = math.ceil(2 + semantic.confidence * 6)
-    # confidence 0.3 → requires 3 contradictions
-    # confidence 0.9 → requires 8 contradictions
+    # confidence 0.3 → ceil(3.8) = 4 contradictions
+    # confidence 0.9 → ceil(7.4) = 8 contradictions
+    # (The formula is authoritative; an earlier comment said "0.3 → 3", which was off by one.)
 
     if semantic.contradiction_count >= required_contradictions:
         semantic.is_deprecated = True
@@ -409,7 +414,7 @@ Some identity beliefs are flagged `is_immutable = True` at initialization and ca
 - "Nova always surfaces crisis resources when self-harm risk is detected"
 - "Nova does not claim certainty about user's inner emotional state"
 
-These policies live in Identity Memory but have a separate hard-coded enforcement path in the Safety Layer (Layer 9) that is independent of the identity retrieval pipeline.
+These policies live in Identity Memory but have a separate hard-coded enforcement path in the Safety Agent (Layer 11) — with crisis-resource surfacing also gated by the Crisis Detection Engine (Layer 8) — that is independent of the identity retrieval pipeline. (Layer 9 is Output Delivery; the older "Safety Layer (Layer 9)" numbering is corrected here.)
 
 ---
 
@@ -841,15 +846,16 @@ The gate G is a lookup table:
 
 | Conversation Mode | Episodic (emotional) | Episodic (factual) | Semantic | Identity |
 |---|---|---|---|---|
-| `casual_small_talk` | 0.10 | 0.20 | 0.50 | 0.20 |
+| `casual` | 0.10 | 0.20 | 0.50 | 0.20 |
 | `emotional_support` | 1.00 | 0.30 | 0.60 | 0.20 |
-| `crisis_detected` | 1.00 | 0.10 | 0.40 | 0.10 |
+| `crisis` | 1.00 | 0.10 | 0.40 | 0.10 |
+| `celebration` | 0.90 | 0.30 | 0.50 | 0.20 |
 | `technical_discussion` | 0.10 | 0.70 | 0.80 | 0.30 |
 | `goal_planning` | 0.40 | 0.70 | 0.90 | 0.30 |
 | `social_coaching` | 0.60 | 0.50 | 0.80 | 0.20 |
 | `life_review` | 0.90 | 0.90 | 0.70 | 0.30 |
 
-Conversation mode is determined by Layer 3 (Intent & Emotion Classifier) and is passed to the Memory Arbiter as part of the classification packet.
+Conversation mode is determined by Layer 3 (Intent & Emotion Classifier) and is passed to the Memory Arbiter as part of the classification packet. The mode keys are Layer 3's **canonical eight-mode taxonomy**: this table is reconciled from the doc's older `casual_small_talk` → `casual` and `crisis_detected` → `crisis` spellings, and the previously-missing `celebration` row was added (emotion-forward, like `emotional_support` but with factual recall kept low — the moment, not the record). An episodic memory is classified `episodic_emotional` when its `emotional_weight ≥ 0.4`, else `episodic_factual`.
 
 ### 8.6 Retrieval Caps and Output Format
 
@@ -1330,13 +1336,17 @@ def state_updater(
 
 | Store | Backend | Data | Encryption | Location |
 |---|---|---|---|---|
-| Episodic Memory | pgvector (PostgreSQL) | Episode records + embeddings | AES-256 at rest | On-device (primary) / Cloud (opt-in) |
-| Semantic Memory | PostgreSQL | Semantic facts + embeddings | AES-256 at rest | On-device / Cloud opt-in |
-| Identity Memory | PostgreSQL | Belief records | AES-256 at rest | Cloud (Nova's identity, not user-private) |
-| User World Model | PostgreSQL (JSONB) | Structured user model | AES-256 at rest | On-device only |
+| Episodic Memory | SQLite metadata + hnswlib (`memory.vdb`) | Episode records + 384-dim embeddings | SQLCipher / AES-256-GCM at rest | On-device (primary) / Cloud (opt-in, client-side encrypted) |
+| Semantic Memory | SQLite + hnswlib | Semantic facts + embeddings | SQLCipher at rest | On-device / Cloud opt-in |
+| Identity Memory | SQLite | Belief records | AES-256 at rest | Cloud (Nova's identity, not user-private) |
+| User World Model | SQLite (JSON columns) | Structured user model | SQLCipher at rest | On-device only |
 | Short-Term Buffer | RAM | Session turns | None (in-memory) | On-device only |
-| Audit Trail | PostgreSQL (append-only) | Audit events + hash chain | AES-256 at rest | On-device + encrypted cloud backup |
-| Narrative Chain Graph | PostgreSQL | Chain records + links | AES-256 at rest | On-device / Cloud opt-in |
+| Audit Trail | SQLite (append-only) | Audit events + hash chain | SQLCipher at rest | On-device + encrypted cloud backup |
+| Narrative Chain Graph | SQLite | Chain records + links | SQLCipher at rest | On-device / Cloud opt-in |
+
+All persistent stores are **on-device, in-process — no PostgreSQL server or network**. (The
+earlier "pgvector / PostgreSQL" backend is superseded by the on-device SQLite + hnswlib stack
+that the rest of the architecture, CLAUDE.md, and Layer 12 specify.)
 
 **On-device vs. cloud policy:**
 - User World Model: **on-device only, never cloud** (most sensitive; contains relationship graph)
@@ -1407,12 +1417,11 @@ These are consumed by orchestration logic and translated into natural-language i
 
 | Component | Technology | Rationale |
 |---|---|---|
-| Vector store | pgvector (PostgreSQL ext) or Chroma DB | pgvector for server; Chroma for on-device embedded mode |
-| Embedding model | all-MiniLM-L6-v2 (384-dim) | 20ms on CPU; no GPU required; sufficient for episodic similarity |
-| Metadata store | PostgreSQL | JSONB for flexible schemas; strong ACID guarantees |
-| On-device store | SQLite + SQLCipher | Encrypted at rest; zero-configuration |
-| Clustering | scikit-learn AgglomerativeClustering | Deterministic; complete linkage; threshold-based |
-| Background jobs | Celery + Redis (server) / WorkManager (Android) | Platform-appropriate async scheduling |
+| Vector store | hnswlib (in-process, on-device) | No server/network; cosine, `ef_construction=200`, `M=16`; behind a `VectorIndex` protocol |
+| Embedding model | all-MiniLM-L6-v2 (384-dim) | 20ms on CPU; no GPU required; behind an `Embedder` protocol |
+| Metadata store | SQLite + SQLCipher | Encrypted at rest; zero-configuration; on-device |
+| Clustering | Agglomerative, complete linkage (pure-Python; scikit-learn optional) | Deterministic; threshold-based; no hard dependency |
+| Background jobs | APScheduler (`background/scheduler.py`) / WorkManager (Android) | FCE runs async, never blocks a turn |
 | Encryption at rest | AES-256-GCM | Industry standard; hardware-accelerated on modern chips |
 
 ### 17.2 Testing Requirements
@@ -1447,6 +1456,55 @@ These are consumed by orchestration logic and translated into natural-language i
 6. **The Audit Trail is the trust foundation.** Every memory lifecycle event is logged with a reason and a hash chain. The user can always see why a memory exists, why it was recalled, and why it was deleted. Opacity at the memory layer destroys trust faster than any other failure.
 
 7. **Consolidation is learning.** The FCE is not a cleanup job. It is the mechanism by which repeated experience becomes stable knowledge. It is the only way Nova's understanding of the user improves without fine-tuning. It must run reliably, and its outputs must be audited.
+
+---
+
+## 19. Implementation Notes (as-built)
+
+Layer 2 is implemented end-to-end in `backend/layer2_memory/`, pure-stdlib (no pgvector, no
+ORM, no numpy). Heavy/non-deterministic dependencies sit behind protocols so the whole engine
+runs and is tested offline; real backends drop in without touching engine code.
+
+**Module map:**
+
+| Module | Sub-component(s) | Notes |
+|---|---|---|
+| `schemas.py` | all contract types | stdlib `@dataclass` + `str`-`Enum` |
+| `embedding.py` | vector infra | `cosine_similarity`; `Embedder`/`VectorIndex` protocols + deterministic/brute-force defaults (hnswlib + all-MiniLM in prod) |
+| `memory_strength.py` | §8.3 | S0, decay, reinforcement, delete/archive |
+| `recall_scorer.py` | SC-6 (§8.2) | four-component score; `RecallWeights` α=.40 β=.30 γ=.20 δ=.10 |
+| `context_gate.py` | SC-6 (§8.5) | gate table on canonical modes |
+| `competitive_recall.py` | SC-6 (§8.4/§8.6) | softmax, effective score, top-3 cap |
+| `stm.py` | SC-1 (§3) | buffer eviction + promotion |
+| `memory_store.py` | SC-2..SC-5 | in-memory stores + `query_uwm` |
+| `semantic_memory.py` | SC-3 (§5.3) | confidence + contradiction handling |
+| `identity.py` | SC-4 (§6.3/6.4) | update threshold + belief update (immutable-safe) |
+| `forgetting_engine.py` | SC-7 (§9) | decay sweep, agglomerative complete-linkage clustering, semantic extraction, triggers |
+| `audit_trail.py` | SC-8 (§10) | SHA-256 hash chain + narrative link detection |
+| `arbiter.py` | §11 | `memory_arbiter` (read) + `build_query_embedding` + MemoryPacket |
+| `state_updater.py` | §12 | `state_updater` (write path) |
+
+**Backend/store injection.** `Embedder`, `VectorIndex`, the FCE generalizer, the identity
+belief-generator, and the episode extractor are all injectable; the memory store and audit
+trail are passed in. Production wires all-MiniLM-L6-v2 + hnswlib + SQLite/SQLCipher and the
+LLM-backed generalizer/extractor; the defaults are dependency-free.
+
+**Reconciliations applied during implementation** (the doc above reflects these):
+- Recall weights corrected to α=.40 β=.30 γ=.20 δ=.10 and τ default 0.7 (config was stale).
+- Storage reconciled from pgvector/PostgreSQL/Chroma to **on-device SQLite + hnswlib** (§4.4, §13, §17.1) to match CLAUDE.md and Layer 12.
+- Context-gate modes reconciled to Layer 3's canonical taxonomy; `celebration` row added (§8.5).
+- `required_contradictions` inline comment fixed (0.3 → 4, not 3) — the `ceil` formula is authoritative (§5.3).
+- Immutable-policy enforcement reference corrected from "Safety Layer (Layer 9)" to Layer 11 / Layer 8 (§6.5).
+- Selection is deterministic top-3 by effective score (§8.6); softmax/τ is provided for optional stochastic variation (§8.4).
+
+**Test coverage.** 107 unit tests in `tests/unit/` (`test_memory_embedding`, `test_memory_strength`,
+`test_recall_scorer`, `test_context_gate`, `test_competitive_recall`, `test_stm_buffer`,
+`test_semantic_memory`, `test_identity_memory`, `test_memory_store`, `test_forgetting_engine`,
+`test_memory_audit`, `test_memory_arbiter`, `test_state_updater`) cover the §17.2 requirements:
+recall formula + components, softmax temperature behavior, decay correctness, the full gate
+table, consolidation (3 similar episodes → semantic memory), hash-chain integrity + tamper
+detection, cross-session link detection, the confabulation guard, and contradiction-driven
+belief/semantic updates.
 
 ---
 
