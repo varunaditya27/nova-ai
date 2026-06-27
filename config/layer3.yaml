@@ -1,15 +1,82 @@
-# Layer 3 Configuration — Reasoning & Cognitive Mode Routing
+# Layer 3 Configuration — Emotion, Intent & Reasoning
 #
-# Tunable parameters:
-#   system1_vs_system2:
-#     - emotional_intensity_threshold: arousal → System 2 (default: 0.7)
-#     - reasoning_required_threshold: semantic complexity (default: 0.6)
-#     - casual_cadence_threshold: if casual, use System 1 (default: 0.8)
+# These values mirror the module-level constants in backend/layer3_reasoning/ (the code is
+# the single source of truth) and match docs/layer-3-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   emotion_classification:
-#     - valence_range: -1.0 to +1.0 (very negative to very positive)
-#     - arousal_range: 0.0 to 1.0 (calm to highly energized)
-#
-#   risk_override:
-#     - crisis_signal_triggers_system2: always use Groq (default: true)
-#     - vulnerable_topic_confidence_threshold: (default: 0.85)
+# Reuse note: EmotionVector and the eight-mode ConversationMode taxonomy are owned by
+# Layer 2 (config/layer2.yaml). Layer 3 imports them — they are not redefined here.
+
+layer3:
+
+  # ── SC-1 Primary Emotion Classifier (§3) ──────────────────────────────────
+  emotion_classifier:
+    crisis_confidence_threshold: 0.65     # crisis_flag acts when crisis_confidence > this
+    heuristic_degraded_confidence_cap: 0.65  # confidence ceiling when no LLM available (§12)
+    prior_shift_scale: 0.25               # (composite_prior−0.5)·prior_confidence·scale
+    prosody_blend_llm_weight: 0.6         # LLM share when prosody conflicts sharply
+    prosody_blend_prosody_weight: 0.4
+    prosody_conflict_threshold: 0.4       # |prosody.valence − llm.valence| to trigger blend
+    prior_confidence_floor_for_shift: 0.5
+    composite_prior_floor_for_shift: 0.6
+    # Discrete taxonomy: 16 labels with valence/arousal centroids (see schemas.EMOTION_TAXONOMY).
+    crisis_keywords:
+      suicidal: ["want to die", "end it", "can't go on", "no point anymore",
+                 "kill myself", "disappear", "giving up on life"]
+      self_harm: ["hurt myself", "harm myself", "cut myself"]
+      harm_to_others: ["hurt them", "kill him", "kill her", "make them pay"]
+    celebration_patterns: ["i got the job", "i got in", "i passed", "we won", "got promoted"]
+
+  # ── SC-2 Background Emotional State Tracker (§4) ───────────────────────────
+  background_state:
+    window_days: 14                       # rolling episodic emotion window
+    min_data_points: 3                    # below this → insufficient_data
+    exp_weight_decay: 0.1                 # exp(−0.1·i) recency weighting
+    strong_slope: 0.02                    # |slope| (valence/day) that counts as a real trend
+    high_stressor_load: 0.7               # stressor load forcing significant_negative_drift
+    volatile_stdev: 0.5                   # valence stdev (with weak slope) → volatile
+    minimizer_shift: 0.15                 # minimizer regulation pulls BES this far negative
+    stressor_load_normalizer: 3.0         # total/normalizer, capped at 1.0
+
+  # ── SC-3 Intent Classifier (§5) ───────────────────────────────────────────
+  intent_classifier:
+    rule_confidence_floor: 0.70           # rule used directly only above this; else LLM
+    long_validation_words: 150            # validation msg longer than this → prefers_no_advice
+    advice_frustration_threshold: 2       # UWM advice-frustration count above this → no advice
+    # topic_domain ∈ {academics, career, relationships, health, existential, social, other}
+
+  # ── SC-4 Stated-vs-Felt Mismatch Detector (§6) ────────────────────────────
+  mismatch_detector:
+    mismatch_magnitude_threshold: 0.45    # |stated − felt| above this → mismatch
+    direct_noticing_min_depth: 0.6        # Posture 2 requires relationship depth ≥ this …
+    direct_noticing_min_confidence: 0.80  # … and mismatch confidence > this
+    hold_and_watch_max_depth: 0.3         # below this depth → Posture 3 (new relationship)
+    hold_and_watch_max_confidence: 0.50   # below this confidence → Posture 3
+    felt_neutral_offset: 0.2              # felt = −prior + (1−prior)·offset
+
+  # ── SC-5 Empathy Hypothesis Generator (§7) ────────────────────────────────
+  empathy_hypothesis:
+    mismatch_override_confidence: 0.6     # mismatch above this overrides need → to_be_heard
+    disclosure_surface_max: 0.25          # relationship depth < this → surface
+    disclosure_moderate_max: 0.60         # < this → moderate; otherwise deep
+    # Need→posture mapping with BES negative-drift overrides lives in code (§7.4).
+
+  # ── SC-6 Conversation Mode Resolver + EmotionIntentPacket (§8, §9) ─────────
+  mode_resolver:
+    high_arousal_negative:                # → emotional_support
+      valence_below: -0.4
+      arousal_above: 0.5
+    technical_valence_floor: -0.2         # technical_discussion only if valence > this
+  pacing:                                  # mode → (pacing, thinking_pause_ms) (§8.3, §9)
+    crisis:            {pacing: immediate,     thinking_pause_ms: 0}
+    emotional_support: {pacing: slow,          thinking_pause_ms: 1500}
+    life_review:       {pacing: contemplative, thinking_pause_ms: 2500}
+    celebration:       {pacing: normal,        thinking_pause_ms: 300}
+    default:           {pacing: normal,        thinking_pause_ms: 600}
+
+  # ── Shared classification LLM (SC-1 + SC-3, one call) (§14) ────────────────
+  llm:
+    model: "phi-3-mini"                   # or gemma-2-2b; fast small model via llama.cpp
+    shared_emotion_intent_call: true      # SC-1 and SC-3 share one inference (§14.2)
+    timeout_ms: 500                       # exceeded → heuristic_only fallback (§12)
+    target_latency_ms: 150                # combined emotion+intent target
