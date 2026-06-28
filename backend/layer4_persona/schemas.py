@@ -442,6 +442,11 @@ class FinalResponsePacket:
     topic_domain: str = "other"
     intent_served: str = "casual_chat"
 
+    # Set by Layer 5 SC-5 when a social-coaching observation is injected (§7.3).
+    social_coaching_injected: bool = False
+    coaching_type_injected: Optional[str] = None
+    coaching_person_id: Optional[str] = None
+
     # Audit
     response_generated_at: Optional[datetime] = None
     total_generation_latency_ms: int = 0

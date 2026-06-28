@@ -1,21 +1,94 @@
-# Layer 5 Configuration — Relationships & Social Intelligence
+# Layer 5 Configuration — Social Intelligence & Coaching
 #
-# Tunable parameters:
-#   relationship_stages:
-#     - acquaintance: just met
-#     - casual: low tie strength (0.0-0.3)
-#     - close: medium tie strength (0.3-0.7)
-#     - intimate: high tie strength (0.7-1.0)
-#     - estranged: conflict/distance
+# These values mirror the module-level constants in backend/layer5_relationship/ (the code
+# is the single source of truth) and match docs/layer-5-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   tie_strength_weights:
-#     - interaction_frequency: recent contacts boost (default: 0.3)
-#     - interaction_duration: long conversations boost (default: 0.2)
-#     - vulnerability_shared: willingness to disclose (default: 0.3)
-#     - reciprocity: mutual engagement (default: 0.2)
-#
-#   disclosure_gates:
-#     - surface_facts: acquaintance stage (shallow)
-#     - opinions: casual stage (moderate)
-#     - vulnerabilities: close stage (deep)
-#     - contingent_thoughts: intimate stage (very deep)
+# Scope note: Layer 5 models the user's *social world* (third parties) — distinct from the
+# Nova↔user relationship, which is Layer 4 (config/layer4.yaml). The two LLM uses (event
+# extraction, pattern-reflection text) are injected as callables, so model endpoints are
+# wired by the pipeline, not this file. Reuse: FinalResponsePacket/VoiceParameters from
+# Layer 4; EmotionClassification/BackgroundEmotionalState from Layer 3.
+
+layer5:
+
+  # ── SC-1 Social Graph Manager (§3) ────────────────────────────────────────
+  social_graph:
+    entity_resolution:                    # confidence by match kind (§3.4)
+      alias_match: 0.95
+      relationship_type_match: 0.70
+      semantic_match_floor: 0.82          # injected similarity must exceed this
+      resolution_floor: 0.65              # below → treat as a new entity
+      tentative_low: 0.65                 # [0.65, 0.80) = tentative; confirm over sessions
+      tentative_high: 0.80
+    valence_update_weight: 0.3            # rolling weighted average; recent weighted more
+    confidence_decay:                     # §3.3 Rule 3
+      grace_days: 90                      # decay starts after 90 days of silence
+      period_days: 30                     # additional reduction per 30-day period
+      step: 0.05                          # 0.05 at 90 days, +0.05 per period thereafter
+    # data_source is always "user_stated"; nodes/edges are never inferred (§13 principle 2).
+
+  # ── SC-2 Interpersonal Event Tracker (§4) ─────────────────────────────────
+  event_tracker:
+    # Pass 1 regex rules live in EVENT_DETECTION_RULES; min confidence by type:
+    rule_min_confidence:
+      conflict_onset: 0.80
+      support_withheld: 0.72
+      boundary_violation: 0.75
+      reconnection: 0.78
+      user_set_boundary: 0.70
+      support_received: 0.74
+      conflict_resolution: 0.72
+    # Pass 2 (LLM extraction) runs only when Pass 1 finds nothing, on the post-session
+    # background path. Events store neutral summary + user_perspective, never raw text (§10).
+
+  # ── SC-3 Social Pattern Recognizer (§5) ───────────────────────────────────
+  pattern_recognizer:
+    batch_every_n_sessions: 5             # patterns need longitudinal evidence (§5.4)
+    min_events: 3                         # for intra-relationship conflict-topic detection
+    min_span_days: 30
+    cluster_threshold: 0.72               # topic clustering (overlap-coefficient default)
+    support_failure_min_events: 2
+    conflict_avoidance_min_events: 3
+    conflict_avoidance_min_persons: 2
+    withdrawal_min_windows: 3             # declining mention windows for temporal pattern
+    confidence_floor: 0.55                # patterns below this are dropped
+
+  # ── SC-4 Coaching Opportunity Detector (§6) ───────────────────────────────
+  coaching_detector:
+    gate1_pattern_confidence_min: 0.70    # unsurfaced patterns must clear this
+    gate1_acknowledged_quiet_days: 30     # acknowledged patterns re-eligible after this
+    gate1_conflict_intensity_min: 0.6     # priority-2 active-conflict threshold
+    gate1_support_erosion_days: 45        # priority-3: no support mention in N days
+    gate2_high_distress_valence: -0.65    # below → too distressed to coach
+    gate2_block_modes: ["crisis"]
+    gate2_block_stages: ["new", "acquaintance"]
+    gate2_receptive_labels:
+      ["neutral", "curiosity", "contentment", "frustration", "ambivalence", "relief"]
+    gate2_negative_drift_labels: ["significant_negative_drift", "deteriorating"]
+    gate2_affirming_types_under_drift: ["strength_acknowledgment", "support_network_nudge"]
+    gate2_topic_adjacent_modes: ["social_coaching", "casual", "life_review"]
+    gate2_off_topic_ok_types: ["gentle_reframe", "boundary_support"]
+    gate3_recency_block_days: 14          # don't repeat within 14 days
+    gate3_max_surface_without_ack: 3      # stop pushing after 3 unacknowledged surfacings
+
+  # ── SC-5 Social Coaching Response Modifier (§7) ───────────────────────────
+  coaching_modifier:
+    transitions_by_stage:
+      close: "I've also been thinking —"
+      established: "One thing that's been on my mind —"
+      developing: "Can I add something I've noticed?"
+      acquaintance: "Unrelated, but —"
+      new: "Unrelated, but —"
+    # Headroom guard: if (voice max_chars − current length) < opportunity.max_length_chars,
+    # the observation is deferred to Layer 6 rather than overflowing the response (§7.3, §11).
+
+  # ── Orchestrator / SocialIntelligencePacket (§8, §9, §11) ─────────────────
+  packet_builder:
+    llm_observation_types: ["pattern_reflection", "conflict_navigation"]  # §6.5
+    never_blocks_layer4_response: true    # §11 hard rule
+    support_network_health:               # §9 thresholds by support-source count
+      robust_min_sources: 3
+      adequate_sources: 2
+      thin_sources: 1
+      # 0 sources → isolated
