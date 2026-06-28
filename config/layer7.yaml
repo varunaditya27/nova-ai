@@ -1,21 +1,90 @@
-# Layer 7 Configuration — Goals & Life Management
+# Layer 7 Configuration — Goals & Accountability Engine
 #
-# Tunable parameters:
-#   goal_states:
-#     - active: currently being worked on
-#     - paused: temporarily suspended
-#     - complete: achieved
-#     - abandoned: given up on
-#     - someday: aspirational (future)
+# These values mirror the module-level constants in backend/layer7_goals/ (the code is the
+# single source of truth) and match docs/layer-7-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   conflict_detection:
-#     - resource_conflict: same time/money/energy (default: enable)
-#     - value_conflict: contradictory goals (default: enable)
-#     - identity_conflict: goal misaligned with self-image (default: enable)
-#     - temporal_conflict: deadline overlap (default: enable)
-#
-#   abstraction_levels:
-#     - big_picture: life-level goals (5-10 year horizon)
-#     - medium_term: 6-12 month goals
-#     - short_term: weekly/monthly goals
-#     - task_level: actionable steps
+# Scope note: Layer 7 tracks meaningful self-directed intentions inferred from conversation
+# (not a task manager). The three LLM uses (SC-1 extraction, SC-3 post-session deep
+# inference, SC-5 decomposition) and embedding similarity are injected as callables, so model
+# endpoints are wired by the pipeline, not this file. The Layer 6 milestone handoff reuses
+# Layer 6's intake contract (on_goal_milestone_approaching).
+
+layer7:
+
+  # ── SC-1 Goal Extractor (§3) ──────────────────────────────────────────────
+  goal_extractor:
+    duplicate_similarity_threshold: 0.82      # > → reaffirm existing goal, not a new one (§3.5)
+    signal_keywords:                          # fast pre-filter before the LLM (§3.3)
+      explicit: ["want to", "trying to", "working on", "my goal", "i plan to",
+                 "i'm going to", "decided to", "i need to", "committed to"]
+      implicit: ["wish i could", "been meaning to", "always wanted", "someday",
+                 "keep putting off", "never get around to", "i should"]
+      progress: ["got further", "slipped up", "back on track", "gave up on",
+                 "finished", "completed", "hit my", "made progress"]
+    # Only explicit_stated / implicit_aspired create new goals immediately;
+    # repeated_theme upgrades tentative->active; abandoned_revisit reactivates.
+
+  # ── SC-2 Goal Store (§4) ──────────────────────────────────────────────────
+  goal_store:
+    retrievable_statuses: ["active", "on_track", "at_risk"]
+    relevance_weights:                        # combined relevance score (§4.5)
+      semantic: 0.50
+      recency: 0.25
+      momentum: 0.15
+      emotional_weight: 0.10
+      at_risk_status_bonus: 0.20
+    recency_decay: 0.05                        # exp(-0.05 * days_since_mention)
+    relevance_floor: 0.25                      # minimum to surface a goal
+    # Status transitions are explicit rules (§4.6); wildcard ("*", trigger) applies to any state.
+
+  # ── SC-3 Progress Monitor (§5) ────────────────────────────────────────────
+  progress_monitor:
+    progress_deltas:                          # P_new = P_old + delta * confidence (§5.3)
+      progress_positive: 0.10
+      progress_negative: -0.08
+      milestone_reached: 0.20
+      milestone_missed: -0.05
+      habit_checked: 0.03
+      reaffirmed: 0.01
+      obstacle_mentioned: -0.02
+      # completed -> 1.0 ; abandoned -> unchanged (status handled by transitions)
+    momentum:                                 # §5.4
+      decay_lambda: 0.1
+      window_days: 30
+      max_events: 20
+      signal_weights: { progress_positive: 1.0, progress_negative: 0.5, reaffirmed: 0.3 }
+    staleness_scan:                           # 24h background scan (§5.6)
+      tentative_archive_days: 30
+      active_on_track_at_risk_days: 14
+      at_risk_abandon_days: 30
+      proactive_min_hours_since_last: 72      # AT_RISK -> Layer 6 GOAL_ENCOURAGEMENT
+
+  # ── SC-4 Accountability Response Modifier (§6) ────────────────────────────
+  accountability_modifier:
+    blocked_modes: ["crisis", "emotional_support", "casual"]   # goals yield to the present
+    blocked_stages: ["new"]
+    distress_valence: -0.5                     # below → gentle_supportive setback handling
+    connect_topic_relevance_floor: 0.65
+    connect_topic_momentum_floor: 0.3
+    max_goal_reference_chars: { completion: 150, progress: 100, setback_gentle: 80,
+                                setback_practical: 120, connect: 60 }
+    # Hard rules (§6.4): never announce the goal system; never show numeric scores;
+    # never reference more than one goal; never reference in crisis.
+
+  # ── SC-5 Goal Decomposer (§7) ─────────────────────────────────────────────
+  goal_decomposer:
+    milestones_min: 2
+    milestones_max: 5
+    habits_min: 1
+    habits_max: 3
+    layer6_handoff_horizon_days: 90           # only register milestones due within 3 months
+    milestone_match_threshold: 0.70           # similarity for milestone-completion detection
+
+  # ── §11 design principles (enforced in code) ──────────────────────────────
+  principles:
+    goals_inferred_never_solicited: true
+    progress_narrated_never_scored: true
+    goals_yield_to_present_moment: true
+    accountability_is_not_pressure: true
+    abandonment_is_valid_data: true

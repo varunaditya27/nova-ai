@@ -1087,6 +1087,49 @@ Layer 7 creates `ProactiveItem` entries using the intake contracts defined in La
 
 ---
 
+## 12.5 Implementation Notes (as-built)
+
+This section records how the specification above is realized in `backend/layer7_goals/`. The code is the single source of truth; §1–11 are the design intent.
+
+### Module map
+
+| Spec sub-component | Module | Key entry point |
+|---|---|---|
+| SC-1 Goal Extractor | `goal_extractor.py` | `should_run_extractor`, `extract_goal`, `is_duplicate_goal`, `GOAL_SIGNAL_KEYWORDS` |
+| SC-2 Goal Store | `goal_store.py` | `GoalStore`, `apply_transition`, `STATUS_TRANSITIONS` |
+| SC-3 Progress Monitor | `progress_monitor.py` | `classify_progress_signal`, `update_progress_score`, `compute_momentum`, `run_staleness_scan` |
+| SC-4 Accountability Response Modifier | `accountability_modifier.py` | `decide_goal_reference` → `GoalContextPacket` |
+| SC-5 Goal Decomposer | `goal_decomposer.py` | `decompose_goal`, `register_milestones_with_layer6`, `check_milestone_completion` |
+| Orchestrator (§8) | `engine.py` | `run_goal_pipeline` → `Layer7Output` |
+| All dataclasses / enums | `schemas.py` | — |
+
+### Type reuse and dependency direction
+
+Layer 7 imports `EmotionClassification` from Layer 3 (the `emotional_state` used in SC-4's distress check). The SC-5 Layer 6 handoff imports Layer 6's `on_goal_milestone_approaching` intake contract and returns Layer 6 `ProactiveItem`s — closing the loop the Proactive Engine already consumes (§9.4 there). There is no forward dependency cycle: Layer 6's intake takes plain goal fields, and Layer 7 calls it.
+
+### Dependency injection for offline testability
+
+The three LLM uses are injected: SC-1 extraction (`llm_fn` returning a dict/JSON), SC-3 post-session deep inference (an LLM call wired by the pipeline; the inline path is keyword-only and never blocks), and SC-5 decomposition (`llm_fn`). The embedding comparisons — dedup (SC-1), relevance (SC-2), milestone matching (SC-5) — accept an injected `similarity_fn` with a token-overlap default. With nothing injected the layer degrades exactly as §10 prescribes: SC-1 returns "no goal," SC-5 returns empty milestones, and the synchronous path still produces a valid (empty) `GoalContextPacket`.
+
+### Behavioral deviations from the design text
+
+- **Lifecycle folded into the Goal Store.** The doc lists SC-2 as "Goal Store" with lifecycle management; the explicit `STATUS_TRANSITIONS` table and `apply_transition` live in `goal_store.py` rather than a separate lifecycle module. The §4.6 table and the §5.6 staleness reasons use different trigger names (`stale_21_days` vs `stale_14_days`); both are encoded, and the 24-hour scan emits `stale_14_days` for active/on-track goals as §5.6 specifies.
+- **Extraction inline only with an LLM.** §2 runs SC-1 asynchronously; the orchestrator runs it inline only when an `extractor_llm_fn` is supplied, and always failure-tolerantly (wrapped in `_safe`), so the synchronous response path is never blocked (§10).
+- **Scaffold relocation.** The May-28 scaffold (`goal_lifecycle`, `task_engine`, `conflict_detector`, `life_event_tracker`) was removed. Lifecycle is in the store; task plans, goal-conflict detection, and life-event cascades are out of scope for the Layer 7 spec (the doc's five SCs do not include them).
+
+### Hard rules as implemented (§10, §11)
+
+- The synchronous path is wrapped so SC-2 failing returns `[]` and SC-4 then yields `should_reference_goal=False` — a Layer 7 failure never blocks the response.
+- Goals yield to the present moment: `decide_goal_reference` hard-blocks crisis / emotional_support / casual modes and brand-new relationships, and only ever references the single highest-relevance goal (§6.4).
+- Progress scores are internal only — `GoalContextPacket` carries plain-language `response_instruction` / `tone_instruction`, never a numeric score for the user (§11 principle 2).
+
+### Test coverage
+
+58 unit tests across six files exercise every sub-component and the orchestrator:
+`test_goal_extractor.py` (10), `test_goal_store.py` (8), `test_progress_monitor.py` (17), `test_accountability_modifier.py` (11), `test_goal_decomposer.py` (6), `test_layer7_engine.py` (6). Coverage includes the pre-filter + dedup + update/extract branches; the status-transition table and relevance ranking with the at-risk bonus; signal classification, the progress/momentum formulas, and the staleness scan; all four reference cases plus the hard blocks and single-goal rule; decomposition + Layer 6 handoff + milestone-completion detection; and the §10 never-block guarantee.
+
+---
+
 ## 12. Performance Targets
 
 | Operation | Target | Notes |
