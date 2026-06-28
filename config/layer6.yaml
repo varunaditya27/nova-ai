@@ -1,21 +1,97 @@
-# Layer 6 Configuration — Proactive Engagement & Check-Ins
+# Layer 6 Configuration — Proactive Engagement Engine
 #
-# Tunable parameters:
-#   intrusion_cost:
-#     - base_cost: notification send cost (default: 0.5)
-#     - time_sensitivity: more costly during work hours (default: 1.5x)
-#     - frequency_penalty: repeated notifications cost more (default: escalating)
+# These values mirror the module-level constants in backend/layer6_proactivity/ (the code
+# is the single source of truth) and match docs/layer-6-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   notification_policy:
-#     - dnd_window_start: do not disturb hours (default: 22:00)
-#     - dnd_window_end: resume notifications (default: 08:00)
-#     - max_notifications_per_hour: frequency limit (default: 3)
-#     - min_interval_between_checks: seconds (default: 600)
-#
-#   pattern_detection:
-#     - min_repetitions_to_flag: pattern significance (default: 3)
-#     - temporal_window_hours: look-back window (default: 720 = 30 days)
-#
-#   check_in_triggers:
-#     - high_stress_salience: flag for check-in if > (default: 0.75)
-#     - milestone_significance_threshold: celebrate if > (default: 0.80)
+# Scope note: Layer 6 is the first layer that initiates contact without a user message. It
+# runs as a background loop and defaults to silence. The single LLM call (SC-4) is injected
+# as a callable, so the model endpoint is wired by the pipeline, not this file. Upstream
+# types reused: NarrativeThread (Layer 1), CoachingOpportunity (Layer 5).
+
+layer6:
+
+  poll_interval_minutes: 30                  # SC-1 background cadence (§2)
+
+  # ── SC-1 Proactive Queue Manager (§3) ─────────────────────────────────────
+  queue_manager:
+    base_priority_by_type:                   # §3.3
+      thread_follow_up: 0.80
+      emotional_check_in: 0.85
+      wellbeing_check: 0.90
+      silence_break: 0.60
+      thread_expiry_check: 0.65
+      conflict_resolution_check: 0.70
+      goal_check_in: 0.72
+      social_pattern_coaching: 0.55
+      relationship_check_in: 0.50
+      upcoming_date_reminder: 0.78
+      goal_celebration: 0.75
+      positive_reinforcement: 0.65
+      goal_encouragement: 0.55
+      recurring_concern_check: 0.45
+      thread_anniversary: 0.40
+    # P_current = P_base × W_age × W_bes × W_context
+    age_weight:
+      before_window: 0.5
+      inside_window_max: 1.5                  # 1.0 + frac × 0.5
+      after_window_decay_days: 3
+      after_window_floor: 0.2
+    bes_weights:                             # §3.3 (keyed by 7-day trend label)
+      positive:                   { emotional_check_in: 0.7, wellbeing_check: 0.5, default: 1.0 }
+      stable:                     { default: 1.0 }
+      mild_negative_drift:        { emotional_check_in: 1.3, wellbeing_check: 1.5, default: 1.0 }
+      significant_negative_drift: { emotional_check_in: 1.6, wellbeing_check: 2.0, default: 0.9 }
+      deteriorating:              { emotional_check_in: 2.0, wellbeing_check: 2.5, default: 0.7 }
+    lifecycle:                               # §3.4
+      max_active_items: 10
+      max_sent_per_day: 1                     # hard cap; never overridden
+      min_gap_hours_between_messages: 48
+      suppress_after_consecutive_ignores: 3
+      suppression_duration_days: 30
+
+  # ── SC-2 Initiative Classifier (§4) ───────────────────────────────────────
+  initiative_classifier:
+    long_silence_days: 21                     # → reconnection_opener (overrides type)
+    positive_anticipation_valence: 0.3        # > → celebratory, else curious
+    deteriorating_trends: ["significant_negative_drift", "deteriorating"]  # → concerned check-in
+    default_max_length_chars: 200
+
+  # ── SC-3 Timing & Delivery Gate (§5) — defaults to "do not send" ──────────
+  timing_gate:
+    min_gap_hours: 48
+    active_session_minutes: 5
+    high_distress_valence: -0.7               # blocks celebratory/nudge
+    concerned_tie_strength_floor: 0.35
+    acquaintance_allowed_types: ["thread_follow_up", "upcoming_date_reminder"]
+    bes_deteriorating_allowed_types: ["emotional_check_in", "wellbeing_check"]
+    source_memory_strength_floor: 0.15
+    min_content_basis_length: 20
+    max_defer_attempts: 5
+
+  # ── SC-4 Proactive Message Generator (§6) ─────────────────────────────────
+  message_generator:
+    max_regeneration_attempts: 2              # then defer; NO fallback message (§11)
+    max_questions: 2                          # > 2 → regenerate
+    robot_phrases: ["i noticed in our conversation", "according to what you told me",
+                    "as per our previous", "i wanted to check in", "just checking in",
+                    "reach out", "i'm here for you"]
+    assumption_phrases: ["i'm sure it went well", "hope it went great", "bet you aced it",
+                         "you must have done"]   # blocked for thread/upcoming types
+
+  # ── SC-5 Response Tracker (§7) ────────────────────────────────────────────
+  response_tracker:
+    response_window_hours: 48
+    responsiveness_bands: { immediate_h: 1, quick_h: 6, same_day_h: 24 }  # else delayed
+    positive_engagement_threshold: 0.6        # > → boost type base priority +0.05
+    base_priority_boost: 0.05
+    base_priority_boost_cap: 0.15
+    base_priority_floor: 0.10
+    ignore_suppress_threshold: 3              # 3 consecutive ignores → disable type
+
+  # ── §10 User preferences (defaults) ───────────────────────────────────────
+  preferences:
+    proactive_all_enabled: true
+    proactive_silence_break_enabled: false    # opt-in
+    preferred_send_hours: { start: 9, end: 21 }
+    max_proactive_per_week: 3                  # user ceiling; system hard cap is 7
