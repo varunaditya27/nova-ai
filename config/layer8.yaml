@@ -1,20 +1,76 @@
 # Layer 8 Configuration — Tool Use & Actions
 #
-# Tunable parameters:
-#   confirmation_tiers:
-#     - AUTO: Execute immediately (web search, read-only queries)
-#     - SOFT: Ask user, execute on timeout (calendar view, notes create)
-#     - HARD: Wait for explicit approval (send email, delete data)
+# These values mirror the module-level constants in backend/layer8_tools/ (the code is the
+# single source of truth) and match docs/layer-8-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   tier_mapping:
-#     - reversibility: can undo? (reversible → AUTO/SOFT, irreversible → HARD)
-#     - risk_level: consequence severity? (low → AUTO, medium → SOFT, high → HARD)
-#
-#   parameter_resolver:
-#     - clarifying_questions_per_turn: max (default: 1)
-#     - inference_confidence_threshold: auto-fill if > (default: 0.85)
-#
-#   plugin_health_checks:
-#     - calendar_oauth_expiry_warning_days: (default: 7)
-#     - web_search_api_timeout_ms: (default: 5000)
-#     - email_draft_timeout_ms: (default: 10000)
+# Scope note: Layer 8 is the action layer (calendar, email, notes, reminders, web search) —
+# NOT a safety layer. Crisis detection and safeguarding live in Layer 11. External backends
+# (search API, calendar/email providers) and the intent/synthesis LLMs are injected as
+# callables, so endpoints are wired by the pipeline, not this file.
+
+layer8:
+
+  # ── SC-2 Confirmation Gate (§4) ───────────────────────────────────────────
+  confirmation_gate:
+    # Base tier per action verb; the gate only ever ratchets a tier UP (§4.3).
+    action_tier_base:
+      read: auto
+      search: auto
+      create: soft
+      update: soft
+      delete: hard
+      send: hard
+    escalation_rules:                          # each can only raise the tier (§4.3)
+      high_risk_forces: hard                   # risk_level == high -> HARD
+      irreversible_external: hard              # not reversible AND external_impact -> HARD
+      irreversible_floor: soft                 # not reversible (internal) -> at least SOFT
+    auto_executes_without_prompt: true         # AUTO needs no user-in-the-loop (§4.1)
+
+  # ── SC-3 Parameter Resolver (§6) ──────────────────────────────────────────
+  parameter_resolver:
+    clarifying_questions_per_turn: 1           # never bombard — one question per turn (§6.3)
+    inference_confidence_threshold: 0.85       # auto-fill from context at/above this (§6.5)
+    relative_date_terms: ["today", "tomorrow", "the day after tomorrow"]  # normalized (§6.4)
+
+  # ── SC-4 Action Recorder (§7) ─────────────────────────────────────────────
+  action_recorder:
+    append_only: true                          # no deletions; undo is recorded, not erased
+    link_to_episodic_memory: true              # actions are inspectable via Layer 12 / Layer 10
+
+  # ── Plugins (§9) — per-operation tiers & reversibility ────────────────────
+  plugins:
+    calendar:
+      create_event: { tier: soft, reversible: true,  external_impact: true }
+      list_events:  { tier: auto, reversible: true,  external_impact: false }
+      find_free_time: { tier: auto, reversible: true, external_impact: false }
+      delete_event: { tier: hard, reversible: true,  external_impact: true }  # archived -> undo
+    email:
+      draft:        { tier: soft, reversible: true,  external_impact: false }
+      send:         { tier: hard, reversible: false, external_impact: true }  # irreversible
+      read_inbox:   { tier: auto, reversible: true,  external_impact: false }
+    notes:
+      create_note:  { tier: auto, reversible: true,  external_impact: false }
+      append_to_note: { tier: auto, reversible: true, external_impact: false }
+      delete_note:  { tier: soft, reversible: true,  external_impact: false }  # archived -> undo
+    reminders:
+      create_reminder: { tier: auto, reversible: true, external_impact: false }
+      complete_reminder: { tier: auto, reversible: true, external_impact: false }
+      delete_reminder: { tier: auto, reversible: true, external_impact: false }
+    web_search:
+      search:       { tier: auto, reversible: true,  external_impact: false }
+      cache_ttl_hours: 1                       # don't re-hit the API for the same query (§9.5)
+
+  plugin_health_checks:
+    calendar_oauth_expiry_warning_days: 7
+    web_search_api_timeout_ms: 5000
+    email_draft_timeout_ms: 10000
+
+  # ── Hard rules (enforced in code) ─────────────────────────────────────────
+  principles:
+    high_risk_requires_explicit_confirmation: true
+    every_action_recorded_and_inspectable: true
+    audit_trail_is_append_only: true
+    deletes_are_logical_not_destructive: true
+    sent_email_is_irreversible: true
+    user_always_has_final_say: true
