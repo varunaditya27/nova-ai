@@ -63,7 +63,7 @@ Note: Layer 3 uses a separate fast classification model (**Phi-3 Mini 3.8B or Ge
 | 5 | `backend/layer5_relationship/` | Social Graph, interpersonal event tracking, social pattern recognition, coaching opportunity detection and injection |
 | 6 | `backend/layer6_proactivity/` | Proactive queue, timing & delivery gates, proactive message generation, response tracking |
 | 7 | `backend/layer7_goals/` | Goal extraction from natural language, goal lifecycle, progress monitoring, accountability injection, goal decomposition + Layer 6 handoff |
-| 8 | `backend/layer8_tools/` | **⚠ Discrepancy**: Code scaffold has external tool plugins (calendar, email, web search, reminders, notes). Architecture doc describes Layer 8 as Crisis Detection & Safety Engine. Treat the code as ground truth; the architecture doc may reflect an older numbering scheme. |
+| 8 | `backend/layer8_tools/` | Tool Use & Actions: tool manager (intent→resolve→confirm→execute→record), confirmation gate (AUTO/SOFT/HARD), parameter resolver (one question/turn), append-only action recorder, and swappable plugins (calendar, email, web search, reminders, notes). Crisis/safety is **not** here — it lives in Layer 11. |
 | 9 | `backend/layer9_output/` | Output delivery: format adaptation, micro-interaction engine (typing simulation, thinking pauses, self-editing), voice synthesis via Kokoro TTS (SSML), streaming |
 | 10 | `backend/layer10_longitudinal/` | Life Narrative Engine, Weekly Summary Engine, Progress & Pattern Tracker, Retrospective Engine, Life Calendar |
 | 11 | `backend/layer11_safety/` | Safety Agent: SC-2 (Crisis Detection) runs **in parallel** with every message; SC-1 (Ethical Guardrails) runs **post-generation** on every response; SC-4 (Dependency Monitor) runs weekly. SC-3 (Escalation Protocol) has veto authority — discards normal response and replaces it entirely when crisis is detected. |
@@ -102,7 +102,7 @@ SC-1 (Emotion Classifier) and SC-3 (Intent Classifier) **share a single LLM call
 
 The conversation mode (one of: `crisis`, `emotional_support`, `celebration`, `technical_discussion`, `goal_planning`, `social_coaching`, `life_review`, `casual`) is resolved deterministically from classification outputs and governs Layer 2 context gating, Layer 4 generation constraints, and Layer 9 pacing.
 
-When `crisis_flag=True` (confidence > 0.65), Layer 3 immediately emits a CrisisAlert to **both Layer 8 (Crisis Detection Engine)** AND **Layer 11 (Safety Agent)** in parallel — this does not wait for the EmotionIntentPacket to complete. Layer 8 acts as a synchronous gate (blocking Layer 4); Layer 11 runs its deeper 3-layer detection independently and has final veto authority. See `docs/layer-8-architecture.md` Section 14 for the full dual-system interaction spec.
+When `crisis_flag=True` (confidence > 0.65), Layer 3 immediately emits a CrisisAlert to **Layer 11 (Safety Agent)** — this does not wait for the EmotionIntentPacket to complete. Layer 11's SC-2 (Crisis Detection Engine) runs its deeper 3-layer detection in parallel with the main pipeline and has final veto authority; SC-3 (Escalation Protocol) replaces the normal response when a crisis is confirmed. See `docs/layer-11-architecture.md` for the full crisis-handling spec. (Note: crisis/safety is owned by Layer 11, not Layer 8 — Layer 8 is Tool Use & Actions.)
 
 ### Layer 4 Two-Stage Generation
 
@@ -143,6 +143,6 @@ Backend depends on `ollama` and `kokoro` being healthy before starting. All serv
 - **Confabulation guard**: When `recalled_memories = []`, the downstream prompt must include an explicit instruction not to invent or imply specific memories.
 - **Test isolation**: Tests use in-memory SQLite with per-test rollback and mock LLM clients (see `tests/conftest.py`).
 
-## Scaffold vs. Architecture Doc Discrepancy
+## Layer 8 / Layer 11 (resolved)
 
-The code scaffold and architecture docs are inconsistent on **Layer 8**: the docs describe a "Crisis Detection & Safety Engine" at Layer 8, but the scaffold directory `backend/layer8_tools/` implements external tool plugins (calendar, email, web search, reminders, notes) with a plugin architecture. Crisis/safety functionality lives at `backend/layer11_safety/` in the code. When implementing, treat the code structure as authoritative and consult `docs/layer-8-architecture.md` for crisis detection intent (which may have been relocated to Layer 11 or may be a planned additional layer).
+A prior revision of `docs/layer-8-architecture.md` mislabeled Layer 8 as a "Crisis Detection & Safety Engine" — a layer-numbering mismatch. This is now resolved: **Layer 8 is Tool Use & Actions** (`backend/layer8_tools/`), and **crisis/safety is owned entirely by Layer 11** (`backend/layer11_safety/`, `docs/layer-11-architecture.md`: Ethical Guardrails, Crisis Detection Engine, Escalation Protocol, Dependency Monitor). The Layer 8 architecture doc has been rewritten to specify the tools layer; the prior crisis text remains recoverable in git history.
