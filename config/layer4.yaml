@@ -1,12 +1,125 @@
-# Layer 4 Configuration — Persona & Personality Vector
+# Layer 4 Configuration — Persona, Personality & Response Generation
 #
-# Tunable parameters:
-#   personality_vector:
-#     - core_values_centrality_min: core values locked if centrality > (default: 0.90)
-#     - communication_style_dimensions: openness, warmth, directness, humor
-#     - emotional_baseline: per-user calibration point
+# These values mirror the module-level constants in backend/layer4_persona/ (the code is
+# the single source of truth) and match docs/layer-4-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   drift_controller:
-#     - max_drift_per_session: personality change limit (default: 0.05)
-#     - drift_gate_centrality_threshold: enforce if centrality > (default: 0.85)
-#     - controversial_boundary: reject if violates core value (default: 0.95 confidence)
+# Reuse note: ConversationMode is owned by Layer 2; the emotion/intent classification
+# types and BESLabel are owned by Layer 3. Layer 4 imports them — they are not redefined
+# here. The two LLM calls (SC-5 Semantic Planner, SC-6 Emotion Refiner) are injected as
+# callables, so model endpoints are wired by the pipeline, not this file.
+
+layer4:
+
+  # ── SC-1 Persona State Resolver (§3) ──────────────────────────────────────
+  persona_resolver:
+    # Core identity anchors are build-time constants (centrality >= 0.80); the `name`
+    # anchor is immutable. Non-immutable anchors require evidence > 0.905 to update.
+    core_anchor_update_threshold: 0.905
+    warmth_base: 0.85                        # warmth_register core-anchor default
+    warmth_support_style_bonus: 0.05         # +bonus for emotionally-focused support styles
+    warmth_solution_oriented_penalty: 0.10   # −penalty for solution-oriented style
+    directness_when_user_prefers_direct: 0.75
+    directness_when_user_prefers_hedged: 0.45
+    directness_default: 0.6
+    humor_frequency_when_receptive: 0.35
+    humor_frequency_when_not_receptive: 0.15
+    humor_frequency_default: 0.25
+    humor_suppressed_modes: ["crisis", "emotional_support"]
+    technical_vocab_values: ["high", "advanced", "technical"]
+    # Reconciliation: humor_receptivity / preferred_interaction_style / known_sensitivities
+    # are derived from real UWM fields (CommunicationModel.uses_humor / vocabulary_complexity
+    # / prefers_direct_answers; PsychologicalModel.preferred_support_style / known_triggers).
+
+  # ── SC-2 Relationship State Manager (§4) ──────────────────────────────────
+  relationship_manager:
+    stage_thresholds:                        # inclusive upper session counts (§4.2)
+      new: 3
+      acquaintance: 15
+      developing: 40
+      established: 100
+      # close: 101+
+    session_delta:                           # tie-strength per-session increment (§4.3)
+      base: 0.02
+      vulnerability_moment_bonus: 0.04
+      explicit_trust_signal_each: 0.01
+      long_session_bonus: 0.01               # when total_messages > 20
+      high_intensity_bonus: 0.02             # when max_emotional_intensity > 0.6
+      repair_bonus: 0.03
+      max_per_session: 0.08
+    # Asymptotic update: TieStrength_{t+1} = t + delta * (1 - t)
+    stage_gates:                             # behavioral gates per stage (§4.4)
+      new:          { self_disclosure: surface,  memory_reference: none,     follow_up_max: 1, direct_noticing: false }
+      acquaintance: { self_disclosure: surface,  memory_reference: soft,     follow_up_max: 2, direct_noticing: false }
+      developing:   { self_disclosure: moderate, memory_reference: episodic, follow_up_max: 3, direct_noticing: false }
+      established:  { self_disclosure: moderate, memory_reference: full,     follow_up_max: 3, direct_noticing: true  }
+      close:        { self_disclosure: deep,     memory_reference: full,     follow_up_max: 3, direct_noticing: true  }
+    length_preference_by_message_length:     # CommunicationModel.typical_message_length →
+      short: 0.3
+      terse: 0.2
+      moderate: 0.5
+      long: 0.8
+      expansive: 0.9
+
+  # ── SC-3 Tone & Style Calibrator (§5) ─────────────────────────────────────
+  tone_calibrator:
+    # Mode base parameters live in MODE_BASE_PARAMETERS (8 modes). Only deltas listed here.
+    circadian_adjustments:                   # additive for numeric fields, else override
+      late_night:    { sentence_length: short, warmth_expression: +0.10, humor_mode: none, max_response_length_chars: -200 }
+      early_morning: { warmth_expression: +0.05, celebration_energy: +0.05 }
+      morning:       { sentence_length: short, hedging_level: -0.05 }
+      evening:       {}
+      afternoon:     {}
+      night:         { warmth_expression: +0.05 }
+    stage_register:                          # §5.3 Input 3
+      new: professional
+      acquaintance: natural
+      developing: natural
+      established: casual
+      close: intimate
+    register_locked_modes: ["crisis", "emotional_support"]   # stay natural regardless of stage
+    bes_negative_drift_labels: ["significant_negative_drift", "deteriorating"]
+    bes_drift_override:                       # §5.3 Input 5
+      warmth_expression_bonus: 0.10
+      humor_mode: none
+      max_response_length_chars_reduction: 200
+    length_preference_high_threshold: 0.7     # → +200 chars
+    length_preference_low_threshold: 0.3      # → −150 chars
+    min_response_length_chars: 200            # hard floor after all reductions
+    low_question_tolerance_threshold: 0.3     # at/below → no follow-up questions
+
+  # ── SC-4 Persona Drift Detector (§6, §11) ─────────────────────────────────
+  drift_detector:
+    capitulation_variance_threshold: 0.6     # position consistency variance → hold_position
+    min_positions_for_capitulation: 3
+    polarity_flip_variance: 0.8              # variance assigned when stance polarity flips
+    # Phrase lists (FABRICATION_PHRASES, ABANDONMENT_PHRASES, HARMFUL_VALIDATION_SIGNALS)
+    # are maintained in code. Risk/action mapping (§6.3):
+    #   fabricated_emotion   → high     → add_caveat        (anchor: honesty_commitment)
+    #   role_abandonment     → critical → refuse_gracefully (anchor: character_type)
+    #   sycophantic_capit.   → medium   → hold_position     (anchor: boundary_clarity)
+    #   harmful_validation   → high     → redirect          (anchor: primary_orientation)
+
+  # ── SC-5 Semantic Planner / Agent 4a (§7) ─────────────────────────────────
+  semantic_planner:
+    fallback_draft_text: "Here's what I can tell you."   # §12 non-empty guarantee
+    complexity_words_full_scale: 120          # word count mapped to complexity_score = 1.0
+    complexity_list_bonus: 0.2
+    key_claim_min_words: 3                     # shorter / question sentences are not claims
+    # Advice gate (open/gated/closed) enforced deterministically; violations stripped
+    # via rule-based sentence removal — no extra LLM call. prefers_no_advice tightens
+    # an `open` gate to `gated` for the turn.
+
+  # ── SC-6 Emotion Refiner / Agent 4b (§8) ──────────────────────────────────
+  emotion_refiner:
+    skip_neutral_intents: ["seeking_information", "casual_chat"]   # §8.2 condition 4
+    skip_blocking_bes_labels: ["significant_negative_drift", "deteriorating"]
+    factual_coverage_threshold: 0.65          # claim-token coverage; doc spec is cosine >= 0.65
+    reinsert_attempts: 1                       # §12: after 1 failed reinsert → use draft directly
+    # Skip refinement only when ALL five neutral conditions hold (§8.2).
+
+  # ── Orchestrator / FinalResponsePacket (§9, §12) ──────────────────────────
+  packet_builder:
+    crisis_mode: crisis
+    graceful_refusal_on_role_abandonment: true   # §11 Rule 4 / §12 critical-drift override
+    always_non_empty_final_text: true            # §12 hard rule

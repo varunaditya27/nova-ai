@@ -1195,4 +1195,56 @@ Implementation: `role_abandonment` detected → `recommended_action = "refuse_gr
 
 ---
 
-*This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. No behavior of Layer 4 requires assumptions or inferences from other documents.*
+## 15. Implementation Notes (as-built)
+
+This section records how the specification above is realized in `backend/layer4_persona/`. The code is the single source of truth; §1–14 are the design intent. Where the implementation deviates from the design text, the reason is given here.
+
+### 15.1 Module map
+
+| Spec sub-component | Module | Key entry point |
+|---|---|---|
+| SC-1 Persona State Resolver | `persona_resolver.py` | `resolve_persona_state(...)`, `CORE_IDENTITY_ANCHORS` |
+| SC-2 Relationship State Manager | `relationship_manager.py` | `compute_relationship_state(...)`, `compute_session_delta`, `update_tie_strength`, `stage_for_sessions` |
+| SC-3 Tone & Style Calibrator | `tone_calibrator.py` | `calibrate_voice(...)`, `MODE_BASE_PARAMETERS`, `CIRCADIAN_ADJUSTMENTS` |
+| SC-4 Persona Drift Detector | `drift_detector.py` | `detect_drift(...)`, `compute_position_consistency` |
+| SC-5 Semantic Planner (Agent 4a) | `semantic_planner.py` | `generate_semantic_draft(...)`, `validate_advice_gate`, `strip_advice`, `extract_key_claims` |
+| SC-6 Emotion Refiner (Agent 4b) | `emotion_refiner.py` | `refine_emotion(...)`, `should_skip_refinement`, `validate_factual_preservation`, `reinsert_claims` |
+| PersonaPacket + FinalResponsePacket orchestration | `packet_builder.py` | `build_final_response_packet(...)`, `assemble_persona_packet` |
+| All dataclasses / enums | `schemas.py` | — |
+
+### 15.2 Type reuse and dependency direction
+
+The pipeline runs L1 → L2 → L3 → L4, so Layer 4 imports rather than redefines upstream types: `ConversationMode`, `ConversationTurn`, `ScoredMemory`, `UWMContextSnapshot`, `CommunicationModel`, `PsychologicalModel` from Layer 2; `EmotionIntentPacket`, `BackgroundEmotionalState`, `BESLabel`, `EmotionLabel`, `IntentLabel`, `AdviceGate` from Layer 3. This keeps a single source of truth for the shared vocabulary.
+
+### 15.3 Dependency injection for offline testability
+
+The two LLM calls — SC-5 Semantic Planner and SC-6 Emotion Refiner — are injected as plain callables (`planner_llm_fn` / `refiner_llm_fn`, each `str -> str`). The optional embedding similarity check in factual validation is likewise injected (`similarity_fn`, `(str, str) -> float`). With no callables supplied, the layer degrades exactly as §12 prescribes and still emits a valid, non-empty packet — which is what the unit suite exercises. The pipeline wires the real Groq/Ollama endpoints and embedding model at runtime.
+
+### 15.4 UWM field reconciliation (§3.4, §5.3)
+
+The design text reads several signals off `PsychologicalModel` that the implemented Layer 2 schema does not carry (`humor_receptivity`, `preferred_interaction_style`, `known_sensitivities`). The resolver derives the same signals from fields that **do** exist:
+
+- humor receptivity → `CommunicationModel.uses_humor`
+- technical comfort → `CommunicationModel.vocabulary_complexity ∈ {high, advanced, technical}`
+- directness preference → `CommunicationModel.prefers_direct_answers`
+- warmth nudge → `PsychologicalModel.preferred_support_style`
+- known sensitivities → descriptions of `PsychologicalModel.known_triggers`
+
+This keeps the resolver runnable against the real UWM without inventing schema fields.
+
+### 15.5 Behavioral deviations from the design text
+
+- **`nova_stated_position` (§6.3 Check 3).** The implemented `ConversationTurn` does not carry a per-turn stated position, so `detect_drift` accepts `nova_recent_positions: list[str]` directly (supplied by the Layer 2 State Updater, which annotates positions) rather than reading them off session history. This decouples the guard from how positions are stored.
+- **Drift timing.** §6 places SC-4 before SC-5 with a `pending_draft_intent`. The orchestrator runs `detect_drift` pre-draft on the *user message* and recent positions — which is what catches role abandonment (critical) and capitulation, the two checks that must gate generation. The draft-content checks (fabricated emotion, harmful validation) operate on `pending_draft_intent` and are available to callers that pass draft text in. A critical drift short-circuits both planners with `GRACEFUL_REFUSAL_TEXT` so capitulating planner output can never reach the user.
+- **Self-disclosure depth.** `VoiceParameters.self_disclosure_depth` is capped at `moderate` (the enum's ceiling) even at the `close` stage, while `RelationshipState.self_disclosure_ceiling` records the qualitative `deep`. The Refiner uses the voice cap; the relationship ceiling governs gating.
+- **Factual preservation default.** §8.6 specifies embedding cosine ≥ 0.65. The offline default uses claim-token *coverage* (recall of claim tokens by the best refined sentence) at the same 0.65 threshold; an embedding `similarity_fn` can be injected to match production exactly. Reinsertion is rule-based (verbatim append with a soft transition) and never calls the LLM.
+- **Scaffold relocation.** The May-28 scaffold modelled this layer as a learned `PersonalityVector` plus a post-session `drift_controller` (belief-update gate) and a `prompt_builder`. Those modules were removed: per-session persona resolution is `persona_resolver`; the per-turn identity guard is `drift_detector` (distinct from the scaffold's post-session belief-update gate, which is a Layer 2 State-Updater concern); prompt construction lives inside `semantic_planner` / `emotion_refiner`. The scaffold's `PersonalityVector`/`BuiltPrompt` types do not exist in the as-built layer.
+
+### 15.6 Test coverage
+
+81 unit tests across seven files exercise every sub-component and the orchestrator:
+`test_persona_resolver.py` (11), `test_relationship_manager.py` (12), `test_tone_calibrator.py` (13), `test_drift_detector.py` (10), `test_semantic_planner.py` (11), `test_emotion_refiner.py` (15), `test_layer4_packet_builder.py` (9). Coverage includes: core-anchor immutability and the §12 UWM-unavailable fallback; stage-boundary gating and asymptotic tie-strength growth; the full mode × circadian × BES-drift × persona-constraint calibration chain; all four identity-under-pressure rules (incl. the polarity-flip capitulation signal); advice-gate stripping; the five-condition refinement skip; factual reinsertion; and the hard §12 guarantees (always non-empty packet, graceful refusal override, degradation under LLM failure).
+
+---
+
+*This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation. No behavior of Layer 4 requires assumptions or inferences from other documents.*
