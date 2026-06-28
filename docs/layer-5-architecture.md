@@ -1079,4 +1079,51 @@ When Nova surfaces a pattern observation, it explicitly frames it as optional fo
 
 ---
 
-*This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. No behavior of Layer 5 requires assumptions or inferences from other documents.*
+## 14. Implementation Notes (as-built)
+
+This section records how the specification above is realized in `backend/layer5_relationship/`. The code is the single source of truth; §1–13 are the design intent.
+
+### 14.1 Module map
+
+| Spec sub-component | Module | Key entry point |
+|---|---|---|
+| SC-1 Social Graph Manager | `social_graph.py` | `resolve_entity`, `infer_relationship_from_context`, `create_node`, `update_node_valence`, `decay_confidence`, `is_tentative_match` |
+| SC-2 Interpersonal Event Tracker | `event_tracker.py` | `detect_events_rule_based`, `extract_events`, `EVENT_DETECTION_RULES` |
+| SC-3 Social Pattern Recognizer | `pattern_recognizer.py` | `detect_patterns`, `cluster_by_semantic_similarity`, `compute_mention_counts_by_window`, `is_declining_trend` |
+| SC-4 Coaching Opportunity Detector | `coaching_detector.py` | `detect_coaching_opportunity`, `gate_1_availability`, `gate_2_timing`, `gate_3_recency` |
+| SC-5 Social Coaching Response Modifier | `coaching_modifier.py` | `inject_observation`, `select_transition` |
+| SocialIntelligencePacket orchestration | `packet_builder.py` | `build_social_intelligence_packet`, `build_social_context_update` |
+| All dataclasses / enums | `schemas.py` | — |
+
+### 14.2 Type reuse and dependency direction
+
+The pipeline runs L1→L2→L3→L4→L5, so Layer 5 imports rather than redefines upstream types: `FinalResponsePacket` and `VoiceParameters` from Layer 4; `EmotionClassification`, `BackgroundEmotionalState`, `EmotionIntentPacket` from Layer 3; `ConversationMode` (via Layer 4) from Layer 2. Layer 5 owns the richer `SocialGraph` / `SocialNode` / `SocialEdge` / `SocialEvent` / `SocialPattern` model — distinct from Layer 2's lighter UWM `RelationshipGraph` / `PersonNode` snapshot, which Layer 5 *writes to* via `SocialContextUpdate` (§9).
+
+A new field group was added to Layer 4's `FinalResponsePacket` so SC-5 can mark injection (per §7.3): `social_coaching_injected`, `coaching_type_injected`, `coaching_person_id` (all default to no-injection).
+
+### 14.3 Dependency injection for offline testability
+
+The two LLM uses are injected as plain callables: SC-2 event extraction (`llm_fn`, the post-session Pass 2) and the SC-4/orchestrator pattern-reflection / conflict-navigation text (`observation_llm_fn`). The embedding-dependent steps — entity resolution (SC-1) and conflict-topic clustering (SC-3) — accept an injected `similarity_fn` with token-overlap defaults (overlap coefficient for clustering, used because short topic phrases share few tokens). With nothing injected the layer degrades exactly as §11 prescribes and the rule-based paths run fully offline, which is what the unit suite exercises.
+
+### 14.4 Behavioral deviations from the design text
+
+- **Entity-resolution embeddings.** §3.4 computes `embed()` cosine inline; the implementation makes the semantic comparison an injected `similarity_fn` (skipped when absent), so alias and relationship-type matching still work with zero ML dependencies.
+- **Clustering similarity.** §5.4 references a generic semantic-similarity cluster; the offline default is the **overlap coefficient** (`|A∩B|/min(|A|,|B|)`), not Jaccard — short conflict-topic summaries share too few tokens for Jaccard to group reliably. An embedding `similarity_fn` can be injected to match production.
+- **Regex typos.** The §4.4 `EVENT_DETECTION_RULES` contain duplicated alternations (`argument|argument`, `didn't|didn't`); these are deduped in code. Two high-value rules absent from the doc's five examples (`support_received`, `conflict_resolution`) were added so SC-3 can recognize positive and resolution dynamics.
+- **Deferred vs. absent opportunity.** `detect_coaching_opportunity` returns a populated opportunity with `opportunity_detected=False` and `delivery_mode="deferred"` when availability passes but timing/recency fails — the orchestrator queues these for Layer 6. An empty opportunity (no `coaching_type`) means nothing was available.
+- **Pattern batch cadence.** §5.4 runs SC-3 every 5 sessions as a background job; `detect_patterns` is a pure function over the full event history, so the cadence is the scheduler's concern. The orchestrator consumes already-computed `active_patterns`.
+
+### 14.5 Ethics constraints (§10) as implemented
+
+- Pattern-reflection observations are framed provisionally — "I've noticed … Does that feel accurate to you?" — never as verdicts (Constraint 2; §7.4). The orchestrator's LLM prompt repeats the non-prescriptive, non-diagnostic framing.
+- Events store only a neutral `summary` + `user_perspective`, never raw text (Constraint 3).
+- The three-gate model defaults to silence; the recency gate stops surfacing after 3 unacknowledged attempts (Constraint 5).
+
+### 14.6 Test coverage
+
+63 unit tests across six files exercise every sub-component and the orchestrator:
+`test_social_graph.py` (12), `test_event_tracker.py` (12), `test_pattern_recognizer.py` (9), `test_coaching_detector.py` (16), `test_coaching_modifier.py` (7), `test_layer5_packet_builder.py` (7). Coverage includes entity resolution across all match kinds + confidence decay; rule-based and LLM-fallback event extraction; intra/cross/temporal pattern detection with longitudinal spans; all three coaching gates (incl. crisis/distress/stage hard blocks and the negative-drift soft block); inline vs as-question injection with the headroom guard; provisional pattern framing; and the §11 hard rule (any internal failure passes the Layer 4 response through unchanged).
+
+---
+
+*This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 5 requires assumptions or inferences from other documents.*
