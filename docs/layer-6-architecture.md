@@ -1081,4 +1081,50 @@ This is a deliberate design choice: explicit metadata ("Nova sent this because: 
 
 ---
 
-*This document specifies Layer 6 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the Proactive Queue Manager schema and priority scoring, Initiative Classifier taxonomy, Timing Gate full condition set, Message Generator prompt and validation, Response Tracker feedback loop, intake contracts from all four upstream layers, user preference schema, and delivery interface — are fully resolved. No behavior of Layer 6 requires assumptions or inferences from other documents.*
+## 14. Implementation Notes (as-built)
+
+This section records how the specification above is realized in `backend/layer6_proactivity/`. The code is the single source of truth; §1–13 are the design intent.
+
+### 14.1 Module map
+
+| Spec sub-component | Module | Key entry point |
+|---|---|---|
+| SC-1 Proactive Queue Manager | `queue_manager.py` | `ProactiveQueueManager`, `recompute_priority`, `compute_age_weight`/`compute_bes_weight`/`compute_context_weight`, `BASE_PRIORITY_BY_TYPE`, `BES_WEIGHTS` |
+| SC-2 Initiative Classifier | `initiative_classifier.py` | `classify_initiative` |
+| SC-3 Timing & Delivery Gate | `timing_gate.py` | `evaluate_timing_gate` |
+| SC-4 Proactive Message Generator | `message_generator.py` | `generate_proactive_message`, `validate_proactive_message`, `build_proactive_prompt` |
+| SC-5 Response Tracker | `response_tracker.py` | `classify_response`, `compute_engagement_score`, `update_queue_from_response` |
+| Intake contracts (§9) | `intake.py` | `on_thread_due`, `on_post_distress_gap`, `on_deferred_coaching`, `on_goal_milestone_approaching` |
+| Orchestrator (§8) | `engine.py` | `run_proactive_cycle` → `ProactiveEngineOutput` |
+| All dataclasses / enums | `schemas.py` | — |
+
+### 14.2 Type reuse and dependency direction
+
+Layer 6 imports rather than redefines upstream types: `NarrativeThread` from Layer 1 (§9.1 intake) and `CoachingOpportunity` from Layer 5 (§9.3 intake). The Layer 7 goal intake (§9.4) takes goal fields as plain arguments rather than importing an unbuilt `Goal` type, so Layer 6 has no forward dependency on Layer 7.
+
+### 14.3 Dependency injection for offline testability
+
+The single LLM call (SC-4) is injected as `llm_fn` (`str -> str`). The two external lookups are likewise injected: source-memory strength in the gate (`memory_strength_fn`, B5.1 — skipped when absent) and the per-item context assembly in the engine (`context_builder`). With nothing injected the layer degrades exactly as §11 prescribes — `generate_proactive_message` returns `None` and the cycle sends nothing — which is what the unit suite exercises. SC-5 valence detection is a small keyword heuristic (the response itself is re-routed through the full L1–L4 pipeline elsewhere; only a coarse engagement signal is needed here).
+
+### 14.4 Behavioral deviations from the design text
+
+- **Intake field mapping (§9.1).** The doc's `PendingThread` (`event_date`, `emotional_anticipation_score`) maps to the implemented Layer 1 `NarrativeThread` (`follow_up_due_at`, `emotional_weight`). The valence carried into `content_basis_valence` is `emotional_weight`.
+- **One-send-per-cycle via the gate, not a `break`.** After a successful send the engine increments `proactive_messages_sent_today`; subsequent candidates then hit gate condition B1.5 (`daily_cap_reached`) and are deferred. This records the deferral reason for the rest of the cycle rather than silently skipping items, and keeps the daily cap a property of SC-3 (§3.4, §13).
+- **Generation failure defers (§11).** When the gate says `send_now` but SC-4 cannot produce a valid message within 2 attempts, the item is set to `deferred` with reason `generation_failed` and nothing is sent — there is no fallback text.
+- **Float-stable priority bounds.** `ProactiveQueueManager.base_priority` rounds to 6 decimals so the learned-adjustment cap (+0.15) and floor (0.10) hold exactly despite float drift.
+- **BES trend vocabulary.** SC-1's `BES_WEIGHTS` uses the doc's trend keys (`positive`/`stable`/`mild_negative_drift`/…); an unknown trend falls back to a flat weight of 1.0. This is the 7-day rolling trend label Layer 6 receives, which may differ from Layer 3's per-session `BESLabel` enum.
+
+### 14.5 Hard rules as implemented (§11, §13)
+
+- The gate (`evaluate_timing_gate`) returns the *first* blocking condition; only a fully clear path yields `send_now`. A gate exception is caught in the engine and treated as a `defer`, never a send.
+- The daily cap (1/day) and the 48-hour minimum gap are enforced in the gate and cannot be overridden by priority or BES.
+- No pre-written fallback messages exist anywhere in the layer; silence is always preferable to a low-quality proactive message.
+
+### 14.6 Test coverage
+
+76 unit tests across seven files exercise every sub-component, the intake contracts, and the orchestrator:
+`test_proactive_queue_manager.py` (14), `test_initiative_classifier.py` (9), `test_timing_gate.py` (21), `test_proactive_message_generator.py` (11), `test_response_tracker.py` (8), `test_proactive_intake.py` (7), `test_proactive_engine.py` (6). Coverage includes the full priority formula (age/BES/context weights) and lifecycle (eviction, expiry, learned adjustment caps/floors); every initiative-classification branch; all five gate block groups (temporal, emotional, relationship, preference, quality); message validation + regeneration + the no-fallback rule; the 48-hour response window and the suppression cascade; all four intake contracts; and the orchestrator's one-send-per-cycle cap and §11 never-send-on-failure guarantee.
+
+---
+
+*This document specifies Layer 6 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the Proactive Queue Manager schema and priority scoring, Initiative Classifier taxonomy, Timing Gate full condition set, Message Generator prompt and validation, Response Tracker feedback loop, intake contracts from all four upstream layers, user preference schema, and delivery interface — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 6 requires assumptions or inferences from other documents.*
