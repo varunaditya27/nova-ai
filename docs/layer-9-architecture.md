@@ -1230,4 +1230,37 @@ Post-delivery:
 
 ---
 
+## 12. Implementation Notes (as-built)
+
+- **Module map:** SC-1 `interaction_orchestrator.py` (assembly + `deliver` engine entry point),
+  with helpers `stream_typing_overlay.py` (§3.2), `thinking_pause.py` (§3.3), `self_edit_simulator.py`
+  (§3.4), `length_calibrator.py` (§3.6); SC-2 `micro_interaction_engine.py` (§4); SC-3
+  `voice_synthesizer.py` + `tts_backends/{base_backend,kokoro_backend}.py` (§5); SC-4
+  `format_adapter.py` + `user_format_profile.py` (§6); `schemas.py`.
+- **Pure stdlib + dependency injection:** all randomness (typing noise, thinking-pause bands,
+  self-edit probability, filler placement, micro-interaction selection) is injected as an `rng`
+  parameter (default = `random`), and the TTS transport is an injected `request_fn` — so the
+  entire layer is deterministic and runs offline with no network, Docker, or TTS service.
+- **No LLM in the orchestrator (§11.2):** SC-1 and SC-4 are fully deterministic policy code.
+- **Crisis is one hard override:** `deliver(crisis_mode_active=True)` forces pure prose (SC-4),
+  suppresses every micro-interaction (SC-2), zeroes the thinking pause and self-edit (SC-1), and
+  disables voice features — matching the Layer 11 hard override (§2).
+- **Degrade, never block (§9):** every sub-step in `deliver` is wrapped so a failure falls back to
+  plain delivery; the response text is always produced.
+- **Deviations from the May-28 scaffold (reconciled):**
+  - Typing speeds were char/sec with mode names (casual/supportive/analytical/celebratory) in the
+    scaffold/config; the authoritative §3.2 model (per-mode token delays in ms keyed to the doc's
+    conversation modes) is implemented and `config/layer9.yaml` rewritten to match.
+  - The scaffold listed an alternative six-type micro-interaction set
+    (backchannel/affirmation/empathy/uncertainty/thinking/warmth); the doc taxonomy of §4.2
+    (acknowledgment/thinking/emotional-prefix/correction/transition/closing) is implemented.
+  - TTS uses the project's **Kokoro** backend (per CLAUDE.md infra) on the abstract `TTSBackend`
+    interface, rather than the doc's illustrative ElevenLabs/OpenAI/on-device engines (§5.7).
+- **Test coverage:** 99 unit tests across `test_format_adapter` (14), `test_user_format_profile`
+  (9), `test_length_calibrator` (9), `test_thinking_pause` (10), `test_self_edit_simulator` (6),
+  `test_stream_typing_overlay` (7), `test_micro_interaction_engine` (13), `test_kokoro_backend`
+  (9), `test_voice_synthesizer` (12), `test_interaction_orchestrator` (10).
+
+---
+
 *This document specifies Layer 9 completely. All four sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the streaming-with-typing-overlay architecture (cold-start problem), response length calibration with Layer 4 upstream injection, the complete six-type micro-interaction taxonomy with trigger conditions and frequency caps, the SSML generation pipeline with prosody tables and filler policy, the voice content transform layer, the TTS engine abstraction interface, the Format Decision Matrix with all seven conversation modes, the markdown prohibition enforcement, the User Format Profile with its update logic, and the engagement signal feedback loop — are fully resolved. No behavior of Layer 9 requires assumptions or inferences from other documents.*

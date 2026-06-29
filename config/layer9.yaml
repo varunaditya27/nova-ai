@@ -1,37 +1,140 @@
 # Layer 9 Configuration — Output Delivery & Interaction Orchestration
 #
-# Tunable parameters:
-#   typing_speeds_char_per_sec:
-#     - casual_mode: 55 (fast, conversational)
-#     - supportive_mode: 38 (slow, empathetic)
-#     - analytical_mode: 48 (thoughtful)
-#     - celebratory_mode: 62 (excited, fast)
+# These values mirror the module-level constants in backend/layer9_output/ (the code is the
+# single source of truth) and match docs/layer-9-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   thinking_pause:
-#     - base_duration_ms: 500
-#     - complexity_multiplier: high complexity → longer pause
-#     - emotional_intensity_factor: high emotion → longer pause
-#     - circadian_adjustment: time of day factor
-#
-#   length_targets_tokens:
-#     - short: 40 (brief acknowledgment)
-#     - medium: 80 (standard response)
-#     - long: 220 (detailed explanation)
-#
-#   micro_interactions:
-#     - backchannel_event_probability: (default: 0.3 if appropriate)
-#     - affirmation_event_probability: (default: 0.25)
-#     - empathy_signal_probability: (default: 0.4)
-#     - uncertainty_signal_probability: (default: 0.2)
-#     - thinking_signal_probability: (default: 0.15)
-#     - warmth_signal_probability: (default: 0.35)
-#
-#   format_decision_matrix:
-#     - register_levels: casual, formal, warm, analytical
-#     - markdown_use_threshold: (default: use if analysis/lists)
-#     - emoji_density: (default: 0.0-0.5 depending on mode)
-#
-#   tts_voice_parameters:
-#     - default_rate: 1.0 (can adjust to 0.5-1.5)
-#     - default_pitch: 1.0 (can adjust to 0.5-1.5)
-#     - kokoro_endpoint: localhost:8880 (Docker)
+# Reconciliation note: an earlier draft used char/sec typing speeds with mode names
+# (casual/supportive/analytical/celebratory). The authoritative doc (§3.2) uses per-mode token
+# DELAYS in milliseconds keyed to the doc's conversation modes — that model is implemented here.
+# All randomness in SC-1 is injected so behavior is deterministic and testable.
+
+layer9:
+
+  # ── SC-1 Stream Typing Overlay (§3.2) ─────────────────────────────────────
+  stream_typing_overlay:
+    min_token_delay_ms:                       # per conversation mode
+      casual_chat: 40
+      task_help: 35
+      emotional_support: 65
+      crisis_support: 80
+      deep_reasoning: 50
+      technical: 35
+      celebration: 45
+      _default: 45
+    sentence_pause_ms:
+      casual_chat: 120
+      emotional_support: 350
+      crisis_support: 500
+      deep_reasoning: 200
+      technical: 100
+      celebration: 80
+      _default: 150
+    circadian_multipliers: { late_night: 1.30, morning: 0.90, early_morning: 0.90 }
+    gaussian_noise_sigma: 0.12                # ±variability around the base delay
+    floor_ms: 20
+
+  # ── SC-1 Thinking Pause (§3.3) ────────────────────────────────────────────
+  thinking_pause:
+    bands_ms:                                 # (complexity × emotional intensity) → range
+      trivial: [0, 0]                         # complexity<0.3 and emotion<0.4
+      light: [300, 700]
+      moderate: [700, 1600]
+      deep: [1600, 3200]
+    early_stage_multiplier: 0.70              # stranger/acquaintance → less hesitation
+    circadian_multipliers: { late_night: 1.25, morning: 0.85 }
+    skip_if_urgency_above: 0.75
+    crisis_pause_ms: 0                        # calm immediacy
+    thinking_indicator: { complexity_min: 0.65, emotion_min: 0.75,
+                          disabled_modes: ["crisis_support", "technical", "task_help"] }
+
+  # ── SC-1 Self-Edit Simulator (§3.4) ───────────────────────────────────────
+  self_edit:
+    probability_by_complexity: { low: 0.10, medium: 0.25, high: 0.40 }  # <0.4 / <0.65 / else
+    disabled_modes: ["crisis_support", "task_help", "technical"]
+    disabled_stages: ["stranger"]
+    insert_position_ratio: [0.15, 0.45]
+    deletion_pause_ms: [400, 800]
+    resume_pause_ms: [300, 600]
+
+  # ── SC-1 Length Calibrator (§3.6) ─────────────────────────────────────────
+  length_calibrator:
+    base_ranges_chars:                        # (min, max) per mode
+      casual_chat: [40, 180]
+      task_help: [100, 600]
+      emotional_support: [60, 250]
+      crisis_support: [80, 220]
+      deep_reasoning: [200, 800]
+      technical: [150, 700]
+      celebration: [60, 200]
+    high_emotion_max_multiplier: 0.65         # emotional_intensity > 0.70
+    user_pref_max_multiplier: { short: 0.65, long: 1.40 }
+    hard_max_chars: 1200
+
+  # ── SC-2 Micro-Interaction Engine (§4.2) — six types ──────────────────────
+  micro_interactions:
+    acknowledgment: { trigger_user_chars: 400, trigger_consecutive: 2,
+                      trigger_emotion: 0.70, min_gap_messages: 4, delay_ms: 600,
+                      stages: ["acquaintance", "friend", "close_friend"],
+                      disabled_modes: ["crisis_support", "task_help", "technical"] }
+    thinking_indicator: { complexity_min: 0.65, emotion_min: 0.75,
+                          disabled_modes: ["crisis_support", "technical", "task_help"] }
+    emotional_prefix: { emotion_min: 0.65, max_chars: 20, delay_ms: 500,
+                        turn_types: ["sharing_news", "venting", "expressing_gratitude"],
+                        stages: ["friend", "close_friend"],
+                        disabled_modes: ["crisis_support", "technical", "task_help"] }
+    correction_indicator: { stages: ["acquaintance", "friend", "close_friend"],
+                            disabled_modes: ["crisis_support", "task_help"] }
+    transition: { mandatory_for_proactive: true, disabled_modes: ["crisis_support"] }
+    closing: { stages: ["friend", "close_friend"], disabled_modes: ["crisis_support"] }
+
+  # ── SC-4 Format Adapter (§6.3) ────────────────────────────────────────────
+  format_adapter:
+    register_by_stage: { stranger: formal, acquaintance: casual,
+                         friend: intimate, close_friend: intimate }
+    pure_prose_modes: ["emotional_support", "crisis_support"]
+    pure_prose_emotion_threshold: 0.65
+    emoji_no_modes: ["technical", "task_help", "crisis_support"]
+    emoji_mirror_thresholds: { none_below: 0.05, rare_below: 0.20 }  # else natural
+    code_full_block_content: ["technical", "code_help", "debugging"]
+
+  # ── SC-3 Voice & SSML Synthesizer (§5) ────────────────────────────────────
+  voice:
+    prosody:                                  # mode → (rate, pitch)
+      casual_chat: { rate: medium, pitch: "+1" }
+      emotional_support: { rate: slow, pitch: "-1.5" }
+      crisis_support: { rate: x-slow, pitch: "-2" }
+      celebration: { rate: medium-fast, pitch: "+2.5" }
+      deep_reasoning: { rate: slow, pitch: "+0" }
+      technical: { rate: medium, pitch: "+0" }
+      task_help: { rate: medium, pitch: "+0.5" }
+    filler_rate_per_sentences:
+      casual_chat: 0.22
+      emotional_support: 0.15
+      deep_reasoning: 0.25
+      technical: 0.00
+      task_help: 0.00
+      crisis_support: 0.00
+      celebration: 0.10
+    tts:
+      backend: kokoro
+      kokoro_endpoint: http://localhost:8880  # Docker, OpenAI-compatible /v1/audio/speech
+      default_voice: af_sky
+      default_rate: 1.0
+      fallback_to_text_on_failure: true
+
+  # ── SC-4 User Format Profile (§6.6) ───────────────────────────────────────
+  user_format_profile:
+    length_levels_tokens: { short: 40, medium: 80, long: 220 }   # advisory targets
+    skim_latency_ms: 3000                      # fast reply after long response → prefer shorter
+    short_reply_ratio: 0.15                    # user reply < 15% of Nova's → prefer shorter
+
+  # ── §11 design principles (enforced in code) ──────────────────────────────
+  principles:
+    delivery_is_not_decoration: true
+    orchestrator_makes_no_llm_calls: true
+    format_follows_relationship_not_content: true
+    system_learns_from_user_responses: true
+    voice_is_first_class_output: true
+    micro_interactions_have_max_density: true
+    crisis_mode_hard_override: true
