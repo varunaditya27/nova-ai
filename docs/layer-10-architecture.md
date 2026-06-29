@@ -1271,4 +1271,36 @@ LAYER10_DATA_POLICY = {
 
 ---
 
+## 14. Implementation Notes (as-built)
+
+- **Module map:** SC-1 `narrative_arc.py` (chapter boundary detection, emotional arc, arc assembly)
+  + `life_narrative_engine.py` (defining-moment extraction, grounded chapter synthesis); SC-2
+  `weekly_summary.py`; SC-3 `progress_tracker.py` (rolling metrics, domain balance, pattern
+  detection); SC-4 `retrospective.py` (retrospective packets, surfacing windows/priority, Year in
+  Review); SC-5 `life_calendar.py` (scheduler/registration); `engine.py` (`assemble_context_packet`
+  → `Layer10ContextPacket`); `schemas.py`.
+- **Dependency injection:** all narrative/summary/retrospective synthesis is an injected ``llm_fn``,
+  and every time-relative computation takes an explicit ``now`` / reference date — so the layer is
+  deterministic and runs offline with no LLM, DB, or scheduler.
+- **Grounded fallbacks (§13.3):** when no ``llm_fn`` is supplied (or it fails), synthesis returns a
+  *factual* summary built only from the evidence (counts, titles, dates) — never invented
+  interpretation. Retrospectives always carry ``backing_episode_ids``.
+- **Goals are duck-typed:** Layer 10 reads any object exposing ``status`` / ``created_at`` /
+  ``status_changed_at`` (e.g. Layer 7's `Goal`), keeping the layers decoupled.
+- **Deviations from the May-28 scaffold (reconciled):**
+  - The scaffold's scheduler-flavored names (NarrativeChapter, LifeDimension, TurningPoint,
+    RetrospectiveRecord) were replaced by the authoritative doc schema (LifeChapter, NarrativeArc,
+    ProgressSnapshot, RetrospectivePacket, etc.).
+  - Added `life_calendar.py` (SC-5, absent from the scaffold) and `engine.py` (context-packet
+    assembly).
+  - `LifeEvent` is detected/owned by **Layer 7**; the scaffold's `life_event_tracker` test stub was
+    out of scope and removed. SC-5 *registers anniversaries* for life events it receives.
+  - `ProgressSnapshot` implements a focused subset of §5.2's full dimension catalog (the metrics the
+    retrospective/context paths actually consume); the remaining dimensions remain spec-level.
+- **Test coverage:** 63 unit tests across `test_narrative_arc` (11), `test_life_narrative_engine`
+  (6), `test_weekly_summary` (11), `test_pattern_detector` (5), `test_progress_tracker` (8),
+  `test_retrospective` (10), `test_life_calendar` (6), `test_layer10_engine` (6).
+
+---
+
 *This document specifies Layer 10 completely. All five sub-components — the Life Narrative Engine (chapter schema, narrative moment taxonomy, LifeEvent schema defined in Section 3.2, synthesis algorithm, chapter boundary detection), the Weekly Summary Engine (full schema, generation algorithm, delivery policy), the Progress & Pattern Tracker (all tracked dimensions with complete schemas, pattern detection algorithm), the Retrospective Engine (all retrospective types, RetrospectivePacket schema, generation logic, Year in Review special case, surfacing window table), and the Life Calendar (CalendarEntry schema, CalendarEntryType taxonomy, Layer6Action contract, scheduler logic, new-user registration, life-event anniversary registration) — are fully specified. Goal objects are referenced as `Goal` (the canonical class name from layer-7-architecture.md); the `goal_objects` table in `goals.db` (Layer 12) stores instances of this class. The Layer 10 output contract (Layer10ContextPacket), pipeline integration write and read paths, privacy and retention policy, error handling for all failure cases, and performance targets are all explicitly defined. No behavior of Layer 10 requires assumptions or inferences from other documents.*
