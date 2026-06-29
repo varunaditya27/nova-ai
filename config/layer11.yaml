@@ -1,27 +1,87 @@
-# Layer 11 Configuration — Safety & Crisis Detection
+# Layer 11 Configuration — Safety & Crisis Architecture
 #
-# Tunable parameters:
-#   crisis_levels:
-#     - NONE: no crisis signals detected
-#     - MONITORING: watching for escalation (minor stress signals)
-#     - ELEVATED: warning signs present (depressive language, isolation)
-#     - CRISIS: high-risk situation (self-harm mention, severe distress)
-#     - IMMINENT: immediate danger (active self-harm, suicide plan)
+# These values mirror the module-level constants in backend/layer11_safety/ (the code is the
+# single source of truth) and match docs/layer-11-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   signal_detection_thresholds:
-#     - text_pattern_confidence_min: text keywords (default: 0.7)
-#     - temporal_anomaly_severity: unusual absence (default: 3 days silence)
-#     - emotional_intensity_spike: arousal jump (default: +0.5 valence drop)
-#     - prior_vulnerability_reactivation: mention of past struggles (default: 0.8)
-#
-#   escalation_tiers:
-#     - tier_0: monitoring, gentle check-in
-#     - tier_1: offer resources, active listening
-#     - tier_2: 988 (suicide prevention line), emergency contact info
-#     - tier_3: contact emergency responder (if available)
-#
-#   safe_mode_disables:
-#     - micro_interactions: no backchannel, affirmation, warmth signals
-#     - emoji_markdown: plain text only
-#     - audio_output: no TTS
-#     - proactive_engagement: Layer 6 disabled
+# Taxonomy note: the authoritative model is THREE tiers (tier_1/tier_2/tier_3 + none). The
+# scaffold's older five-level naming (MONITORING/ELEVATED/CRISIS/IMMINENT) is retired.
+# All model calls (semantic classifier, crisis acknowledgment) are injected callables.
+
+layer11:
+
+  # ── SC-2 Crisis Detection Engine (§4) ─────────────────────────────────────
+  crisis_detection:
+    # Asymmetric confidence thresholds: tier_1 hair-trigger (catastrophic miss cost),
+    # tier_3 conservative (avoid over-pathologizing) (§4.4).
+    tier_confidence_thresholds:
+      tier_1: 0.60
+      tier_2: 0.70
+      tier_3: 0.80
+    context_window_size: 10
+    longitudinal_lookback_days: 30
+    longitudinal_thresholds:
+      tier_2: { crisis_frequency_gt: 0.60, valence_slope_lt: -0.35 }
+      tier_3: { crisis_frequency_gt: 0.40, valence_slope_lt: -0.20, isolation_count_gte: 2 }
+    # false-positive management
+    historical_non_crisis_modulation: 0.10     # per prior non-crisis instance
+    historical_modulation_cap: 0.25
+    ambiguous_boundary_action: gentle_checkin
+    semantic_classifier_separate_from_main_llm: true   # injection-resistant (§4.4)
+
+  # ── SC-1 Ethical Guardrails (§3) ──────────────────────────────────────────
+  ethical_guardrails:
+    checks: [ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck,
+             VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck]
+    validation_ratio_window: 20
+    validation_ratio_threshold: 0.85           # > → flag sycophancy
+    sycophancy_drift_60d_threshold: 0.80       # + increasing trend → flag
+    vulnerability_score_threshold: 0.70        # > → suppress high-engagement tactics
+    severities: { soft: flag, moderate: modify, hard: blocked_and_replaced }
+
+  # ── SC-3 Escalation Protocol (§5) ─────────────────────────────────────────
+  escalation:
+    response_format: prose_only
+    max_response_length_words: 120
+    resource_provision_required: true
+    resources_from_registry_only: true         # the LLM never supplies a phone number
+    tier1_protocol_steps: 5                     # ack → safety check → resources → stay → flag
+    tier2_protocol_steps: 4
+    post_crisis_monitoring_sessions: 3
+    default_region: india
+    static_fallback_required: true             # tier_1 is never empty (§9)
+
+  # ── SC-4 Dependency Monitor (§6) ──────────────────────────────────────────
+  dependency_monitor:
+    run_cadence: weekly                        # not per-message
+    tiers:                                     # (low inclusive, high exclusive; top inclusive)
+      healthy: [0.00, 0.30]
+      watchful: [0.30, 0.50]
+      concerning: [0.50, 0.70]
+      intervention: [0.70, 1.01]
+    tier_actions:
+      healthy: no_action
+      watchful: subtle_human_reinforcement
+      concerning: autonomy_reinforcement
+      intervention: direct_compassionate_conversation
+    trend_delta: 0.05
+    intervention_min_interval_days: 30
+    # Note: the doc prose says "15 indicators"; the enumerated set is 14 (SS×4, AE×4, EI×3, UP×3).
+    indicator_count: 14
+
+  # ── Safety Record audit trail (§8) ────────────────────────────────────────
+  safety_record:
+    tamper_evident_hash_chain: sha256
+    stores_content_hash_only: true             # metadata + hashes, not raw conversation
+    user_can_view_own_record: true
+    user_can_delete_own_record: false
+    retention_period_years: 7
+
+  # ── Pipeline position (§2) — non-negotiable ───────────────────────────────
+  principles:
+    safety_has_veto_authority: true            # architecture-level, not prompt instruction
+    crisis_detection_runs_in_parallel: true
+    guardrails_run_post_generation_every_response: true
+    protective_action_never_punitive_or_clinical: true
+    success_metric_is_flourishing_not_engagement: true
+    never_fabricate_crisis_resources: true

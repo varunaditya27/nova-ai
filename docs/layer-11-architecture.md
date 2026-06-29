@@ -1405,4 +1405,36 @@ This independence — a dedicated classifier that the conversation cannot reach 
 
 ---
 
-*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (15 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. Layer 11 is the single source of truth for crisis and safety (Section 12): there is no second crisis system — Layer 8 is Tool Use & Actions and has no crisis role. Section 12 specifies how crises reach Layer 11, its veto authority over the response pipeline, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*
+## 14. Implementation Notes (as-built)
+
+- **Module map:** SC-1 `ethical_guardrails.py` (the six checks, §3); SC-2 `crisis_classifier.py`
+  (three-layer detection + fusion, §4); SC-3 `escalation_engine.py` (Tier 1/2 responses + regional
+  registry, §5/§10) with `safe_mode_enforcer.py` (crisis output override, §5.2); SC-4
+  `dependency_monitor.py` (§6); `safety_record.py` (tamper-evident audit, §8); `safety_agent.py`
+  (coordinator → `SafetyAgentDecision`, §7); `schemas.py`.
+- **Dependency injection:** the semantic classifier (`semantic_fn`) and the crisis acknowledgment
+  model (`crisis_llm_fn`) are injected callables, and dependency-indicator detection is an injected
+  `indicator_detector` — so the layer runs and is tested fully offline with no model or DB.
+- **Safety-critical invariants enforced in code:**
+  - Crisis resources come **only** from `CRISIS_RESOURCES`; the LLM writes only the acknowledgment,
+    and any LLM failure degrades to a static fallback that still contains a real resource (§9) — a
+    Tier 1 response is never empty.
+  - The Safety Agent holds **veto authority**: Tier 1/Tier 2 discards the proposed response and
+    injects a safe-mode-enforced crisis response; the guardrail filter runs on every other response.
+  - The Safety Record is an **append-only SHA-256 hash chain**; mutating any logged entry breaks
+    `verify_chain`. It stores content *hashes*, never raw conversation content.
+- **Deviations from the May-28 scaffold (reconciled):**
+  - The scaffold's five-level taxonomy (NONE/MONITORING/ELEVATED/CRISIS/IMMINENT, Tier0-3) is
+    replaced by the authoritative three-tier model (TIER_1/2/3 + NONE).
+  - Added `ethical_guardrails`, `dependency_monitor`, and `safety_record` (absent from the scaffold).
+  - **Doc off-by-one:** §6 prose says "15 DependencyIndicators" but enumerates 14 (SS×4, AE×4,
+    EI×3, UP×3); the enumerated set of 14 is implemented.
+  - The semantic classifier is modeled as an injected interface (the real fine-tuned model is wired
+    by the pipeline); offline, lexical + longitudinal layers still operate, matching §9's degraded mode.
+- **Test coverage:** 63 unit tests across `test_crisis_classifier` (13), `test_ethical_guardrails`
+  (11), `test_escalation_engine` (10), `test_dependency_monitor` (9), `test_safe_mode_enforcer` (5),
+  `test_safety_record` (7), `test_safety_agent` (8).
+
+---
+
+*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (14 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. Layer 11 is the single source of truth for crisis and safety (Section 12): there is no second crisis system — Layer 8 is Tool Use & Actions and has no crisis role. Section 12 specifies how crises reach Layer 11, its veto authority over the response pipeline, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*
