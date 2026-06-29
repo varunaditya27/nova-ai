@@ -13,7 +13,7 @@ layer8:
 
   # ── SC-2 Confirmation Gate (§4) ───────────────────────────────────────────
   confirmation_gate:
-    # Base tier per action verb; the gate only ever ratchets a tier UP (§4.3).
+    # Fallback tier per action verb, used only when a plugin declares no tier (§4.3).
     action_tier_base:
       read: auto
       search: auto
@@ -21,11 +21,21 @@ layer8:
       update: soft
       delete: hard
       send: hard
-    escalation_rules:                          # each can only raise the tier (§4.3)
+    # A plugin's declared tier is the AUTHORITATIVE baseline (it may lower a verb's default for
+    # a genuinely safe op, e.g. a reversible reminder delete = AUTO). Intrinsic floors below sit
+    # ON TOP and can only RAISE — a plugin can never lower below them (§4.3).
+    intrinsic_floors:
       high_risk_forces: hard                   # risk_level == high -> HARD
       irreversible_external: hard              # not reversible AND external_impact -> HARD
       irreversible_floor: soft                 # not reversible (internal) -> at least SOFT
     auto_executes_without_prompt: true         # AUTO needs no user-in-the-loop (§4.1)
+
+  # ── SC-1 confirmation security (§5.1) ─────────────────────────────────────
+  confirmation_security:
+    token_binding: sha256                      # token bound to tool+operation+parameters+user_id
+    single_use: true                           # consumed on use — replay rejected
+    ownership_checked: true                    # non-owner confirm/undo refused
+    direct_path_fail_closed: true              # execute_tool refuses gated ops without a token
 
   # ── SC-3 Parameter Resolver (§6) ──────────────────────────────────────────
   parameter_resolver:
@@ -69,6 +79,9 @@ layer8:
   # ── Hard rules (enforced in code) ─────────────────────────────────────────
   principles:
     high_risk_requires_explicit_confirmation: true
+    confirmation_is_a_bound_single_use_token: true   # not a trusted boolean (§5.1)
+    direct_execution_path_is_fail_closed: true       # no side door around the gate
+    undo_enforces_ownership: true
     every_action_recorded_and_inspectable: true
     audit_trail_is_append_only: true
     deletes_are_logical_not_destructive: true

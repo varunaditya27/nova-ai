@@ -112,7 +112,7 @@ Post-delivery:
 - SC-4 and SC-2 run fully **deterministically** — no LLM calls, no I/O, < 10ms combined
 - SC-1 runs deterministically — no LLM calls; operates on the token stream from Layer 4 (streaming)
 - SC-3 runs only when `voice_mode = True`; adds SSML annotation and calls TTS backend
-- **Layer 8 hard override**: when `crisis_mode_active = True`, all micro-interactions, self-editing, voice features, and structured formatting are suppressed; SC-4 enforces plain-prose crisis mode unconditionally
+- **Layer 11 hard override**: when `crisis_mode_active = True` (set by Layer 11's Escalation Protocol), all micro-interactions, self-editing, voice features, and structured formatting are suppressed; SC-4 enforces plain-prose crisis mode unconditionally
 
 ---
 

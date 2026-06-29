@@ -52,11 +52,19 @@ def test_irreversible_non_external_escalates_to_soft():
     assert tier == ConfirmationTier.SOFT.value
 
 
-def test_tier_only_ratchets_up_never_down():
-    # base_tier override cannot lower a delete below its computed HARD floor.
+def test_intrinsic_floor_cannot_be_lowered_by_plugin():
+    # A plugin can't declare AUTO to bypass the floor for an irreversible external action.
     tier = cg.compute_confirmation_tier(
-        ActionType.DELETE.value, base_tier=ConfirmationTier.AUTO.value)
+        ActionType.DELETE.value, reversible=False, external_impact=True,
+        base_tier=ConfirmationTier.AUTO.value)
     assert tier == ConfirmationTier.HARD.value
+
+
+def test_plugin_may_lower_tier_for_reversible_action():
+    # A reversible, low-stakes delete (e.g. a reminder) may be declared AUTO.
+    tier = cg.compute_confirmation_tier(
+        ActionType.DELETE.value, reversible=True, base_tier=ConfirmationTier.AUTO.value)
+    assert tier == ConfirmationTier.AUTO.value
 
 
 def test_capability_base_tier_can_raise():

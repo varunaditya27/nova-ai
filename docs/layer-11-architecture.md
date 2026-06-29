@@ -1360,29 +1360,32 @@ CRISIS_RESOURCES = {
 
 ---
 
-## 12. Cross-Layer Crisis System Interaction (Layer 11 vs. Layer 8)
+## 12. Crisis & Safety Ownership — Single Source of Truth
 
-NovaAI operates two distinct, complementary crisis systems. This section documents the interaction from Layer 11's perspective. See `layer-8-architecture.md` Section 14 for the Layer 8 perspective and full pipeline order.
+**Layer 11 is the sole owner of crisis detection, safeguarding, escalation, and dependency monitoring in NovaAI.** There is no second crisis system. Everything crisis-related — the three-tier taxonomy (§4.1), the three-layer detection pipeline (§4.3), the escalation protocols (§5), and the regional resource registry (§10) — is specified in this document and nowhere else.
 
-### 12.1 Why Two Crisis Systems?
+> **Resolved numbering confusion.** An earlier revision of the architecture placed a "Crisis Detection & Safety Engine" at **Layer 8** and described a *dual* crisis system (a fast Layer 8 "gate" plus the Layer 11 "veto"), with a five-level taxonomy (NONE/MONITORING/ELEVATED/ACUTE/IMMINENT) mapped onto Layer 11's tiers. That was a layer-numbering mismatch. **Layer 8 is Tool Use & Actions** (`docs/layer-8-architecture.md`) and has **no crisis role**. The five-level taxonomy and the "dual-system" framing are retired; Layer 11's three-tier taxonomy (TIER_1/TIER_2/TIER_3) is authoritative. This section previously documented that interaction and has been consolidated accordingly.
 
-**Defense-in-depth.** Layer 8 is fast (< 60ms) and operates synchronously as a gate; it catches crises in real-time before Layer 4 generates a response. Layer 11 SC-2 is thorough (< 250ms) and uses a separate fine-tuned semantic classifier that cannot be suppressed by prompt injection. Each catches what the other might miss:
-- Layer 8 catches fast, urgent signals before any response is generated.
-- Layer 11 catches subtle, contextual, or cross-session patterns that require deeper analysis.
+### 12.1 How crises reach Layer 11
 
-### 12.2 Layer 11's Veto Authority
+- **Layer 3** emits a `CrisisAlert` directly to Layer 11 when its fast classifier sets `crisis_flag=True` — this does not wait for the rest of Layer 3's packet to complete.
+- **SC-2** also runs its own three-layer detection on **every** message in parallel with the main pipeline, independent of any upstream flag. The `CrisisAlert` is an accelerant, not a precondition: Layer 11 detects crises on its own.
 
-Layer 11 has **final veto authority** over the entire pipeline, including Layer 8. This means:
-- If Layer 8 produced a crisis response AND Layer 11 detects TIER_1 or TIER_2, Layer 11's Escalation Protocol (SC-3) takes precedence and replaces Layer 8's response with its own.
-- If Layer 8 detected no crisis but Layer 11 detects TIER_1 or TIER_2, Layer 11 still vetos the pipeline output and delivers its crisis response.
-- Layer 11 does NOT de-escalate Layer 8: if Layer 8 flagged ELEVATED but Layer 11 finds TIER_3 (low severity), Layer 8's response proceeds.
+### 12.2 Veto authority over the response pipeline
+
+Layer 11 has **final, system-level veto authority** over the main response pipeline (the proposed response from Layer 4, and the downstream Layer 5/6/7 enrichment):
+- A **TIER_1 or TIER_2** signal causes SC-3 (Escalation Protocol) to **discard the proposed response and replace it entirely** with the crisis response, before Layer 9 delivery.
+- A **TIER_3** signal raises monitoring sensitivity and empathetic engagement but does not replace the response.
+- No personality configuration, relationship stage, or user preference can override this veto; it is enforced at the pipeline-architecture level, not via prompt instructions (see §2).
 
 ### 12.3 Semantic Classifier Independence
 
-The semantic classifier in Layer 11 SC-2 is a **separately trained, fine-tuned model** — not the same model used in the main conversation pipeline. This is a deliberate architectural choice:
+The semantic classifier in Layer 11 SC-2 is a **separately trained, fine-tuned model** — not the model used in the main conversation pipeline. This is a deliberate architectural choice:
 - It cannot be suppressed by prompt injection in the conversation (the user cannot "jailbreak" it via conversational input).
 - Its weights are frozen during inference and not influenced by the current conversation.
 - It evaluates the crisis signal on linguistic/semantic features independent of the main LLM's framing.
+
+This independence — a dedicated classifier that the conversation cannot reach — is the defense-in-depth that the retired "two systems" framing was reaching for. The depth comes from Layer 11's own three-layer pipeline (lexical → semantic → longitudinal), not from a second crisis layer.
 
 ---
 
@@ -1402,4 +1405,4 @@ The semantic classifier in Layer 11 SC-2 is a **separately trained, fine-tuned m
 
 ---
 
-*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (15 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. The cross-layer interaction between Layer 11 (parallel veto with final authority) and Layer 8 (synchronous gate) is explicitly specified in Section 12, including veto authority rules, taxonomy relationship, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*
+*This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (15 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. Layer 11 is the single source of truth for crisis and safety (Section 12): there is no second crisis system — Layer 8 is Tool Use & Actions and has no crisis role. Section 12 specifies how crises reach Layer 11, its veto authority over the response pipeline, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*
