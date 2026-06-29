@@ -313,11 +313,11 @@ class SecondaryEmotion:
 The crisis flag is the only path in Layer 3 that bypasses normal flow. When `crisis_flag=True` and `crisis_confidence > 0.65`, Layer 3 does the following **before completing the EmotionIntentPacket**:
 
 1. Sets `conversation_mode = "crisis"` (overrides any other mode resolution in SC-6)
-2. Emits a `CrisisAlert` to the Crisis Detection Engine (Layer 8) and independently to the Safety Agent (Layer 11) in parallel — neither waits for Layer 3 to complete normally
+2. Emits a `CrisisAlert` to the Safety Agent (Layer 11) — this does not wait for Layer 3 to complete normally
 3. Marks the EmotionIntentPacket with `crisis_active = True`
-4. Layer 8 handles the in-session crisis gate (blocking Layer 4 when level >= ELEVATED) and resource injection; Layer 11 runs in parallel as an independent safety veto — Layer 3 does not generate any crisis response itself
+4. Layer 11 owns all crisis handling: its SC-2 (Crisis Detection Engine) runs its three-layer detection in parallel, and its SC-3 (Escalation Protocol) has veto authority to discard and replace the proposed response — Layer 3 does not generate any crisis response itself. (Crisis is owned entirely by Layer 11; Layer 8 is Tool Use & Actions and has no crisis role.)
 
-This means the crisis path is **fast and parallel**, not sequential. Layer 8 begins its crisis gate and Layer 11 begins its safety pipeline the moment Layer 3 emits the alert, not after the entire pipeline completes.
+This means the crisis path is **fast and parallel**, not sequential. Layer 11 begins its safety pipeline the moment Layer 3 emits the alert, not after the entire pipeline completes.
 
 ---
 
@@ -977,7 +977,7 @@ class EmotionIntentPacket:
     conversation_mode: ConversationMode             # single governing label
 
     # ── Safety Flags ──────────────────────────────────────────────────────────
-    crisis_active: bool                             # True → Layer 8 gate activated; Layer 11 running in parallel
+    crisis_active: bool                             # True → CrisisAlert emitted to Layer 11 (Safety Agent)
     crisis_type: Optional[str]
     crisis_confidence: float
 
@@ -1142,10 +1142,10 @@ The refinement pass adds latency. Skipping it for genuinely informational exchan
 | Background state computation fails (no memory data) | Set BES to `insufficient_data`; proceed with primary emotion only |
 | Mismatch detector fails | Set `mismatch_detected = False`; log error; proceed without mismatch handling |
 | Empathy hypothesis generation fails | Use deterministic fallback hypothesis based on conversation_mode only |
-| Crisis flag detected but crisis type unclear | Default to `crisis_type = "acute_distress_non_crisis"`; Layer 8 applies most cautious gate protocol |
+| Crisis flag detected but crisis type unclear | Default to `crisis_type = "acute_distress_non_crisis"`; Layer 11 applies its most cautious protocol |
 | All sub-components fail | Emergency fallback: `conversation_mode = "casual"`, `response_instruction = "Respond naturally and warmly"`, emit packet |
 
-**Hard rule:** Layer 3 always emits an EmotionIntentPacket. A degraded packet is always better than no packet. Crisis detection is the single exception — if a crisis keyword is detected in the heuristic pre-filter, that alert is always emitted to Layer 8 and Layer 11 regardless of any other failure.
+**Hard rule:** Layer 3 always emits an EmotionIntentPacket. A degraded packet is always better than no packet. Crisis detection is the single exception — if a crisis keyword is detected in the heuristic pre-filter, that alert is always emitted to Layer 11 (Safety Agent) regardless of any other failure.
 
 ---
 
@@ -1221,7 +1221,7 @@ One model call. Two classification outputs. This is the correct optimization.
 | Mismatch detection: "I'm fine" + high prior | Mismatch flagged correctly | Unit test |
 | Mismatch response posture selection | Correct posture per relationship depth × confidence | Unit test per table cell |
 | Mode resolution: all 8 modes | Each mode reachable with correct input combination | Unit test per mode |
-| Crisis flag → Layer 8 gate + Layer 11 parallel notification | Notifications emitted asynchronously before EmotionIntentPacket completed | Integration test |
+| Crisis flag → Layer 11 notification | CrisisAlert emitted asynchronously before EmotionIntentPacket completed | Integration test |
 | Shared LLM call JSON schema | Output always valid against both schemas | Schema validation test on 500 test messages |
 | Refinement skip conditions | All 5 conditions must be true simultaneously | Property test |
 | EmotionIntentPacket completeness | All required fields populated or explicitly None | Schema validation test |
@@ -1238,7 +1238,7 @@ One model call. Two classification outputs. This is the correct optimization.
 
 4. **The Empathy Hypothesis makes reasoning auditable.** By generating an explicit, structured internal reasoning artifact before any response is produced, Layer 3 ensures that the emotional logic is testable and correctable. If Nova gives a bad response, the Empathy Hypothesis explains why — and points to the correctable assumption.
 
-5. **Crisis detection is parallel, never sequential.** A crisis alert reaches Layer 8 (Crisis Detection Engine) and Layer 11 (Safety Agent) the moment it is detected. It does not wait for the EmotionIntentPacket to complete. This is a non-negotiable architectural property. In crisis situations, 200ms of unnecessary latency is unacceptable.
+5. **Crisis detection is parallel, never sequential.** A crisis alert reaches Layer 11 (Safety Agent) the moment it is detected. It does not wait for the EmotionIntentPacket to complete. This is a non-negotiable architectural property. In crisis situations, 200ms of unnecessary latency is unacceptable.
 
 6. **One LLM call for two classifications.** SC-1 and SC-3 share a single inference call. This is not an optimization afterthought — it is the specified design. The emotion and intent classifications are semantically related tasks that benefit from shared context, and combining them halves the latency cost.
 
@@ -1272,7 +1272,7 @@ The single public entry point is `packet_builder.build_emotion_intent_packet(...
 The non-deterministic/heavy dependencies are injected as plain callables so the entire layer runs and is unit-tested with zero external services:
 
 - `llm_fn(message) -> LLMClassificationOutput` — the shared SC-1+SC-3 small-model call (§14.2). When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
-- `alert_fn(CrisisAlert) -> None` — the parallel crisis emitter to Layer 8 + Layer 11 (§3.6). The production wiring is async (§14.1); Layer 3 only guarantees the callback fires **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5). The alert is fired from the heuristic pre-filter result, so it survives an LLM failure (verified by test).
+- `alert_fn(CrisisAlert) -> None` — the crisis emitter to Layer 11 (Safety Agent) (§3.6). The production wiring is async (§14.1); Layer 3 only guarantees the callback fires **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5). The alert is fired from the heuristic pre-filter result, so it survives an LLM failure (verified by test).
 
 The default in-process behaviour (no `llm_fn`) is pure-stdlib — the spec's NumPy/SQLite mention in §14.1 is an aspirational backend; the BES arithmetic is implemented in plain Python and the metadata reads are abstracted behind the injected memory inputs.
 

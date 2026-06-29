@@ -414,7 +414,7 @@ Some identity beliefs are flagged `is_immutable = True` at initialization and ca
 - "Nova always surfaces crisis resources when self-harm risk is detected"
 - "Nova does not claim certainty about user's inner emotional state"
 
-These policies live in Identity Memory but have a separate hard-coded enforcement path in the Safety Agent (Layer 11) — with crisis-resource surfacing also gated by the Crisis Detection Engine (Layer 8) — that is independent of the identity retrieval pipeline. (Layer 9 is Output Delivery; the older "Safety Layer (Layer 9)" numbering is corrected here.)
+These policies live in Identity Memory but have a separate hard-coded enforcement path in the Safety Agent (Layer 11) — which also owns crisis detection and crisis-resource surfacing — that is independent of the identity retrieval pipeline. (Layer 8 is Tool Use & Actions, not crisis; Layer 9 is Output Delivery; the older "Safety Layer (Layer 9)" numbering is corrected here.)
 
 ---
 
@@ -1494,7 +1494,7 @@ LLM-backed generalizer/extractor; the defaults are dependency-free.
 - Storage reconciled from pgvector/PostgreSQL/Chroma to **on-device SQLite + hnswlib** (§4.4, §13, §17.1) to match CLAUDE.md and Layer 12.
 - Context-gate modes reconciled to Layer 3's canonical taxonomy; `celebration` row added (§8.5).
 - `required_contradictions` inline comment fixed (0.3 → 4, not 3) — the `ceil` formula is authoritative (§5.3).
-- Immutable-policy enforcement reference corrected from "Safety Layer (Layer 9)" to Layer 11 / Layer 8 (§6.5).
+- Immutable-policy enforcement reference corrected from "Safety Layer (Layer 9)" to Layer 11 (Safety Agent, which owns crisis) (§6.5).
 - Selection is deterministic top-3 by effective score (§8.6); softmax/τ is provided for optional stochastic variation (§8.4).
 
 **Test coverage.** 107 unit tests in `tests/unit/` (`test_memory_embedding`, `test_memory_strength`,

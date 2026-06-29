@@ -3,7 +3,7 @@
 Runs the six sub-components in order (SC-1..SC-4 are independent, SC-5 synthesises them,
 SC-6 resolves the mode), translates the structured result into the plain-language
 instructions the LLM will actually receive (§9.1), and guarantees the two hard rules of
-§12: a crisis alert is emitted to Layer 8 + Layer 11 *before* anything that can fail, and
+§12: a crisis alert is emitted to Layer 11 (Safety Agent) *before* anything that can fail, and
 Layer 3 always emits a packet — a degraded packet beats no packet.
 """
 
