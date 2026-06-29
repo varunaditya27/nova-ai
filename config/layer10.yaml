@@ -1,20 +1,91 @@
 # Layer 10 Configuration — Longitudinal Life Layer
 #
-# Tunable parameters:
-#   summary_cycles:
-#     - weekly_summary_day: day of week (default: Sunday)
-#     - weekly_summary_time: time of day (default: 01:00 AM)
-#     - monthly_check_in_day: (default: 1st of month)
-#     - quarterly_retrospective_months: (default: every 3 months)
+# These values mirror the module-level constants in backend/layer10_longitudinal/ (the code is the
+# single source of truth) and match docs/layer-10-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   chapter_detection:
-#     - temporal_gap_hours: gap between chapters (default: 168 = 1 week)
-#     - life_event_significance_threshold: (default: 0.8)
-#     - emotional_shift_stddev_threshold: (default: 2.0)
-#
-#   life_dimensions:
-#     - career, relationships, health, mental_health, learning, creative, financial, leisure
-#     - progress_tracked_per_dimension: status updates
-#
-#   narrative_arc:
-#     - turning_point_criteria: milestone, relational shift, crisis resolved, explicit
+# Scope note: Layer 10 is entirely asynchronous (background jobs), never on the message loop.
+# All narrative synthesis is an injected LLM callable, and all time-relative logic is keyed off an
+# injected reference date — so the layer is deterministic and testable offline.
+
+layer10:
+
+  # ── SC-1 Life Narrative Engine (§3) ───────────────────────────────────────
+  narrative:
+    chapter_boundary_categories: ["career_transition", "educational_transition",
+                                  "relational_major", "geographic_relocation",
+                                  "major_loss", "health_major"]
+    min_chapter_duration_days: 21             # suppress micro-chapters from event noise (§3.4)
+    significant_moment_importance: 0.70       # episode importance threshold for a defining moment
+    significant_moment_intensity: 0.75        # emotional-intensity threshold
+    synthesis_temperature: 0.3                # narrative fidelity over creativity (§3.3)
+    full_resynthesis: monthly
+
+  # ── SC-2 Weekly Summary Engine (§4) ───────────────────────────────────────
+  weekly_summary:
+    run_day: Sunday
+    run_time: evening
+    min_sessions_for_summary: 2               # below this → minimum_data_threshold_met = false
+    baseline_window_weeks: 8                  # rolling valence baseline for comparison
+    comparison_delta: 0.10                    # better/worse/above/below threshold
+    top_topics: 5
+    delivery:
+      enabled_by_default: false               # opt-in; never pushed without consent
+      relationship_stage_min: acquaintance
+      max_length_words: 120
+
+  # ── SC-3 Progress & Pattern Tracker (§5) ──────────────────────────────────
+  progress_tracker:
+    rolling_windows_weeks: [2, 4, 12, 26, 52]
+    trend_delta: 0.10                         # improving/declining vs stable
+    valence_windows_days: { short: 28, long: 84 }
+    pattern_detection:
+      min_occurrences: 3                      # require ≥3 repetitions to flag (signal vs noise)
+      min_confidence: 0.65
+      emotional_cycle_dip: 0.20               # day-of-week mean below overall mean by this
+      topic_recurrence_min_weeks: 4
+    life_domains: ["career", "health", "relationships", "learning",
+                   "creativity", "finance", "personal_growth"]
+    neglected_domain_floor: 0.08              # domain weight below this → neglected
+
+  # ── SC-4 Retrospective Engine (§6) ────────────────────────────────────────
+  retrospective:
+    surfacing_windows_days:                   # how long a generated retrospective stays valid
+      one_week_ago: 3
+      one_month_ago: 7
+      three_months_ago: 14
+      six_months_ago: 21
+      one_year_ago: 30
+      goal_anniversary: 14
+      chapter_close: 7
+      relationship_milestone: 3
+      first_year_in_review: 60
+      quarterly_growth: 14
+      pattern_surfacing: 21
+    then_window_days: 14                       # episodes within ±N days of the reference date
+    crisis_excluded_from_year_in_review: true
+
+  # ── SC-5 Life Calendar (§7) ───────────────────────────────────────────────
+  life_calendar:
+    relationship_milestone_days: [30, 100, 365]
+    life_event_anniversary_years: [1, 2, 3]
+    check_cycle_minutes: 60                    # lightweight due-date scan
+
+  # ── Retention / privacy (§10) ─────────────────────────────────────────────
+  retention:
+    weekly_summary_years: 5
+    narrative_arc: lifetime
+    progress_record_years: 5
+    retrospective_packet_years: 5
+    calendar_entry_years: 3
+    not_used_for_model_training: true
+    encrypted_at_rest: true
+
+  # ── §13 design principles (enforced in code) ──────────────────────────────
+  principles:
+    longitudinal_is_what_makes_a_companion: true
+    synthesis_not_logging: true
+    never_surface_without_grounding: true
+    user_owns_their_story: true
+    retrospectives_require_relationship_capital: true
+    time_is_not_uniform: true
