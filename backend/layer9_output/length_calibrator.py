@@ -1,27 +1,60 @@
-# Layer 9, Sub-Component: Length Calibrator
-#
-# Responsibility: Compute appropriate response length based on context.
-#
-# Length targets (approximate tokens):
-#   - short: 40 (curt, single point)
-#   - medium: 80 (typical response)
-#   - long: 220 (detailed, multi-point)
-#
-# Factors:
-#   - Circadian band: Late night → shorter (user may be tired)
-#   - Emotional intensity: High emotion → longer (more support needed)
-#   - Conversation history: If user's last message was short → respond shorter
-#   - User preference: Learned from engagement signals (Layer 9 format profile)
-#   - Domain: Task help → medium/long; casual chat → medium/short
-#
-# Main functions:
-#   - compute_length_target(context) -> LengthTarget
-#   - learned_user_length_preference(user_id) -> LengthTarget
-#
-# Integration:
-#   - Called by Layer 4 (prompt_builder) before generating response
-#   - Read by Layer 3 (semantic_planner) to constrain generation
-#   - Updated by user_format_profile based on engagement signals
-#
-# Design: Length target is advisory to LLM, not a hard constraint.
-# Gives generator guidance but allows overrides for good reasons.
+"""SC-1 — Length Calibrator (architecture doc §3.6).
+
+Computes a ``(min_chars, max_chars)`` target that bounds the Layer 4 response. Response length
+is a *social signal*, not just information density — so the target is computed here and passed
+**upstream to Layer 4 before generation**, rather than truncating after the fact. Deterministic.
+"""
+
+from __future__ import annotations
+
+# Base char ranges per conversation mode (architecture doc §3.6).
+BASE_RANGES = {
+    "casual_chat":       (40, 180),
+    "task_help":         (100, 600),
+    "emotional_support": (60, 250),
+    "crisis_support":    (80, 220),
+    "deep_reasoning":    (200, 800),
+    "technical":         (150, 700),
+    "celebration":       (60, 200),
+}
+_HARD_MAX = 1200
+
+
+def compute_length_target(
+    conversation_mode: str,
+    emotional_intensity: float,
+    content_type: str,
+    turn_type: str,
+    relationship_stage: str,
+    user_preferred_length: str,
+) -> tuple[int, int]:
+    """Return the (min_chars, max_chars) length target for Layer 4 (architecture doc §3.6)."""
+    min_c, max_c = BASE_RANGES.get(conversation_mode, (80, 400))
+
+    # Turn-type modifiers.
+    if turn_type == "venting":
+        max_c = min(max_c, 200)
+    elif turn_type == "question":
+        max_c = min(max_c, 180)
+    elif turn_type == "request_advice":
+        min_c = max(min_c, 120)
+    elif turn_type == "sharing_news":
+        max_c = min(max_c, 200)
+
+    # Emotional intensity: high distress → shorter, more space for them.
+    if emotional_intensity > 0.70:
+        max_c = int(max_c * 0.65)
+
+    # Relationship modifier.
+    if relationship_stage in ("stranger", "acquaintance"):
+        min_c = max(min_c, 100)
+    elif relationship_stage == "close_friend":
+        min_c = max(20, min_c // 2)
+
+    # User preference override.
+    if user_preferred_length == "short":
+        max_c = int(max_c * 0.65)
+    elif user_preferred_length == "long":
+        max_c = int(max_c * 1.40)
+
+    return (min_c, min(max_c, _HARD_MAX))

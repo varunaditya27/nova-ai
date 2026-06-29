@@ -1,15 +1,35 @@
-# Base TTS Backend Interface
-#
-# Abstract base class for all TTS implementations.
-# Enforces consistent interface across all TTS providers.
-#
-# Methods:
-#   - synthesize(ssml_text: str, voice_id: str = None) -> AudioBytes
-#   - stream_synthesize(ssml_text: str, voice_id: str = None) -> AsyncGenerator[AudioChunk]
-#   - supports_ssml() -> bool
-#   - get_available_voices() -> list[Voice]
-#   - set_voice(voice_id: str) -> None
-#   - health_check() -> bool
-#   - authenticate() -> bool (if auth required)
-#
-# All subclasses must implement. Allows easy provider swaps.
+"""Base TTS backend interface (architecture doc §5.7).
+
+Abstract base for all TTS providers so engine selection is transparent to the rest of Layer 9.
+Subclasses implement ``synthesize``; the base provides safe defaults for capability/health hooks.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from backend.layer9_output.schemas import AudioResult
+
+
+class TTSBackend(ABC):
+    """Uniform interface the Voice Synthesizer calls every TTS provider through."""
+
+    @abstractmethod
+    def synthesize(self, ssml_text: str, voice_id: Optional[str] = None) -> AudioResult:
+        """Render ``ssml_text`` to audio, returning an AudioResult (ok flag + bytes/error)."""
+
+    def supports_ssml(self) -> bool:
+        return True
+
+    def get_available_voices(self) -> list:
+        return []
+
+    def set_voice(self, voice_id: str) -> None:
+        self.default_voice = voice_id
+
+    def health_check(self) -> bool:
+        return True
+
+    def authenticate(self) -> bool:
+        return True
