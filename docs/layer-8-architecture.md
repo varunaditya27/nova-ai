@@ -131,18 +131,22 @@ gate or resolver.
 read → AUTO   search → AUTO   create → SOFT   update → SOFT   delete → HARD   send → HARD
 ```
 
-### 4.3 Escalation rules (each may only raise the tier — never lower it)
+### 4.3 Baseline + intrinsic floors
 
 ```python
-tier = ACTION_TIER_BASE[action_type]
-tier = max(tier, plugin.default_tier)          # a plugin may raise its own floor
+tier = plugin.default_tier or ACTION_TIER_BASE[action_type]   # plugin tier is authoritative baseline
+# intrinsic escalation floors — derived from the action, not the plugin; can only raise:
 if risk_level == HIGH:           tier = max(tier, HARD)
 if not reversible and external:  tier = max(tier, HARD)
 elif not reversible:             tier = max(tier, SOFT)
 ```
 
-The gate is **conservative and monotonic**: a `base_tier` override can raise a create to HARD,
-but can never lower a delete below its HARD floor. When in doubt, ask.
+A plugin's declared `default_tier` is **authoritative as the baseline** — it knows its own
+operation's stakes, so a reversible, low-stakes action (e.g. a reminder delete) may be AUTO even
+though DELETE defaults to HARD. On top of that baseline sit **intrinsic floors** that a plugin
+can never lower: high risk, irreversibility, and especially irreversible actions that reach
+outside Nova (→ always HARD). The gate can relax a verb's default *downward* for genuinely safe
+operations, but never below a safety floor. When in doubt, ask.
 
 ### 4.4 ConfirmationRequest assembly
 
@@ -154,22 +158,41 @@ surfaced to the user through Layer 9.
 
 ## 5. Sub-Component 1 — Tool Manager
 
-The orchestrator and the single entry point. `process(message, user_id, confirmed=False, ...)`:
+The orchestrator and the single entry point. `process(message, user_id, ...)`:
 
 1. **detect_intent** — via an injected `intent_fn` (an LLM in production) with a keyword
    fallback so the layer works offline. Returns `None` → `ToolUseOutput(tool_invoked=False)`.
 2. **route** — resolve the plugin; if absent / unsupported operation, no tool is invoked.
 3. **resolve params (SC-3)** — if a required parameter is missing, short-circuit with exactly
    one `clarification_question`.
-4. **gate (SC-2)** — compute the tier from the capability; if SOFT/HARD and not yet
-   `confirmed`, short-circuit with a `ConfirmationRequest`.
-5. **execute + record** — call `plugin.execute(operation, parameters)`, then record via SC-4.
+4. **gate (SC-2)** — compute the tier from the capability; if SOFT/HARD, register a bound
+   confirmation token and short-circuit with a `ConfirmationRequest`.
+5. **execute + record** — for AUTO, call `plugin.execute(...)`, then record via SC-4. A gated
+   action executes only when its token is presented back via `confirm_action`.
 
-`execute_tool(tool_name, operation, parameters, ...)` is the direct path (validates parameters,
-executes, records) for callers that already have a fully-specified action. `undo_action(action_id)`
-looks up the record's `undo_token`, dispatches to that plugin's `undo()`, and marks the record
-undone. The manager never performs actions itself — it routes through the uniform plugin
-interface, which is what makes plugins swappable.
+`confirm_action(request_id, user_id)` executes the action a token was issued for; it is
+ownership-checked and single-use. `execute_tool(tool_name, operation, parameters, ...,
+confirmation_id=None)` is the direct path — **fail-closed**: an AUTO operation runs, but a gated
+operation without a valid matching token is refused. `undo_action(action_id, user_id)` looks up
+the record's `undo_token`, refuses if another user owns the action, dispatches to that plugin's
+`undo()`, and marks the record undone. The manager never performs actions itself — it routes
+through the uniform plugin interface, which is what makes plugins swappable.
+
+### 5.1 Confirmation security model
+
+Confirmation is a **bound, single-use capability token**, never a trusted boolean:
+
+- When a SOFT/HARD action is gated, `process` records a pending confirmation whose `request_id`
+  is bound to a SHA-256 **fingerprint** of `(tool, operation, parameters, user_id)`.
+- Execution requires presenting that `request_id` back (`confirm_action` or `confirmation_id=`).
+  The token is validated against the fingerprint and **consumed on use**.
+- This closes three vectors together:
+  - **Replay** — a consumed token can't be reused.
+  - **Confused deputy** — a token issued for action A fails the fingerprint check for action B.
+  - **Cross-user use** — `user_id` is part of the fingerprint, so a token can't authorize a
+    different user's action; a non-owner's confirm attempt is refused *without* consuming it.
+- The **direct path is fail-closed** (no side door around the gate), and **undo is
+  ownership-checked**.
 
 ---
 
@@ -253,7 +276,10 @@ undo.
 | Unknown tool / unsupported operation | FAILURE result, recorded; no execution |
 | Missing required parameter | One clarifying question; no execution |
 | Invalid parameters (direct path) | FAILURE result, recorded; plugin never called |
+| Gated op on the direct path without a valid token | FAILURE ("confirmation required"), recorded; fail-closed, no execution |
+| Confirmation token replayed / for a different action / by a non-owner | Refused; no execution (§5.1) |
 | Plugin `execute` raises | Caught → FAILURE result with the error; recorded; pipeline never sees the exception |
+| Undo by a non-owner | Returns False; action untouched |
 | Undo of an irreversible action (sent email) | Returns False; record stays (audit is append-only) |
 
 **Hard rule:** a failure in Layer 8 degrades to "no action taken," is recorded, and never blocks
@@ -263,8 +289,9 @@ or crashes response generation.
 
 ## 11. Design Principles Summary
 
-1. **The user is always in control.** High-risk actions require explicit confirmation; tool
-   outputs are advisory; the user has final say.
+1. **The user is always in control.** High-risk actions require explicit confirmation via a
+   bound, single-use token (§5.1); the direct path is fail-closed; undo is ownership-checked;
+   tool outputs are advisory; the user has final say.
 2. **Everything is visible.** Every action is recorded and inspectable; the audit trail is
    append-only — undo is recorded, never erased.
 3. **Nothing is destroyed silently.** Deletes are logical (archived) and reversible. The one
@@ -285,15 +312,20 @@ or crashes response generation.
   `llm_fn` (synthesis), and per-plugin backends are injected callables with safe defaults, so
   the entire layer is testable offline with no network, OAuth, or external services.
 - **Capability-driven:** the gate and resolver are plugin-agnostic; they consume `Capability`
-  metadata. Adding a plugin is purely additive.
+  metadata. A plugin's declared tier is the authoritative baseline; intrinsic floors (§4.3) sit
+  above it. Adding a plugin is purely additive.
+- **Security (§5.1):** confirmation tokens are bound (SHA-256 of tool+operation+parameters+
+  user_id), single-use, and ownership-checked; the direct execution path is fail-closed on gated
+  tiers; undo refuses non-owners. These harden the orchestrator against confirmation replay,
+  confused-deputy, and missing-ownership classes of bug.
 - **Deviations from the May-28 scaffold:** none structural — the scaffold already modeled this
   layer correctly (tool_manager, confirmation_gate, parameter_resolver, action_recorder, plugins).
   The only reconciliation was documentary: this architecture doc previously held crisis content
   (now owned by Layer 11) and has been rewritten to specify Tool Use & Actions.
-- **Test coverage:** 85 unit tests across `test_confirmation_gate` (13), `test_base_plugin` (8),
+- **Test coverage:** 92 unit tests across `test_confirmation_gate` (14), `test_base_plugin` (8),
   `test_calendar_plugin` (8), `test_email_plugin` (8), `test_notes_plugin` (7),
   `test_reminders_plugin` (6), `test_web_search_plugin` (7), `test_parameter_resolver` (9),
-  `test_action_recorder` (8), `test_tool_manager` (11).
+  `test_action_recorder` (8), `test_tool_manager` (17).
 
 ---
 

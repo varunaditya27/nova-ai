@@ -15,7 +15,11 @@ Sub-components:
                                    (calendar, email, notes, reminders, web_search)
 
 Design commitments:
-- High-risk actions require explicit confirmation; the gate only ever ratchets a tier up.
+- High-risk actions require explicit confirmation via a bound, single-use token (not a trusted
+  boolean): the token is bound to (tool, operation, parameters, user_id), consumed on use, and
+  ownership-checked. The direct execution path is fail-closed on gated tiers, and undo refuses
+  non-owners. A plugin's declared tier is the authoritative baseline; intrinsic floors
+  (irreversible+external, high risk) sit above it and can only raise it.
 - Every action is recorded and user-inspectable (via Layer 12); the audit trail is append-only
   — undo is recorded, never erased. Deletes are archived (logical), so they can be undone.
 - A sent email is the one genuinely irreversible action; its undo returns False by design.

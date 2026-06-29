@@ -47,14 +47,17 @@ def compute_confirmation_tier(
 ) -> str:
     """Resolve the confirmation tier for an operation (§4.3).
 
-    The result is the maximum of: the action-verb base, any plugin-declared ``base_tier``,
-    and the escalation rules below — so the gate never relaxes a tier, only tightens it.
+    A plugin's declared ``base_tier`` is authoritative as the *baseline* (it knows its own
+    operation's stakes — e.g. a reversible reminder delete is AUTO); when none is given, the
+    action-verb base applies. On top of that baseline sit **intrinsic escalation floors** that a
+    plugin can never lower: high risk, irreversibility, and especially irreversible actions that
+    reach outside Nova. These floors derive from the action's nature, not the plugin's opinion,
+    so the gate can relax a verb's default downward but never drop below a safety floor.
     """
-    tier = ACTION_TIER_BASE.get(action_type, ConfirmationTier.SOFT.value)
-    if base_tier is not None:
-        tier = _max_tier(tier, base_tier)
+    tier = base_tier if base_tier is not None else ACTION_TIER_BASE.get(
+        action_type, ConfirmationTier.SOFT.value)
 
-    # Escalation rules — each can only raise the tier.
+    # Intrinsic escalation floors — each can only raise the tier.
     if risk_level == RiskLevel.HIGH.value:
         tier = _max_tier(tier, ConfirmationTier.HARD.value)
     if not reversible:
