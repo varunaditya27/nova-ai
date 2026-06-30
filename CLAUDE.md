@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction. The codebase is in scaffolding phase: most `.py` files contain detailed comment-block specifications describing the intended implementation rather than live code.
+Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
+
+**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1120 tests passing** — `/usr/bin/python3.11 -m pytest tests/ -q`). The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
 
 ## Commands
 

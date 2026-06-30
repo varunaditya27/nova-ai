@@ -1,26 +1,27 @@
-# State Updater
-#
-# Responsibility: Post-turn async state updates (never blocks user).
-#
-# Runs after response is sent to user:
-#   1. Write new memories to episodic store
-#   2. Update personality vector
-#   3. Update relationship states and tie strengths
-#   4. Process goal progress
-#   5. Detect life events and cascade effects
-#   6. Update User World Model
-#   7. Trigger consolidation if needed (forgetting engine)
-#   8. Log all changes to audit trail (Layer 12)
-#
-# Main functions:
-#   - run_state_update(session_id) → None  (async, fire-and-forget)
-#
-# Integration:
-#   - Called by conversation_orchestrator after response is sent
-#   - Triggered async (does not block user)
-#   - Reads from session buffer (Layer 2 working memory)
-#   - Writes to all persistent stores
-#   - Updates Layer 10 longitudinal data
-#
-# Design: All post-turn writes happen here, not during inference.
-# This keeps inference fast and memory operations independent.
+"""Post-turn state update orchestration (fire-and-forget; never blocks the user).
+
+Runs after the response is delivered. Sequences the write path across layers: Layer 2 episodic
+write + reinforcement + consolidation trigger, Layer 4 personality drift, Layer 5 relationship
+updates, Layer 7 goal progress, Layer 10 longitudinal data, Layer 12 audit log. Each writer is
+injected so this stays pure orchestration; a failing writer is logged and skipped so post-turn
+bookkeeping can never corrupt state or affect the (already delivered) response.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Callable, Sequence
+
+logger = logging.getLogger(__name__)
+
+
+def run_state_update(ctx, writers: Sequence[Callable]) -> int:
+    """Run each post-turn writer over the turn context. Returns the count that succeeded."""
+    succeeded = 0
+    for writer in writers:
+        try:
+            writer(ctx)
+            succeeded += 1
+        except Exception:  # post-turn writes must never affect the delivered response
+            logger.exception("post-turn writer %r failed; skipping", getattr(writer, "__name__", writer))
+    return succeeded
