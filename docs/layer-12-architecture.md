@@ -1456,4 +1456,43 @@ def generate_export(request: DataExportRequest) -> ExportPackage:
 
 ---
 
+## 13. Implementation Notes (as-built)
+
+- **Module map:** SC-1 `encryption_manager.py` (key hierarchy + authenticated encryption) +
+  `integrity_verifier.py` (Merkle tamper detection, §3.4); SC-2 `selective_deletion.py` (§4); SC-3
+  `memory_audit.py` (transparency view + query + provenance, §5) + `correction_interface.py` (the
+  six corrections, §5.5); SC-4 `sync_coordinator.py` (zero-knowledge deltas + conflict resolution,
+  §6); `privacy_agent.py` (coordinator: consent, deletion lifecycle, audit, integrity, §7);
+  `schemas.py`.
+- **Crypto (stdlib-honest):** the spec mandates AES-256-GCM / SQLCipher / Argon2id with keys in the
+  Secure Enclave. The test runtime is stdlib-only, so `encryption_manager` implements a *real*
+  authenticated-encryption construction from stdlib primitives — PBKDF2-HMAC-SHA256 (master key),
+  RFC-5869 HKDF (derived key hierarchy), a SHA-256 counter-mode keystream, and HMAC-SHA256
+  encrypt-then-MAC with constant-time verification. It genuinely round-trips, detects tampering, and
+  rejects wrong keys. **Production swaps the cipher for AES-256-GCM** behind the same key hierarchy;
+  the sync key uses Argon2id in production (PBKDF2 here). PBKDF2 iterations default to 600k
+  (tests pass a lower value for speed).
+- **Dependency injection:** all stores (memory/semantic/identity/personality/longitudinal/safety/
+  goal), the embedder, and the certificate signer are injected, so the layer runs and is tested
+  fully offline with no database, network, or sync server.
+- **Surgical deletion:** `dry_run_deletion` computes the full `CascadeImpactReport` (semantic facts
+  → delete/update/flag, personality impact, longitudinal references) before anything is touched;
+  execution secure-zeros content before removal and emits a signed `DeletionCertificate`.
+- **Zero-knowledge sync:** `build_delta` encrypts the operations payload on-device; tests assert the
+  ciphertext contains no plaintext and that a wrong key cannot decrypt. Conflict resolution is
+  per-memory-type (episodic insert / semantic last-write-wins / identity hold-for-user / personality
+  weighted-merge / longitudinal keep-more-complete).
+- **Deviations from the May-28 scaffold (reconciled):** the scaffold's older `forget_*` deletion
+  names are replaced by the authoritative six-type taxonomy. The Memory Audit module is implemented
+  as `memory_audit.py`; note `tests/unit/test_memory_audit.py` belongs to **Layer 2** (the audit
+  trail) — Layer 12's audit tests live in `test_memory_audit_view.py`. The full SQLCipher
+  STORE_ARCHITECTURE, Secure-Enclave key storage, and on-disk DB files are deployment concerns
+  beyond the unit layer; the algorithms (key derivation, integrity, deletion, sync, audit) are
+  implemented and tested here.
+- **Test coverage:** 62 unit tests across `test_encryption_manager` (9), `test_integrity_verifier`
+  (7), `test_selective_deletion` (11), `test_memory_audit_view` (9), `test_correction_interface`
+  (8), `test_sync_coordinator` (10), `test_privacy_agent` (8).
+
+---
+
 *This document specifies Layer 12 completely. All four sub-components — SC-1 On-Device Memory (hybrid storage tiering table, complete KeyHierarchy schema with all four key types and derivation algorithms, KeyLifecycleManager with rotation and destruction operations, full STORE_ARCHITECTURE map with 8 database files, IntegrityVerifier with Merkle tree algorithm and tamper detection), SC-2 Selective Deletion (6 DeletionType values with undo windows and confirmation requirements, DeletionRequest and DeletionScope schemas, CascadeImpactReport schema, dry run algorithm computing cascade across semantic facts, personality vector, and longitudinal references, DeletionExecutor with secure zero overwrite and deletion certificate generation), SC-3 Memory Audit (MemoryAuditView with all 7 sections and complete AuditableMemory/AuditableFact/AuditableBelief/PersonalityAuditSection schemas, AuditQueryEngine with 5 query intent types and retrieval logic, ProvenanceRecord with reinforcement event log, full MemoryCorrectionRequest with all 6 correction types and apply logic), SC-4 Cross-Platform Sync (SyncDelta and SyncOperation schemas, push_delta and pull_and_apply protocol, ConflictResolutionPolicy with per-memory-type resolution for all 5 memory types, SyncConfiguration and DeviceSyncProfile schemas, sync server trust model) — are fully specified. The Privacy Agent coordination architecture, AuditIndexBuilder, ConsentManager with all 6 consent types, DPDP Act compliance map, error handling for all 10 failure cases, performance targets, data export mechanism, and design principles are all explicitly defined. No behavior of Layer 12 requires assumptions or inferences from other documents.*
