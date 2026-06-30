@@ -1,20 +1,16 @@
-# System 2 Pipeline
-#
-# Responsibility: Full path for complex/emotional messages (System 2).
-# Calls: Layer 1 → Layer 2 → Layer 3 (full reasoning) → Layer 4 → Groq (Agent 4a + 4b) → Layer 9
-#
-# Speed target: < 30 seconds total (including two LLM calls)
-# Quality: Thoughtful, empathetically refined, reasoning-aware.
-#
-# Main functions:
-#   - run_system2(context) -> FinalResponse
-#   - stream_system2(context) -> AsyncGenerator[Event]
-#
-# Integration:
-#   - Called by conversation_orchestrator when cognitive_mode = System2
-#   - Calls layer3_reasoning.two_stage_pipeline for full reasoning
-#   - Calls infra.llm.groq_client for both Agent 4a and 4b
-#   - Full output orchestration via Layer 9
-#
-# Design: Thorough. Uses empathy hypothesis to shape Agent 4b refinement.
-# This is where emotional intelligence shines.
+"""System 2 pipeline — full path for complex/emotional turns (<30s target).
+
+Persona resolution + Agent 4a (Semantic Planner) + Agent 4b (Emotion Refiner). In production the
+injected steps wrap the Groq API (llama-3.3-70b) for both agents and the empathy hypothesis from
+Layer 3 shapes the 4b refinement. Thin re-export of the orchestrator's `run_system2`.
+"""
+
+from __future__ import annotations
+
+from backend.pipeline.conversation_orchestrator import PipelineSteps, TurnContext, run_system2
+
+
+def run(ctx: TurnContext, steps: PipelineSteps) -> TurnContext:
+    """Run the System 2 generation path over the turn context (mutates and returns it)."""
+    run_system2(ctx, steps)
+    return ctx
