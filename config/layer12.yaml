@@ -1,30 +1,90 @@
 # Layer 12 Configuration — Privacy & Data Infrastructure
 #
-# Tunable parameters:
-#   encryption:
-#     - cipher: AES-256-GCM
-#     - key_derivation: Scrypt (N=16384, r=8, p=1)
-#     - transport_protocol: TLS 1.3
+# These values mirror the module-level constants in backend/layer12_privacy/ (the code is the
+# single source of truth) and match docs/layer-12-architecture.md. Reproduced as real,
+# machine-readable YAML for future re-tuning without code changes.
 #
-#   key_hierarchy:
-#     - masterKey: derived from user password
-#     - memoryKey: encrypts episodic/semantic stores
-#     - sessionKey: single-session encryption
-#     - rotation_interval_days: (default: 90)
-#
-#   deletion_requests:
-#     - grace_period_days: undo window (default: 30)
-#     - types: forget_person, forget_topic, forget_session, forget_emotion, full_reset
-#
-#   audit_trail:
-#     - retention_days: keep logs for (default: 365)
-#     - immutable: all deletions append-only
-#
-#   sync_protocol:
-#     - delta_window_hours: batch deltas (default: 1)
-#     - conflict_resolution: most_recent_wins or user_decides (default: most_recent_wins)
-#     - server_knowledge: zero (server never decrypts)
-#
-#   integrity_checks:
-#     - merkle_verification_interval_hours: (default: 24)
-#     - corruption_alert_user: (default: true)
+# Crypto note: the production spec is AES-256-GCM via SQLCipher with keys in the Secure Enclave
+# and Argon2id for the sync key. The stdlib-only runtime implements a real authenticated-encryption
+# construction (PBKDF2-HMAC-SHA256 + HKDF + SHA-256 CTR + HMAC encrypt-then-MAC); production swaps
+# the cipher for AES via the same key hierarchy.
+
+layer12:
+
+  # ── SC-1 On-Device Memory / encryption (§3.2-§3.4) ────────────────────────
+  encryption:
+    cipher_production: AES-256-GCM            # implemented as a stdlib AEAD stand-in for tests
+    master_key_kdf: PBKDF2-HMAC-SHA256
+    pbkdf2_iterations: 600000                 # production; tests pass a lower value
+    derived_key_kdf: HKDF-SHA256
+    sync_key_kdf_production: Argon2id
+    key_rotation_interval_days: 90
+    keys: [master_key, memory_encryption_key, vector_encryption_key, session_key, sync_backup_key]
+  integrity:
+    merkle_hash: sha256
+    check_interval_hours: 24                  # daily at 3am local
+    order_independent_leaves: true
+    alert_user_on_mismatch: true
+
+  # ── SC-2 Selective Deletion (§4) ──────────────────────────────────────────
+  deletion:
+    types: [single_memory, topic_based, semantic_wipe, identity_memory, longitudinal_data, full_wipe]
+    undo_windows_hours:                       # full_wipe is irreversible (0)
+      single_memory: 1
+      topic_based: 1
+      semantic_wipe: 1
+      identity_memory: 24                     # longest — hardest to rebuild
+      longitudinal_data: 1
+      full_wipe: 0
+    confirmation:
+      single_memory: standard
+      topic_based: review_then_confirm
+      semantic_wipe: standard
+      identity_memory: extra
+      longitudinal_data: review_then_confirm
+      full_wipe: extra_plus_passphrase
+    secure_zero_before_delete: true
+    deletion_certificate_signed: true
+
+  # ── SC-3 Memory Audit + corrections (§5) ──────────────────────────────────
+  memory_audit:
+    query_intents: [temporal_query, topic_query, relationship_query, identity_query,
+                    pattern_query, category_query]
+    importance_labels: [Low, Medium, High, Anchored]
+    safety_section_count_only: true           # never shows crisis content, only counts
+    correction_types: [edit, downgrade, decontextualize, anchor, expire, confirm]
+
+  # ── SC-4 Cross-Platform Sync (§6) ─────────────────────────────────────────
+  sync:
+    zero_knowledge: true                      # server stores opaque ciphertext only
+    pull_interval_minutes: 15
+    conflict_resolution:                      # per memory type (§6.4)
+      episodic_memories: insert
+      semantic_facts: last_write_wins
+      identity_beliefs: hold_pending_user_resolution
+      personality_vector: weighted_merge
+      longitudinal: keep_more_complete
+      default: last_write_wins
+    per_category_toggles_default:
+      sync_episodic_memory: true
+      sync_semantic_memory: true
+      sync_identity_memory: true
+      sync_personality_vector: true
+      sync_longitudinal_data: true
+      sync_goal_state: true
+      sync_safety_record: false               # most sensitive; off by default
+
+  # ── Privacy Agent — consent (§7) + DPDP (§8) ──────────────────────────────
+  consent:
+    types: [cloud_backup_sync, usage_telemetry, weekly_summary_delivery, proactive_checkins,
+            crisis_session_logging, memory_for_personalization]
+    non_revocable: [crisis_session_logging]
+    default_off: [cloud_backup_sync, usage_telemetry, weekly_summary_delivery]
+
+  # ── §12 design principles (enforced in code) ──────────────────────────────
+  principles:
+    user_data_is_users_not_novas: true
+    privacy_must_be_verifiable_not_claimed: true
+    zero_knowledge_sync_is_the_architecture: true
+    deletion_must_be_genuinely_surgical: true
+    trust_through_transparency_not_assurance: true
