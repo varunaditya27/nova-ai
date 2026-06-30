@@ -1587,4 +1587,55 @@ What the user experiences across the cold start period:
 
 ---
 
+## 12. As-Built Implementation Notes
+
+This section records how the specification above maps onto the shipped, fully-tested code in
+`backend/layer13_onboarding/`. The implementation is **pure Python stdlib** (dataclasses +
+str-`Enum`, `re`, `datetime`, `uuid`) — no third-party dependencies, no LLM calls in any
+extractor or policy (matching the <20ms / <60ms performance targets in §10). Tests live in
+`tests/unit/` and run on `/usr/bin/python3.11` (60 tests for this layer; full suite 1057 passing).
+
+### 12.1 Module map
+
+| Spec component | Module | Public surface |
+|---|---|---|
+| Schemas (§4.2, §5.1, §6.2) | `schemas.py` | `ElicitationItem`, `PassiveSignalBundle` (+ 8 signal dataclasses), `InitialState`/`InitialStateUpdate`, `PersonalityVector`, `EmotionalBaseline`, `CommunicationStyleProfile`, `ColdStartBehaviorConfig`, `GraduationCriterion`/`GraduationResult`/`GraduationHandoff`, `IntroductionStyle`, `FeatureReadinessProfile` (+ prereq dataclasses), `FeatureIntroductionEvent`, directive dataclasses |
+| SC-1 passive (§4.5) | `passive_elicitation.py` | `PassiveElicitationEngine.extract()` + 8 `_extract_*` methods |
+| SC-1 active (§4.3-§4.4) | `active_elicitation_queue.py` | `INITIAL_ELICITATION_ITEMS`, `ElicitationQueue.next_surfaceable_item()`, `ElicitationSurfacingPolicy.can_surface()` |
+| SC-2 (§5) | `context_constructor.py` | `make_initial_state()`, `ColdStartContextBuilder.process_message()`, `generate_first_message()` |
+| SC-2 graduation (§5.4) | `graduation_evaluator.py` | `GraduationEvaluator.evaluate()` / `.execute_graduation()` |
+| SC-3 (§6) | `feature_pacing.py` | `FEATURE_INTRODUCTION_REGISTRY`, `FeaturePacingController.is_feature_active()` / `.queue_introduction_if_ready()` / `.get_all_active_features()` |
+| Coordinator (§7) | `cold_start_engine.py` | `ColdStartEngine.on_session_start()` / `.on_message()` / `.on_session_end()` / `.deactivate()` |
+
+### 12.2 Deviations from the pseudocode (deliberate, behavior-preserving)
+
+- **`make_initial_state()` factory** replaces the dataclass-with-defaults `InitialState` from §5.1.
+  Python shares mutable default values across instances; a factory guarantees each user gets an
+  independent state (regression-tested in `test_each_user_gets_independent_state`).
+- **`generate_first_message(time_of_day, persona=None)`** keeps the persona shaping
+  template-based (no LLM) per the §5.2 note that "Persona only adjusts the precise wording, not
+  the structure," and on any failure returns the §9 hard fallback `"Hey. What's on your mind?"`.
+- **Semantic facts seeded during cold start are plain dicts**, not `SemanticFact` objects, so
+  Layer 13 stays decoupled from Layer 2's concrete schema; Layer 2 ingests them at write time.
+- **Extractor exception-safety is centralized** in `PassiveElicitationEngine.extract()` (§9): a
+  single failing extractor is logged and skipped, the rest of the `PassiveSignalBundle` is intact.
+- **Graduation handoff hooks** (`activate_proactivity_engine`, `activate_longitudinal_full_mode`,
+  `trigger_first_chapter_creation`, `set_personality_drift_gate`) are implemented as methods on
+  `ColdStartEngine` that the Conversation Orchestrator wires into the live Layers 6/10/4 in
+  production; in isolation they log and mutate overlay state. `on_session_end()` wraps both
+  `evaluate()` and `execute_graduation()` so any failure leaves the user in cold start (never a
+  partial activation), exactly as §9 requires.
+
+### 12.3 Invariants enforced in code
+
+- **Safety is never gated**: `FeaturePacingController.is_feature_active("crisis_resource_awareness", …)`
+  short-circuits to `True` before any prerequisite check, and the registry entry carries zero
+  technical/relational prereqs (`test_crisis_always_active_even_at_session_zero`).
+- **Earn before asking**: `can_surface()` requires an active natural trigger **and** enforces
+  `MAX_ELICITATION_PER_SESSION = 1` in the first `EARLY_PERIOD_SESSIONS = 14`.
+- **Graduation is silent**: `execute_graduation()` returns a `GraduationHandoff` with no
+  user-facing message and flips `cold_start` off as a background state change.
+
+---
+
 *This document specifies Layer 13 completely. All three sub-components — SC-1 Progressive Elicitation (ElicitationItem and ElicitationQueue schemas with full population, priority taxonomy, three surfacing rules with enforcement logic, PassiveElicitationEngine with 8 fully implemented extractors for vocabulary register, emotional expression style, topic approach, self-disclosure comfort, named people, life context, urgency, and communication style, three-phase elicitation timeline), SC-2 Cold Start Handling (complete InitialState schema with population defaults and rationale for every value, ColdStartBehaviorConfig with all 7 behavioral constraints, first message template with requirements and anti-patterns, ColdStartContextBuilder with full message processing and personality vector drift algorithm, GraduationEvaluator with 7 required criteria as enforceable predicates, execute_graduation() handoff sequence), SC-3 Feature Introduction Pacing (IntroductionStyle enum with definitions, FeatureReadinessProfile and sub-schemas, complete Feature Introduction Registry with 11 features from personality adaptation through retrospective including safety exception, FeaturePacingController with is_feature_active() and queue_introduction_if_ready() logic) — are fully specified. The Cold Start Engine coordination architecture with on_session_start/on_message/on_session_end lifecycle, onboarding experience arc table, error handling for 9 failure cases, performance targets for all 8 operations, and 5 design principles with their enforcement mechanisms are all explicitly defined. No behavior of Layer 13 requires assumptions or inferences from other documents.*
