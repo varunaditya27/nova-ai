@@ -335,7 +335,7 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 | Component | Production target |
 |---|---|
-| API | FastAPI + WebSockets (`api/main.py`) |
+| API | FastAPI (`api/main.py`) — **live for `POST /chat` + `GET /health[/ready]`**; sync `/chat` bridges to the async layers via a threadpool. WebSocket streaming is a follow-up. |
 | Relational store | PostgreSQL 16 + SQLAlchemy 2.x (`infra/db/`) |
 | Vector store | ChromaDB service (`infra/vector_store/`); Ollama `nomic-embed-text` embeddings |
 | Local LLM (System 1) | Ollama + qwen2.5:7b (also gemma3:4b, nomic-embed-text) |

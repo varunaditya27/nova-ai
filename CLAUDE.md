@@ -113,6 +113,24 @@ When `crisis_flag=True` (confidence > 0.65), Layer 3 immediately emits a CrisisA
 
 Architecture docs recommend Phi-3 Medium (14B) / Gemma 2 9B for Agent 4a, and Llama 3.1 8B / Gemma 2 9B Instruct for Agent 4b. The config/pipeline uses Groq API (llama-3.3-70b) for System 2 overall — the per-agent model assignments are aspirational targets in the architecture docs.
 
+### API Layer (`api/`)
+
+The HTTP surface is live for conversation + health. `uvicorn api.main:app` boots the app; its
+lifespan builds the `AppState` composition root (`api/state.py`: config → `infra` LLM clients →
+Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). Endpoints:
+- **`POST /chat`** (`ChatRequest{message, session_id?}` → `ChatResponse`): drives one
+  `orchestrator.run_turn`. **Sync `def` on purpose** — FastAPI runs it in a worker thread so
+  `api/assembly.py`'s async→sync bridge (`_run`) is safe (Layers 1 & 2 are `async`; the orchestrator
+  is sync).
+- **`GET /health`** (liveness; compose healthcheck) and **`GET /health/ready`** (probes Postgres).
+
+`api/assembly.py` is the adapter layer mapping the orchestrator's 12 `PipelineSteps` hooks onto real
+layer entrypoints. Single-user: `user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).
+Post-turn `state_update` writes a real Postgres Session + EpisodicMemory row. **Not yet wired (documented
+follow-ups):** `cold_start` (Layer 13 — needs onboarding-persistence), SC-1 `guardrails` (needs a
+result-shape adapter), WebSocket streaming, auth, and the Layer-2-store↔ORM / Chroma live-path bridge.
+See `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md` §8 for the full roadmap.
+
 ### Infrastructure Stack
 
 - **API**: FastAPI + WebSockets (`api/main.py`)
