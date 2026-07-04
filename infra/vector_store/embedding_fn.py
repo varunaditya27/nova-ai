@@ -1,15 +1,15 @@
-# Ollama Embedding Function
-#
-# Responsibility: Provide embeddings via Ollama's local API.
-#
-# Model:
-#   - nomic-embed-text (free, runs locally, fast)
-#   - Pulled from Ollama on startup
-#
-# Main functions:
-#   - embed_query(query: str) -> list[float]
-#   - embed_documents(documents: list[str]) -> list[list[float]]
-#
-# Configuration:
-#   - OLLAMA_EMBED_MODEL: Model name (default: nomic-embed-text)
-#   - OLLAMA_EMBED_URL: Ollama API endpoint (default: http://localhost:11434)
+"""Chroma-compatible embedding function backed by an LLMClient (Ollama nomic-embed-text)."""
+from __future__ import annotations
+
+
+class OllamaEmbeddingFunction:
+    """Implements Chroma's EmbeddingFunction protocol: __call__(input) -> embeddings."""
+
+    def __init__(self, client):
+        self._client = client
+
+    def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002 (Chroma's arg name)
+        return self._client.embed(list(input))
+
+    def name(self) -> str:
+        return "ollama-embedding-function"
