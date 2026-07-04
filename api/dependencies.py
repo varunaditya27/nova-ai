@@ -1,14 +1,14 @@
-# FastAPI Dependencies
-#
-# Responsibility: Provide dependency injection for endpoints.
-#
-# Main dependencies:
-#   - get_db() -> Generator[Session, None, None]: SQLite session
-#   - get_current_user() -> User: Current authenticated user
-#   - get_groq_client() -> GroqClient: Groq API wrapper
-#   - get_ollama_client() -> OllamaClient: Ollama API wrapper
-#   - get_chroma_client() -> PersistentClient: ChromaDB client
-#   - get_memory_store() -> MemoryStore: Memory store interface
-#   - get_session_cache() -> SessionCache: Current turn's session cache
-#
-# All injected at endpoint level via FastAPI's Depends()
+"""FastAPI dependencies — resolve the booted AppState from the running app."""
+from __future__ import annotations
+
+from fastapi import Request
+
+from api.state import AppState
+
+
+def get_state(request: Request) -> AppState:
+    return request.app.state.nova
+
+
+def get_orchestrator(request: Request):
+    return request.app.state.nova.orchestrator
