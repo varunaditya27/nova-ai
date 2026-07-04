@@ -56,8 +56,12 @@ def test_every_layer_config_parses_and_is_namespaced(n):
 
 
 def test_pipeline_and_api_import():
-    for m in ("backend.pipeline", "api", "api.main"):
+    # `backend.pipeline` and the `api` package are pure-stdlib importable; `api.main` is the FastAPI
+    # app and requires the `api` extra, so it only imports where fastapi is installed.
+    for m in ("backend.pipeline", "api"):
         assert importlib.import_module(m) is not None
+    pytest.importorskip("fastapi")
+    assert importlib.import_module("api.main") is not None
 
 
 def test_orchestrator_threads_all_steps():
