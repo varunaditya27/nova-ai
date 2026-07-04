@@ -1,17 +1,21 @@
-# SQLAlchemy Models
-#
-# One file per domain. Not one giant models.py.
-#
-# Files (all to be created):
-#   - session.py: SessionRecord, MessageRecord, ThreadRecord (Layer 1)
-#   - memory.py: EpisodicRecord, SemanticRecord, IdentityRecord, ConsolidationRunRecord (Layer 2)
-#   - persona.py: PersonalityVectorRecord, EntityBeliefRecord (Layer 4)
-#   - relationship.py: RelationshipRecord, SocialGraphNode, DisclosureLogEntry, MilestoneRecord (Layer 5)
-#   - proactivity.py: PatternObject, NotificationRecord, IntrusionThresholdRecord (Layer 6)
-#   - goals.py: GoalRecord, TaskStepRecord, ConflictRecord, LifeEventRecord (Layer 7)
-#   - tools.py: ActionRecord, PendingConfirmation (Layer 8)
-#   - output_prefs.py: UserFormatProfile, VoicePreference (Layer 9)
-#   - longitudinal.py: WeeklySummaryRecord, NarrativeChapterRecord, TurningPointRecord, ProgressDimensionRecord (Layer 10)
-#   - safety.py: SafetyRecord, DependencyScoreRecord, GuardrailViolationLog (Layer 11)
-#   - privacy.py: DeletionCertificate, ConsentRecord, IntegrityCheckRecord, SyncDeltaRecord (Layer 12)
-#   - onboarding.py: ColdStartRecord, ElicitationRecord, FeatureReadinessRecord (Layer 13)
+"""ORM models mapping per-layer relational state. Importing this registers every table on Base.metadata."""
+from __future__ import annotations
+
+from infra.db.models.session import Session
+from infra.db.models.memory import EpisodicMemory, SemanticMemory, IdentityMemory, MemoryAudit
+from infra.db.models.persona import PersonaState
+from infra.db.models.relationship import RelationshipState
+from infra.db.models.goals import Goal
+from infra.db.models.proactivity import ProactiveItem
+from infra.db.models.safety import SafetyEvent
+from infra.db.models.privacy import PrivacyAudit
+from infra.db.models.longitudinal import LongitudinalSummary
+from infra.db.models.tools import ToolAction
+from infra.db.models.output_prefs import OutputPref
+from infra.db.models.onboarding import OnboardingState
+
+__all__ = [
+    "Session", "EpisodicMemory", "SemanticMemory", "IdentityMemory", "MemoryAudit",
+    "PersonaState", "RelationshipState", "Goal", "ProactiveItem", "SafetyEvent",
+    "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
+]
