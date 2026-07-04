@@ -3,7 +3,13 @@ system:
   database_url: ${DATABASE_URL:-postgresql+psycopg://nova:nova@postgres:5432/nova}
   chroma_host: ${CHROMA_HOST:-chroma}
   chroma_port: ${CHROMA_PORT:-8000}
+  default_user_id: ${NOVA_USER_ID:-local-user}
   debug_mode: false
+
+api:
+  host: ${API_HOST:-0.0.0.0}
+  port: 8000
+  cors_origins: ["http://localhost:3000"]
 
 llm:
   system1:
