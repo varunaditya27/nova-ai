@@ -1,12 +1,17 @@
-# SQLAlchemy Base
-#
-# Responsibility: Declare the declarative_base() that all models inherit from.
-#
-# Provides:
-#   - Base class for all models
-#   - Metadata registry (used by Alembic for auto-discovery)
-#
-# Principle: Single base. All models inherit from it.
-# This ensures Alembic sees all models automatically.
-#
-# No model definitions here. Just the base class.
+"""SQLAlchemy declarative base with a constraint naming convention (stable migration names)."""
+from __future__ import annotations
+
+from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
+
+_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=_CONVENTION)
