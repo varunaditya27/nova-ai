@@ -11,6 +11,11 @@ __pycache__/
 venv/
 env/
 
+# Secrets — never commit real env files (keep .env.example templates)
+.env
+**/.env
+!*.env.example
+
 # OS / editor noise
 .DS_Store
 *.swp

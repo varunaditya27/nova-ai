@@ -1,21 +1,24 @@
-# Backend Dockerfile
-#
-# Purpose: Containerize Nova AI backend for production deployment
-#
-# Build stages:
-#   1. Base: Python 3.11 slim image
-#   2. Dependencies: Install system + Python packages
-#   3. Code: Copy source, set working directory
-#   4. Configuration: Set environment variables, ports
-#
-# Runtime:
-#   - Entry point: uvicorn server on 0.0.0.0:8000
-#   - Volumes: Mount config/, data/, nova-data/ for persistence
-#   - Environment: Load from .env or docker-compose
-#
-# Health check:
-#   - GET /health endpoint for Kubernetes/Docker readiness
-#
-# Development:
-#   - Use docker-compose up for local testing
-#   - Volumes mount source for live code reload (if configured)
+# Nova AI backend — FastAPI app image.
+# Build from the repo root as context:  docker build -f docker/Dockerfile -t nova-ai:latest .
+# (docker-compose sets context: .. so paths below are repo-root relative.)
+FROM python:3.11-slim
+
+# Run as an unprivileged user (container-hardening).
+RUN useradd --create-home --uid 10001 nova
+
+WORKDIR /app
+
+# Install deps first for layer caching; only the infra extra is needed at runtime.
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir ".[infra]"
+
+# Copy source and hand ownership to the unprivileged user.
+COPY . .
+RUN chown -R nova:nova /app
+
+USER nova
+
+EXPOSE 8000
+# The api/ layer is a later increment; this CMD activates once api.main:app exists
+# (compose only starts this service under the `app` profile).
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
