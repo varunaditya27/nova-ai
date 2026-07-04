@@ -1,12 +1,7 @@
-# SQLite Database Layer
-#
-# Everything related to SQLite persistence via SQLAlchemy.
-#
-# Main components:
-#   - engine.py: create_engine() + SessionLocal factory
-#   - base.py: declarative_base() (single source of truth for all models)
-#   - models/: One file per domain (session, memory, persona, relationship, etc.)
-#   - migrations/: Alembic migrations (auto-generated via declarative_base)
-#
-# Core principle: All models inherit from base. Alembic autodiscovers all models.
-# No giant models.py. One model file per domain.
+"""Relational (Postgres) infrastructure — declarative base, engine, session scope."""
+from __future__ import annotations
+
+from infra.db.base import Base
+from infra.db.engine import init_db, make_engine, make_session_factory, session_scope
+
+__all__ = ["Base", "make_engine", "make_session_factory", "session_scope", "init_db"]

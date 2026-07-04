@@ -1,36 +1,76 @@
-# Docker Compose Configuration
-#
-# Orchestration: Multi-container setup for Nova AI system
-#
-# Services:
-#   1. backend:
-#      - Image: nova-ai:latest (from Dockerfile)
-#      - Port: 8000 (FastAPI)
-#      - Volumes: config/, nova-data/ (persistence)
-#      - Depends on: ollama, kokoro
-#      - Environment: From .env
-#
-#   2. ollama:
-#      - Image: ollama/ollama:latest
-#      - Port: 11434 (Ollama API)
-#      - Volumes: ollama-data (model cache)
-#      - Models: qwen2.5:7b, gemma3:4b, nomic-embed-text (pulled on startup)
-#
-#   3. kokoro:
-#      - Image: kokoro-tts:latest (custom Dockerfile)
-#      - Port: 8880 (OpenAI-compatible TTS API)
-#      - Volumes: none (stateless)
-#
-# Network:
-#   - All services on nova-network (bridge)
-#   - Backend connects to ollama:11434, kokoro:8880
-#
-# Volumes:
-#   - ollama-data: Model cache (persistent)
-#   - nova-data: Application data (persistent)
-#   - config: Configuration mount (writable)
-#
-# Usage:
-#   docker-compose up              # Start all services
-#   docker-compose down            # Stop all services
-#   docker-compose logs -f backend # Follow backend logs
+name: nova-ai
+
+# Local/dev topology. Published ports bind to 127.0.0.1 only so services (Postgres with
+# dev credentials, and the unauthenticated Chroma/Ollama APIs) are never exposed on the LAN.
+# In production, override credentials via .env and place these behind an authenticated gateway
+# rather than publishing ports.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nova}
+      POSTGRES_DB: ${POSTGRES_DB:-nova}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [nova-network]
+
+  chroma:
+    image: chromadb/chroma
+    ports: ["127.0.0.1:8001:8000"]
+    volumes: ["chromadata:/data"]
+    healthcheck:
+      # The chroma image has no curl/python/wget, but does ship bash; probe the port via /dev/tcp.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [nova-network]
+
+  ollama:
+    build:
+      context: ..
+      dockerfile: docker/ollama.Dockerfile
+    ports: ["127.0.0.1:11434:11434"]
+    volumes: ["ollamamodels:/root/.ollama"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [nova-network]
+
+  kokoro:
+    build:
+      context: ..
+      dockerfile: docker/kokoro.Dockerfile
+    ports: ["127.0.0.1:8880:8880"]
+    networks: [nova-network]
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    profiles: ["app"]              # started only once api/ exists: `docker compose --profile app up`
+    ports: ["127.0.0.1:8000:8000"]
+    env_file: [.env]
+    depends_on:
+      postgres: { condition: service_healthy }
+      chroma: { condition: service_healthy }
+      ollama: { condition: service_healthy }
+    networks: [nova-network]
+
+volumes:
+  pgdata:
+  chromadata:
+  ollamamodels:
+
+networks:
+  nova-network:
+    driver: bridge

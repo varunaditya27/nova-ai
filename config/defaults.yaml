@@ -1,32 +1,36 @@
-# Default Configuration
-#
-# YAML format: Global fallback values that apply to all layers
-# Loaded first; layer-specific YAML files override specific keys
-#
-# Sections:
-#   system:
-#     - database_url: SQLite path (default: ./nova-data/nova.db)
-#     - chroma_persist_path: ChromaDB storage (default: ./nova-data/chroma/)
-#     - debug_mode: Enable verbose logging (default: false)
-#
-#   llm:
-#     - groq_model: System 2 model (default: llama-3.3-70b-versatile)
-#     - groq_temperature: Reasoning temp (default: 0.7)
-#     - groq_max_tokens: Max output (default: 2048)
-#     - ollama_base_url: Ollama endpoint (default: http://localhost:11434)
-#     - ollama_system1_model: Fast model (default: qwen2.5:7b)
-#     - ollama_system1_temperature: Fast temp (default: 0.5)
-#     - ollama_embedding_model: Embedding (default: nomic-embed-text)
-#
-#   memory:
-#     - recall_weights: α β γ δ for 4-signal formula
-#     - softmax_temperature: τ for recall distribution (default: 1.0)
-#     - decay_rate: per-session importance decay (default: 0.92)
-#
-#   timing:
-#     - system1_timeout_ms: Max System 1 time (default: 2000)
-#     - system2_timeout_ms: Max System 2 time (default: 30000)
-#
-# Example usage in Python:
-#   config = load_config('defaults.yaml', 'layer2.yaml')
-#   α = config['memory']['recall_weights']['alpha']
+# Nova AI — default configuration (loaded first; override files deep-merge over this).
+system:
+  database_url: ${DATABASE_URL:-postgresql+psycopg://nova:nova@postgres:5432/nova}
+  chroma_host: ${CHROMA_HOST:-chroma}
+  chroma_port: ${CHROMA_PORT:-8000}
+  debug_mode: false
+
+llm:
+  system1:
+    provider: ollama
+    model: qwen2.5:7b
+    temperature: 0.5
+    max_tokens: 1024
+  system2:
+    provider: groq
+    model: llama-3.3-70b-versatile
+    temperature: 0.7
+    max_tokens: 2048
+  embeddings:
+    provider: ollama
+    model: nomic-embed-text
+  providers:
+    groq:
+      base_url: https://api.groq.com/openai/v1
+      api_key: ${GROQ_API_KEY}
+    ollama:
+      base_url: ${OLLAMA_BASE_URL:-http://ollama:11434}
+
+memory:
+  recall_weights: { alpha: 0.40, beta: 0.30, gamma: 0.20, delta: 0.10 }
+  softmax_temperature: 0.7
+  decay_rate: 0.92
+
+timing:
+  system1_timeout_ms: 2000
+  system2_timeout_ms: 30000

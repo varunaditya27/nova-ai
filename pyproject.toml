@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nova-ai"
+version = "0.1.0"
+description = "13-layer cognitive architecture for long-term human-AI companionship"
+requires-python = ">=3.11"
+dependencies = []            # base install is pure-stdlib; the 1120 offline tests need nothing here
+
+[project.optional-dependencies]
+infra = [
+    "pyyaml>=5.4",
+    "groq>=0.11",
+    "ollama>=0.3",
+    "chromadb>=0.5",
+    "sqlalchemy>=2",
+    "psycopg[binary]>=3.1",
+]
+dev = [
+    "nova-ai[infra]",
+    "pytest>=7",
+    "pytest-mock>=3",
+]
+
+[tool.setuptools]
+packages = ["config", "infra", "backend"]
+
+[tool.pytest.ini_options]
+markers = [
+    "docker: integration test requiring a live dockerised service (auto-skips when unreachable)",
+]

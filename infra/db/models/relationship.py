@@ -1,10 +1,13 @@
-# Relationship Models (Layer 5)
-#
-# ORM models for:
-#   - RelationshipRecord: One row per relationship
-#   - SocialGraphNode: One row per named person in user's life
-#   - SocialGraphEdge: Relationship between nodes (user's perception)
-#   - DisclosureLogEntry: Log of what user discloses to each person
-#   - MilestoneRecord: Relationship events (met, conflict, reconnection, etc.)
-#
-# Encrypted at rest.
+from __future__ import annotations
+
+from sqlalchemy import Float, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from infra.db.base import Base
+from infra.db.models._mixins import UserScopedMixin
+
+
+class RelationshipState(UserScopedMixin, Base):
+    __tablename__ = "relationship_state"
+    stage: Mapped[str] = mapped_column(String(32), default="new")
+    trust: Mapped[float] = mapped_column(Float, default=0.0)

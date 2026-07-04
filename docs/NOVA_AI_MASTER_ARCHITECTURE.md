@@ -175,8 +175,8 @@ Modules: `service`, `assembler`, `temporal_resolver`, `implicit_signals`, `multi
 Modules: `arbiter`, `stm`, `memory_store`, `semantic_memory`, `identity`, `recall_scorer`,
 `competitive_recall`, `context_gate`, `forgetting_engine`, `memory_strength`, `embedding`,
 `state_updater`, `audit_trail`, `memory_types`, `schemas`.
-- **Stores:** STM (40-turn / 12k-char rolling, never persisted), Episodic (hnswlib, 384-dim
-  all-MiniLM-L6-v2, cosine, ef_construction=200, M=16), Semantic (distilled, confidence-weighted),
+- **Stores:** STM (40-turn / 12k-char rolling, never persisted), Episodic (ChromaDB collection,
+  cosine, embeddings via Ollama `nomic-embed-text`), Semantic (distilled, confidence-weighted),
   Identity (self-model; some `is_immutable`), and the **User World Model** (on-device only, never
   cloud-synced — the most sensitive structure in the system).
 - **Competitive recall:** `RecallScore = α·Semantic + β·Emotional + γ·Temporal + δ·Importance`,
@@ -314,9 +314,9 @@ These hold across the entire system and are enforced in code (most are asserted 
 
 | Concern | Store | Notes |
 |---|---|---|
-| Relational data | PostgreSQL (+ pgvector) | episodic/semantic embeddings in production |
-| On-device sensitive | SQLite + SQLCipher | UWM, audit trail, goals, personality, safety records — encrypted at rest |
-| Vector store | **hnswlib** (in-process, on-device) | `memory.vdb`; 384-dim all-MiniLM-L6-v2; cosine; no server/network |
+| Relational data | PostgreSQL (`infra/db/`, SQLAlchemy 2.x) | per-layer structured state; vectors live in Chroma, so no pgvector |
+| On-device sensitive | SQLite + SQLCipher | UWM, audit trail, goals, personality, safety records — encrypted at rest (Layer 12) |
+| Vector store | **ChromaDB** (service/container; `infra/vector_store/`) | collections `episodic`/`semantic`/`identity`; cosine; embeddings via Ollama `nomic-embed-text`. Supersedes the earlier hnswlib design. |
 | Session cache | `infra/session_cache.py` | ephemeral per-turn buffer; distinct from Layer 2 STM |
 
 **Tamper-evidence appears twice, by design:** Layer 2's audit trail and Layer 11's safety record
@@ -324,7 +324,10 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 > Implementation note: the committed code is pure-stdlib and dependency-injected so the full suite
 > runs offline with no databases or model servers. Production swaps concrete backends (Postgres,
-> SQLCipher, hnswlib, Ollama, Groq, Kokoro) in behind the same interfaces/key hierarchy.
+> SQLCipher, ChromaDB, Ollama, Groq, Kokoro) in behind the same interfaces/key hierarchy. The
+> runtime substrate that provides those backends lives in `infra/` (config loader + role-based LLM
+> factory, ChromaDB vector store, Postgres/SQLAlchemy models) and is dockerised under `docker/`
+> — see `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
 
 ---
 
@@ -333,15 +336,21 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 | Component | Production target |
 |---|---|
 | API | FastAPI + WebSockets (`api/main.py`) |
+| Relational store | PostgreSQL 16 + SQLAlchemy 2.x (`infra/db/`) |
+| Vector store | ChromaDB service (`infra/vector_store/`); Ollama `nomic-embed-text` embeddings |
 | Local LLM (System 1) | Ollama + qwen2.5:7b (also gemma3:4b, nomic-embed-text) |
 | Cloud LLM (System 2) | Groq API + llama-3.3-70b-versatile |
+| LLM client layer | `infra/llm/` — official `groq`/`ollama` SDKs behind one `LLMClient` ABC, config-driven factory |
 | Layer 3 classifier | Phi-3 Mini / Gemma 2B (fast emotion+intent) |
 | Agent 4a / 4b targets | Phi-3 Medium 14B / Gemma 2 9B; Llama 3.1 8B / Gemma 2 9B Instruct (aspirational) |
 | TTS | Kokoro (Docker, port 8880, OpenAI-compatible) |
 | Background jobs | APScheduler (`background/scheduler.py`) — consolidation 2h, proactive 30m, patterns weekly, integrity daily, longitudinal Sunday |
 
-Docker services: `backend` :8000, `ollama` :11434, `kokoro` :8880 on `nova-network`; backend
-waits for `ollama` + `kokoro` healthy.
+Docker services (`docker/docker-compose.yml`): `postgres` :5432, `chroma` :8001→8000, `ollama`
+:11434, `kokoro` :8880, and `backend` :8000 (profile `app`) on `nova-network`. All published ports
+bind to `127.0.0.1`; backend runs non-root and waits for postgres/chroma/ollama healthy. The `infra`
+extra in `pyproject.toml` carries the third-party deps; the base install stays pure-stdlib so the
+offline suite is unaffected.
 
 Config: `config/defaults.yaml` loads first, then per-layer `config/layerN.yaml` overrides. Each
 layer config is namespaced under `layerN:` and mirrors that layer's module constants (the code is
@@ -352,8 +361,11 @@ configs parse and are correctly namespaced.
 
 ## 9. Engineering Conventions
 
-- **Language/runtime:** Python 3.11, standard library only (dataclasses + str-`Enum`; `hashlib`/
-  `hmac`/`secrets` for crypto). No pydantic/numpy/sqlalchemy/cryptography in the committed code.
+- **Language/runtime:** Python 3.11. The **13 cognitive layers + pipeline** are standard library only
+  (dataclasses + str-`Enum`; `hashlib`/`hmac`/`secrets` for crypto) — no pydantic/numpy/sqlalchemy/
+  cryptography. The **`infra/` substrate** is the sole home of third-party deps (`groq`, `ollama`,
+  `chromadb`, `sqlalchemy`, `psycopg`), isolated behind the `pyproject.toml` `infra` extra so the
+  layer suite stays install-free and offline.
 - **Dependency injection everywhere:** LLMs, stores, embedders, signers, HTTP, RNG, and clocks are
   injected callables/duck-typed objects → the system is deterministic and runs offline.
 - **TDD throughout:** every layer (and the orchestrator) was built red→green per sub-component.

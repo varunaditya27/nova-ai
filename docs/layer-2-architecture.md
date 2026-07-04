@@ -196,14 +196,20 @@ Base importance is assigned at creation time by the Episodic Memory Extractor ba
 
 ### 4.4 Storage Backend
 
-- **Vector store**: **hnswlib** — in-process, on-device, no server/network; `memory.vdb`; 384-dim all-MiniLM-L6-v2; cosine space, `ef_construction=200`, `M=16` (the canonical store across the architecture; the earlier "pgvector / Chroma" mention is superseded)
+> **⚠ As-built (2026-07-04, authoritative):** the production **vector store is ChromaDB**
+> (`infra/vector_store/`), running as its own service/container, with embeddings from the Ollama
+> `nomic-embed-text` embedding function (cosine; collections `episodic`/`semantic`/`identity`). This
+> **supersedes the hnswlib design described below** and the earlier pgvector mention. Relational
+> state lives in PostgreSQL (`infra/db/`). The hnswlib text is retained as historical design
+> rationale. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
+
+- **Vector store** *(historical design; superseded by ChromaDB — see note above)*: hnswlib — in-process, on-device, no server/network; `memory.vdb`; 384-dim all-MiniLM-L6-v2; cosine space, `ef_construction=200`, `M=16`
 - **Metadata store**: SQLite (all non-vector fields), with B-tree indexes on `user_id`, `created_at`, `importance_score`
 - **Encryption**: SQLCipher (on-device, encrypted at rest)
 
 > **Implementation note:** the engine talks to the index through a `VectorIndex` protocol, so a
-> dependency-free brute-force cosine index drives tests/offline dev and hnswlib drops in for
-> production without code changes. (`conftest.py` currently mocks ChromaDB — the architecture
-> spec is hnswlib; tests are updated accordingly when wiring the DB-backed store.)
+> dependency-free brute-force cosine index drives tests/offline dev; **ChromaDB** (`infra/vector_store/`)
+> is the production implementation behind that protocol.
 
 All episodic memories are stored on-device by default. Cloud sync is opt-in and requires explicit user consent (governed by Layer 12).
 
@@ -1486,8 +1492,10 @@ runs and is tested offline; real backends drop in without touching engine code.
 
 **Backend/store injection.** `Embedder`, `VectorIndex`, the FCE generalizer, the identity
 belief-generator, and the episode extractor are all injectable; the memory store and audit
-trail are passed in. Production wires all-MiniLM-L6-v2 + hnswlib + SQLite/SQLCipher and the
-LLM-backed generalizer/extractor; the defaults are dependency-free.
+trail are passed in. Production wires the Ollama `nomic-embed-text` embedder + **ChromaDB**
+(`infra/vector_store/`) + PostgreSQL (`infra/db/`) and the LLM-backed generalizer/extractor; the
+defaults are dependency-free. (Supersedes the earlier all-MiniLM/hnswlib target — see the §4.4
+as-built note.)
 
 **Reconciliations applied during implementation** (the doc above reflects these):
 - Recall weights corrected to α=.40 β=.30 γ=.20 δ=.10 and τ default 0.7 (config was stale).

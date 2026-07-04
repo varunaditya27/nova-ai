@@ -1,0 +1,9 @@
+.git
+__pycache__/
+*.pyc
+.venv/
+tests/
+docs/
+.env
+**/.env
+nova-data/

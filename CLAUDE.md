@@ -84,7 +84,7 @@ Eight sub-components organized in three groups:
 
 **Storage sub-components:**
 - **Short-Term Memory (STM)**: In-RAM session buffer; 40-turn rolling window, 12,000-char limit; never persisted; evicted turns pass through a promotion check before discard
-- **Episodic Memory**: Summaries of meaningful past interactions; embeddings stored in **hnswlib** (`memory.vdb`, on-device, in-process — no server/network); 384-dim all-MiniLM-L6-v2 embeddings; cosine space, ef_construction=200, M=16
+- **Episodic Memory**: Summaries of meaningful past interactions; embeddings stored in **ChromaDB** (`episodic_memory` collection, cosine space) via the Ollama `nomic-embed-text` embedding function; embedding dim follows the model. (Historical note: earlier revisions specified hnswlib/`memory.vdb`; superseded by the ChromaDB infra substrate — see `infra/vector_store/`.)
 - **Semantic Memory**: Stable generalized facts distilled from clustered episodic memories by the FCE; `confidence` increases with each supporting episode
 - **Identity Memory**: Nova's self-model (beliefs, values, behavioral policies); some entries are `is_immutable = True` (safety-critical, never updated)
 - **User World Model (UWM)**: Structured model of the user as a person in the world — profile, relationship graph, life context, psychological model, communication model. **On-device only, never cloud-synced.** The most sensitive data structure in the system.
@@ -116,9 +116,9 @@ Architecture docs recommend Phi-3 Medium (14B) / Gemma 2 9B for Agent 4a, and Ll
 ### Infrastructure Stack
 
 - **API**: FastAPI + WebSockets (`api/main.py`)
-- **Relational DB**: PostgreSQL; pgvector extension for episodic/semantic memory embeddings
-- **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records)
-- **Vector store**: **hnswlib** (in-process, on-device, no server); all-MiniLM-L6-v2 384-dim embeddings. Note: `conftest.py` mocks ChromaDB — the architecture spec is hnswlib; update tests accordingly when implementing.
+- **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used.
+- **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
+- **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
 - **Local LLM inference**: Ollama serving qwen2.5:7b (System 1), gemma3:4b, nomic-embed-text (embeddings)
 - **Cloud LLM**: Groq API (llama-3.3-70b-versatile) for System 2
 - **Layer 3 classifier**: Phi-3 Mini / Gemma 2B (emotion+intent classification, fast path)
@@ -128,13 +128,17 @@ Architecture docs recommend Phi-3 Medium (14B) / Gemma 2 9B for Agent 4a, and Ll
 
 ### Docker Services
 
+Topology lives in `docker/docker-compose.yml` (compose file + per-service Dockerfiles under `docker/`). Bring the backing services up with `docker compose -f docker/docker-compose.yml up -d`; the `backend` app container is gated behind the `app` profile until the `api/` layer exists.
+
 ```
-backend  → port 8000 (FastAPI)
-ollama   → port 11434 (local LLM inference; pulls qwen2.5:7b, gemma3:4b, nomic-embed-text on startup)
+postgres → port 5432 (relational store; loopback-bound)
+chroma   → port 8001→8000 (vector store; loopback-bound)
+ollama   → port 11434 (local LLM inference; pulls qwen2.5:7b, gemma3:4b, nomic-embed-text on first start)
 kokoro   → port 8880 (TTS)
+backend  → port 8000 (FastAPI; profile `app`)
 ```
 
-Backend depends on `ollama` and `kokoro` being healthy before starting. All services on `nova-network` bridge network.
+All published ports bind to `127.0.0.1` only (no LAN exposure of Postgres/Chroma/Ollama); the backend runs as a non-root user. `backend` depends on postgres/chroma/ollama being healthy before starting. All services on the `nova-network` bridge network.
 
 ## Key Design Invariants
 
