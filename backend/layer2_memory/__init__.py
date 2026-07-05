@@ -34,7 +34,7 @@ from .forgetting_engine import (
     should_trigger_fce,
 )
 from .identity import apply_identity_update, update_threshold
-from .memory_store import InMemoryMemoryStore
+from .memory_store import InMemoryMemoryStore, resolve_uwm_query
 from .memory_strength import (
     decay_rate,
     decayed_strength,
