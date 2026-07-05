@@ -15,9 +15,11 @@ from infra.db.models.longitudinal import LongitudinalSummary
 from infra.db.models.tools import ToolAction
 from infra.db.models.output_prefs import OutputPref
 from infra.db.models.onboarding import OnboardingState
+from infra.db.models.sync import SyncDelta
 
 __all__ = [
     "Session", "EpisodicMemory", "SemanticMemory", "IdentityMemory", "MemoryAudit", "UserWorldModel",
     "PersonaState", "RelationshipState", "Goal", "ProactiveItem", "SafetyEvent",
     "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
+    "SyncDelta",
 ]

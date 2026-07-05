@@ -145,6 +145,11 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   chain (`infra/db/privacy_audit.py` → `privacy_audit` table). `GET /memory/integrity` verifies both
   the Layer-2 memory-audit chain and the Layer-12 privacy chain. (Cross-store semantic/personality/
   longitudinal cascade is a documented follow-up — Layer-12's cascade schema differs from Layer-2's.)
+- **Sync (Layer 12, zero-knowledge)** (`api/routes/sync.py`): `POST /sync/push`, `GET /sync/pull`,
+  `GET /sync/status`. The server is a **blind relay** — it stores opaque AES ciphertext produced
+  on-device by `SyncCoordinator.build_delta` (`PostgresSyncStore` → `sync_delta` table) and hands
+  each device the deltas from *other* devices past its cursor (the monotonic row `id`). It never
+  holds the key and never decrypts; `push` is idempotent on `delta_id`.
 - **Tools (Layer 8)** (`api/routes/tools.py`): `GET /tools/pending`, `POST /tools/confirm/{id}`,
   `POST /tools/deny/{id}`, `GET /tools/history`. A single `ToolManager` lives on `AppState`
   (`build_tool_manager`) with the five plugins registered against **local/offline backends** (no
