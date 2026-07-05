@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from config import load_config
 from infra.db import make_engine, make_session_factory, init_db, session_scope
 import infra.db.models as models
-from backend.layer2_memory import InMemoryMemoryStore
+from infra.db.memory_store import PostgresMemoryStore
+from backend.layer2_memory.schemas import EpisodicMemory
 from backend.pipeline import ConversationOrchestrator
 from api.assembly import build_pipeline_steps
 
@@ -31,11 +33,14 @@ class AppState:
     default_user_id: str
 
 
-def make_session_writer(session_factory) -> Callable:
-    """Return a post-turn writer that persists a Session (upsert turn_count) + EpisodicMemory row.
+def make_episodic_writer(store, embed_client, session_factory) -> Callable:
+    """Post-turn writer: upsert the Session turn count and persist a real EpisodicMemory.
 
-    Failures are logged and swallowed — the response is already delivered, so post-turn bookkeeping
-    must never surface to the user (matches the orchestrator's state-update invariant).
+    The turn message is embedded (via the injected embed client) and saved through the store, so
+    recall reads it back on later turns and after a restart. LLM-summarization extraction is a
+    later increment — ``summary`` is the raw message for now. Best-effort and swallowed: the
+    response is already delivered, so post-turn bookkeeping must never surface to the user (matches
+    the orchestrator's state-update invariant).
     """
     def _write(ctx) -> None:
         try:
@@ -46,11 +51,18 @@ def make_session_writer(session_factory) -> Callable:
                     s.add(models.Session(user_id=ctx.user_id, session_key=key, turn_count=1))
                 else:
                     row.turn_count += 1
-                s.add(models.EpisodicMemory(
-                    user_id=ctx.user_id,
-                    summary=(getattr(ctx, "message", "") or "")[:2000], importance=0.3))
+            message = getattr(ctx, "message", "") or ""
+            episode = EpisodicMemory(
+                user_id=ctx.user_id,
+                summary=message[:2000],
+                embedding=embed_client.embed([message])[0] if message else [],
+                created_at=getattr(ctx, "now", None) or datetime.now(timezone.utc),
+                importance_score=0.3,
+                S_current=1.0,
+                creation_agent="api.episodic_writer")
+            store.save_episodic(episode)
         except Exception:
-            logger.exception("session writer failed; turn already delivered")
+            logger.exception("episodic writer failed; turn already delivered")
     return _write
 
 
@@ -68,10 +80,11 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         from infra.vector_store import build_vector_store
         vector_store = build_vector_store(config)
 
+    store = PostgresMemoryStore(session_factory)
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
-        embed=llm_clients["embed"], memory_store=InMemoryMemoryStore(),
-        session_writer=make_session_writer(session_factory))
+        embed=llm_clients["embed"], memory_store=store,
+        session_writer=make_episodic_writer(store, llm_clients["embed"], session_factory))
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
