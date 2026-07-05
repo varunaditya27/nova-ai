@@ -1,7 +1,7 @@
 # Alembic Migrations — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Introduce Alembic as the versioned-migration mechanism for the Postgres schema, replacing
 `create_all` **in production**. Increment **#4** of persistence-completion.
 

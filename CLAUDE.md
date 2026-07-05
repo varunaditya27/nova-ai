@@ -26,6 +26,9 @@ pytest tests/path/to/test_file.py
 # Run a single test by name
 pytest tests/path/to/test_file.py::test_function_name -v
 
+# Apply DB migrations (production/persistent Postgres; the test suite uses create_all)
+alembic upgrade head
+
 # Seed the database with sample data
 python scripts/seed_db.py
 
@@ -143,7 +146,7 @@ state, and Alembic migrations. See
 ### Infrastructure Stack
 
 - **API**: FastAPI + WebSockets (`api/main.py`)
-- **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used.
+- **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used. The persistent schema is managed by **Alembic** (`alembic upgrade head`; baseline `migrations/versions/0001_baseline_schema.py` runs `create_all`); `init_db`/`create_all` remains the fast path for the offline SQLite test suite and ad-hoc bootstrap.
 - **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
 - **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
 - **Local LLM inference**: Ollama serving qwen2.5:7b (System 1), gemma3:4b, nomic-embed-text (embeddings)
