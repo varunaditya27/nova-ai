@@ -137,8 +137,9 @@ write-back), bumps the UWM version if present, appends a durable SHA-256 audit c
 (**`PostgresAuditTrail`**, `infra/db/audit_trail.py`, continues across restarts), and upserts a
 `Session` turn row — so `/chat` both remembers and strengthens memories across restarts. The post-turn
 path also runs the **real Layer-7 goal pipeline** (`make_goal_writer` → `run_goal_pipeline` against
-`PostgresGoalStore`, `infra/db/goal_store.py`), extracting and persisting stated goals (both writers
-composed via `_chain_writers`). See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`,
+`PostgresGoalStore`, `infra/db/goal_store.py`), extracting and persisting stated goals, and appends the
+turn's crisis assessment to an append-only safety log (`make_safety_writer` → `PostgresSafetyLog`,
+`infra/db/safety_store.py`) — all writers composed via `_chain_writers`. See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`,
 `docs/superpowers/specs/2026-07-05-layer2-write-path-persistence-design.md`, and
 `docs/superpowers/specs/2026-07-05-goal-persistence-design.md`. **Not yet wired (documented
 follow-ups):** `cold_start` (Layer 13 — needs onboarding-persistence), SC-1 `guardrails` (needs a

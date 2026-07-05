@@ -57,6 +57,18 @@ def test_memory_audit_payload_shape():
         assert row.prev_hash is None
 
 
+def test_safety_event_payload_shape():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as s:
+        s.add(models.SafetyEvent(user_id="u1", tier="tier_2", resolved=False,
+                                 payload={"confidence": 0.7}))
+    with session_scope(factory) as s:
+        row = s.query(models.SafetyEvent).filter_by(tier="tier_2").one()
+        assert row.payload["confidence"] == 0.7 and row.resolved is False
+
+
 def test_goal_model_has_status_and_user_scope():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)

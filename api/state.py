@@ -22,6 +22,7 @@ from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector, ShortTe
 from backend.layer7_goals import run_goal_pipeline
 from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
+from infra.db.safety_store import PostgresSafetyLog
 from api.assembly import build_pipeline_steps
 from api.reinforcement import used_memory_ids
 
@@ -114,6 +115,22 @@ def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
     return _write
 
 
+def make_safety_writer(session_factory) -> Callable:
+    """Post-turn: append the turn's crisis assessment to the safety log (append-only; NONE skipped)."""
+    def _write(ctx) -> None:
+        try:
+            assessment = getattr(ctx, "crisis_assessment", None)
+            signal = getattr(assessment, "signal", None) if assessment is not None else None
+            if signal is None or getattr(signal, "tier", "none") in ("none", "", None):
+                return
+            signal.user_id = signal.user_id or ctx.user_id
+            signal.session_id = signal.session_id or getattr(ctx, "session_id", "") or ""
+            PostgresSafetyLog(session_factory).record(signal)
+        except Exception:
+            logger.exception("safety writer failed; turn already delivered")
+    return _write
+
+
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
     config = config or load_config()
@@ -132,7 +149,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
     session_writer = _chain_writers(
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold),
-        make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]))
+        make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
+        make_safety_writer(session_factory))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer)
