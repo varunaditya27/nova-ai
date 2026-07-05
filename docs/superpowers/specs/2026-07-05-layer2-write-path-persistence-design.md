@@ -1,7 +1,7 @@
 # Layer-2 Postgres Write Path — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Wire the real `backend.layer2_memory.state_updater` into `/chat`'s post-turn path so
 memory **reinforcement**, **UWM version-bump**, and a tamper-evident **audit chain** all persist to
 Postgres and survive restarts. Increment **#2a** of persistence-completion; builds directly on

@@ -127,13 +127,17 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
 `api/assembly.py` is the adapter layer mapping the orchestrator's 12 `PipelineSteps` hooks onto real
 layer entrypoints. Single-user: `user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).
 The live recall path reads Layer-2 candidates from **`PostgresMemoryStore`** (`infra/db/memory_store.py`),
-and the post-turn writer persists a real `EpisodicMemory` (JSONB payload + embedding, via
-`infra/db/memory_serde.py`) plus a `Session` turn row — so `/chat` accumulates recallable memories that
-survive a restart. See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`. **Not yet
-wired (documented follow-ups):** `cold_start` (Layer 13 — needs onboarding-persistence), SC-1
-`guardrails` (needs a result-shape adapter), WebSocket streaming, auth, the Chroma ANN live-path,
-per-user Layer 4/5/7/11/13 state, and reinforcement/UWM/audit write-back (the `state_updater` mutates
-memories in place, which does not write through a Postgres store — increment #2). See
+and the post-turn writer runs the **real Layer-2 `state_updater`** (`make_state_update_writer`):
+it persists a new `EpisodicMemory` (JSONB payload + embedding, via `infra/db/memory_serde.py`),
+reinforces the recalled memories the response actually reflected (similarity-gated `S_current`
+write-back), bumps the UWM version if present, appends a durable SHA-256 audit chain
+(**`PostgresAuditTrail`**, `infra/db/audit_trail.py`, continues across restarts), and upserts a
+`Session` turn row — so `/chat` both remembers and strengthens memories across restarts. See
+`docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md` and
+`docs/superpowers/specs/2026-07-05-layer2-write-path-persistence-design.md`. **Not yet wired (documented
+follow-ups):** `cold_start` (Layer 13 — needs onboarding-persistence), SC-1 `guardrails` (needs a
+result-shape adapter), WebSocket streaming, auth, the Chroma ANN live-path, per-user Layer 4/5/7/11/13
+state, and Alembic migrations. See
 `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md` §8 for the full roadmap.
 
 ### Infrastructure Stack
