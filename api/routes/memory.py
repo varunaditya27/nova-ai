@@ -4,14 +4,30 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_state
-from api.schemas import MemoryAuditOut, MemoryOut, SemanticOut
+from api.schemas import IntegrityOut, MemoryAuditOut, MemoryDeletionOut, MemoryOut, SemanticOut
+from infra.db.audit_trail import PostgresAuditTrail
 from infra.db.memory_store import PostgresMemoryStore
+from infra.db.privacy_audit import PostgresPrivacyAudit
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
 
 def _store(state):
     return PostgresMemoryStore(state.session_factory)
+
+
+class _EpisodicDeletionStore:
+    """Adapts PostgresMemoryStore to the get/update/delete/all duck-type Layer-12 deletion expects."""
+    def __init__(self, store, user_id):
+        self._s, self._u = store, user_id
+    def all(self):
+        return self._s.active_episodic(self._u)
+    def get(self, mid):
+        return self._s.get_episodic(mid)
+    def update(self, mid, fields):
+        self._s.update_episodic(mid, fields)
+    def delete(self, mid):
+        self._s.delete_episodic(mid)
 
 
 def _ep_out(m) -> MemoryOut:
@@ -39,9 +55,49 @@ def memory_audit(state=Depends(get_state)):
         raise HTTPException(status_code=503, detail="memory temporarily unavailable")
 
 
+@router.get("/integrity", response_model=IntegrityOut)
+def memory_integrity(state=Depends(get_state)):
+    """Verify the tamper-evident hash chains (Layer-2 memory audit + Layer-12 privacy audit)."""
+    uid = state.default_user_id
+    try:
+        audit_ok = PostgresAuditTrail(state.session_factory, uid).verify()
+        privacy_ok = PostgresPrivacyAudit(state.session_factory, uid).verify()
+    except Exception:
+        raise HTTPException(status_code=503, detail="integrity check unavailable")
+    ok = audit_ok and privacy_ok
+    return IntegrityOut(status="INTACT" if ok else "TAMPER_DETECTED",
+                        audit_chain_ok=audit_ok, privacy_chain_ok=privacy_ok)
+
+
 @router.get("/{memory_id}", response_model=MemoryOut)
 def get_memory(memory_id: str, state=Depends(get_state)):
     m = _store(state).get_episodic(memory_id)
     if m is None:
         raise HTTPException(status_code=404, detail="memory not found")
     return _ep_out(m)
+
+
+@router.delete("/{memory_id}", response_model=MemoryDeletionOut)
+def delete_memory(memory_id: str, state=Depends(get_state)):
+    """Layer-12 selective deletion of a single memory: genuine 'forget' (unrecallable + content
+    zeroed), a signed deletion certificate, and a tamper-evident privacy-audit entry."""
+    from backend.layer12_privacy.selective_deletion import (
+        create_deletion_request, dry_run_deletion, execute_deletion)
+    from backend.layer12_privacy.schemas import DeletionScope, DeletionType
+
+    uid = state.default_user_id
+    store = _store(state)
+    mem = store.get_episodic(memory_id)
+    if mem is None or getattr(mem, "is_deleted", False):
+        raise HTTPException(status_code=404, detail="memory not found")
+
+    adapter = _EpisodicDeletionStore(store, uid)
+    req = create_deletion_request(uid, DeletionType.SINGLE_MEMORY.value,
+                                  DeletionScope(memory_id=str(memory_id)))
+    report = dry_run_deletion(req, adapter, semantic_store=None)
+    req.status = "confirmed"
+    cert = execute_deletion(req, adapter)
+    PostgresPrivacyAudit(state.session_factory, uid).append(
+        "delete_memory", {"memory_id": str(memory_id), "certificate": cert.token})
+    return MemoryDeletionOut(deleted=cert.deleted_count, memory_id=str(memory_id),
+                             certificate=cert.token, cascade=report.summary_human_readable)
