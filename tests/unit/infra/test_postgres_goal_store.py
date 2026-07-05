@@ -39,6 +39,16 @@ def test_cross_user_isolation():
     assert [g.title for g in PostgresGoalStore(f, "u1").load_by_status(["active"])] == ["a"]
 
 
+def test_get_is_user_scoped_no_cross_tenant_read():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    f = make_session_factory(engine)
+    PostgresGoalStore(f, "u1").add_goal(Goal(goal_id="g1", title="a", status="active"))
+    # A store bound to u2 must not read u1's goal by id.
+    assert PostgresGoalStore(f, "u2").get("g1") is None
+    assert PostgresGoalStore(f, "u1").get("g1").title == "a"
+
+
 def test_get_relevant_goals_inherited():
     store = _store()
     now = datetime.now(timezone.utc)
