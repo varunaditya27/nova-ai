@@ -20,6 +20,51 @@ from .schemas import (
 )
 
 
+def resolve_uwm_query(uwm, query_type: str, context: str = "") -> dict:
+    """Typed UWM query logic shared by every store implementation (§7.9).
+
+    Downstream layers never touch the UWM directly. Kept as a free function so the
+    in-memory and Postgres-backed stores answer these queries identically.
+    """
+    if query_type == "relationship_context":
+        if uwm is None:
+            return {"relevant_people": []}
+        ctx = context.lower()
+        people = [
+            p for p in uwm.relationship_graph.people
+            if p.name.lower() in ctx or any(a.lower() in ctx for a in p.aliases)
+        ]
+        return {"relevant_people": people}
+
+    if query_type == "active_stressors":
+        if uwm is None:
+            return {"active_stressors": []}
+        return {"active_stressors": uwm.life_context.active_stressors}
+
+    if query_type == "communication_preferences":
+        if uwm is None:
+            return {"communication_preferences": None}
+        return {"communication_preferences": uwm.communication_model}
+
+    if query_type == "psychological_posture":
+        if uwm is None:
+            return {"support_style": None, "triggers": []}
+        return {
+            "support_style": uwm.psychological_model.preferred_support_style,
+            "triggers": uwm.psychological_model.known_triggers,
+        }
+
+    if query_type == "life_stage_context":
+        if uwm is None:
+            return {"profile": None, "active_situations": []}
+        return {
+            "profile": uwm.profile,
+            "active_situations": uwm.life_context.active_situations,
+        }
+
+    return {}  # pragma: no cover - unknown query type
+
+
 class InMemoryMemoryStore:
     """Default in-process store for all Layer 2 persistent memory."""
 
@@ -79,42 +124,4 @@ class InMemoryMemoryStore:
 
     def query_uwm(self, user_id: UUID, query_type: str, context: str = "") -> dict:
         """Typed UWM query interface (§7.9). Downstream layers never touch the UWM directly."""
-        uwm = self._uwm.get(user_id)
-
-        if query_type == "relationship_context":
-            if uwm is None:
-                return {"relevant_people": []}
-            ctx = context.lower()
-            people = [
-                p for p in uwm.relationship_graph.people
-                if p.name.lower() in ctx or any(a.lower() in ctx for a in p.aliases)
-            ]
-            return {"relevant_people": people}
-
-        if query_type == "active_stressors":
-            if uwm is None:
-                return {"active_stressors": []}
-            return {"active_stressors": uwm.life_context.active_stressors}
-
-        if query_type == "communication_preferences":
-            if uwm is None:
-                return {"communication_preferences": None}
-            return {"communication_preferences": uwm.communication_model}
-
-        if query_type == "psychological_posture":
-            if uwm is None:
-                return {"support_style": None, "triggers": []}
-            return {
-                "support_style": uwm.psychological_model.preferred_support_style,
-                "triggers": uwm.psychological_model.known_triggers,
-            }
-
-        if query_type == "life_stage_context":
-            if uwm is None:
-                return {"profile": None, "active_situations": []}
-            return {
-                "profile": uwm.profile,
-                "active_situations": uwm.life_context.active_situations,
-            }
-
-        return {}  # pragma: no cover - unknown query type
+        return resolve_uwm_query(self._uwm.get(user_id), query_type, context)
