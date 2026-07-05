@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from infra.db.models.session import Session
-from infra.db.models.memory import EpisodicMemory, SemanticMemory, IdentityMemory, MemoryAudit
+from infra.db.models.memory import (
+    EpisodicMemory, SemanticMemory, IdentityMemory, MemoryAudit, UserWorldModel,
+)
 from infra.db.models.persona import PersonaState
 from infra.db.models.relationship import RelationshipState
 from infra.db.models.goals import Goal
@@ -15,7 +17,7 @@ from infra.db.models.output_prefs import OutputPref
 from infra.db.models.onboarding import OnboardingState
 
 __all__ = [
-    "Session", "EpisodicMemory", "SemanticMemory", "IdentityMemory", "MemoryAudit",
+    "Session", "EpisodicMemory", "SemanticMemory", "IdentityMemory", "MemoryAudit", "UserWorldModel",
     "PersonaState", "RelationshipState", "Goal", "ProactiveItem", "SafetyEvent",
     "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
 ]

@@ -1,33 +1,43 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy import Boolean, JSON, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from infra.db.base import Base
 from infra.db.models._mixins import TimestampMixin, UserScopedMixin
 
+# Real JSONB in Postgres; TEXT-backed JSON on SQLite (keeps the offline suite dependency-free).
+_JSONB = JSON().with_variant(JSONB, "postgresql")
+
 
 class EpisodicMemory(UserScopedMixin, Base):
     __tablename__ = "episodic_memory"
-    summary: Mapped[str] = mapped_column(Text)
-    importance: Mapped[float] = mapped_column(Float, default=0.0)
-    vector_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    memory_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    vector_id: Mapped[str | None] = mapped_column(String(64), nullable=True)  # Chroma link (later)
+    payload: Mapped[dict] = mapped_column(_JSONB)
 
 
 class SemanticMemory(UserScopedMixin, Base):
     __tablename__ = "semantic_memory"
-    fact: Mapped[str] = mapped_column(Text)
-    confidence: Mapped[float] = mapped_column(Float, default=0.0)
-    support_count: Mapped[int] = mapped_column(Integer, default=1)
-    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False)
+    memory_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    is_deprecated: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    payload: Mapped[dict] = mapped_column(_JSONB)
 
 
 class IdentityMemory(TimestampMixin, Base):
     __tablename__ = "identity_memory"
-    key: Mapped[str] = mapped_column(String(128), index=True)
-    value: Mapped[str] = mapped_column(Text)
+    belief_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
     is_immutable: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload: Mapped[dict] = mapped_column(_JSONB)
+
+
+class UserWorldModel(UserScopedMixin, Base):
+    __tablename__ = "user_world_model"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_user_world_model_user_id"),)
+    payload: Mapped[dict] = mapped_column(_JSONB)
 
 
 class MemoryAudit(UserScopedMixin, Base):

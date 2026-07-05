@@ -10,8 +10,9 @@ import infra.db.models as models
 
 EXPECTED_TABLES = {
     "session", "episodic_memory", "semantic_memory", "identity_memory", "memory_audit",
-    "persona_state", "relationship_state", "goal", "proactive_item", "safety_event",
-    "privacy_audit", "longitudinal_summary", "tool_action", "output_pref", "onboarding_state",
+    "user_world_model", "persona_state", "relationship_state", "goal", "proactive_item",
+    "safety_event", "privacy_audit", "longitudinal_summary", "tool_action", "output_pref",
+    "onboarding_state",
 }
 
 
@@ -19,16 +20,28 @@ def test_all_tables_registered():
     assert EXPECTED_TABLES <= set(Base.metadata.tables)
 
 
-def test_create_all_and_insert_roundtrip():
+def test_episodic_payload_roundtrip():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     factory = make_session_factory(engine)
     with session_scope(factory) as s:
-        s.add(models.EpisodicMemory(user_id="u1", summary="first chat", importance=0.5))
+        s.add(models.EpisodicMemory(user_id="u1", memory_id="m1",
+                                    payload={"summary": "first chat"}))
     with session_scope(factory) as s:
-        row = s.query(models.EpisodicMemory).filter_by(user_id="u1").one()
-        assert row.summary == "first chat"
+        row = s.query(models.EpisodicMemory).filter_by(memory_id="m1").one()
+        assert row.payload["summary"] == "first chat"
+        assert row.is_deleted is False and row.is_archived is False
         assert isinstance(row.created_at, datetime)
+
+
+def test_user_world_model_one_per_user():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as s:
+        s.add(models.UserWorldModel(user_id="u1", payload={"update_version": 0}))
+    with session_scope(factory) as s:
+        assert s.query(models.UserWorldModel).filter_by(user_id="u1").one().payload["update_version"] == 0
 
 
 def test_goal_model_has_status_and_user_scope():
