@@ -65,6 +65,7 @@ def run_goal_pipeline(
         if progress_signal is not None:
             progress_monitor.update_progress_score(top, progress_signal)
             top.last_mentioned_at = now
+            goal_store.update_goal(top)  # persist progress through the store (store-agnostic)
             out.goals_updated.append(top.goal_id)
 
     # SC-4: accountability decision → GoalContextPacket (failure → no reference).
