@@ -57,6 +57,18 @@ def test_memory_audit_payload_shape():
         assert row.prev_hash is None
 
 
+def test_onboarding_state_payload_shape():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as s:
+        s.add(models.OnboardingState(user_id="u1", cold_start_active=True,
+                                     payload={"session_index": 0}))
+    with session_scope(factory) as s:
+        row = s.query(models.OnboardingState).filter_by(user_id="u1").one()
+        assert row.cold_start_active is True and row.payload["session_index"] == 0
+
+
 def test_safety_event_payload_shape():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
