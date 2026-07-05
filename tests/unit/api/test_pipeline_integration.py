@@ -64,3 +64,34 @@ def test_cold_start_overlay_skipped_after_graduation():
     out = ConversationOrchestrator(steps).run_turn("local-user", "hi")
     assert out.cold_start_active is False
     assert "layer13_onboarding" in out.layers_run  # hook ran, returned no overlay
+
+
+# ── Layer 8: tool use ─────────────────────────────────────────────────────────
+def test_handled_tool_turn_supplies_response_and_skips_generation():
+    steps = _steps()
+    calls = []
+    steps.plan = lambda ctx: calls.append("plan") or "GENERATED"
+    steps.tool_use = lambda ctx: SimpleNamespace(handled=True, response_text="Reminder set for 6pm.")
+    out = ConversationOrchestrator(steps).run_turn("local-user", "remind me at 6pm")
+    assert out.tool_invoked is True
+    assert out.response_text == "Reminder set for 6pm."
+    assert calls == []  # LLM generation was skipped
+    assert "layer8_tools" in out.layers_run
+
+
+def test_unhandled_tool_turn_falls_through_to_generation():
+    steps = _steps()
+    steps.tool_use = lambda ctx: None  # no tool intent
+    out = ConversationOrchestrator(steps).run_turn("local-user", "how are you?")
+    assert out.tool_invoked is False
+    assert out.response_text.strip()
+    assert "layer4_persona" in out.layers_run
+
+
+def test_tool_use_failure_falls_back_to_generation():
+    steps = _steps()
+    def _boom(ctx):
+        raise RuntimeError("plugin exploded")
+    steps.tool_use = _boom
+    out = ConversationOrchestrator(steps).run_turn("local-user", "do a thing")
+    assert out.tool_invoked is False and out.response_text.strip()

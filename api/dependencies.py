@@ -12,3 +12,7 @@ def get_state(request: Request) -> AppState:
 
 def get_orchestrator(request: Request):
     return request.app.state.nova.orchestrator
+
+
+def get_tool_manager(request: Request):
+    return request.app.state.nova.tool_manager

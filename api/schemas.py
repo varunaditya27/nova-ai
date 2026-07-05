@@ -17,7 +17,37 @@ class ChatResponse(BaseModel):
     cognitive_system: str
     crisis_active: bool
     refined: bool
+    tool_invoked: bool = False
     session_id: str
+
+
+# ── Tools (Layer 8) ──────────────────────────────────────────────────────
+class ToolConfirmationOut(BaseModel):
+    request_id: str
+    tool_name: str
+    action_type: str
+    action_description: str
+    tier: str
+    reversible: bool = True
+
+
+class ToolActionOut(BaseModel):
+    action_id: str
+    tool_name: str
+    operation: str
+    action_type: str
+    outcome: str
+    result_summary: str = ""
+    undone: bool = False
+
+
+class ToolResultOut(BaseModel):
+    ok: bool
+    tool_name: str = ""
+    operation: str = ""
+    outcome: str = ""
+    result_summary: str = ""
+    error_message: Optional[str] = None
 
 
 # ── Goals ────────────────────────────────────────────────────────────────

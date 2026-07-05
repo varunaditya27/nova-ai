@@ -39,6 +39,26 @@ class AppState:
     vector_store: Any
     orchestrator: ConversationOrchestrator
     default_user_id: str
+    tool_manager: Any = None
+
+
+def build_tool_manager(session_factory, user_id):
+    """A single Layer-8 ToolManager for the process: durable action audit + registered plugins
+    (local/offline backends). Held on AppState so the /chat pipeline and /tools routes share it —
+    pending confirmations issued in a turn are confirmable on a later request."""
+    from backend.layer8_tools import ToolManager
+    from backend.layer8_tools.plugins.calendar_plugin import CalendarPlugin
+    from backend.layer8_tools.plugins.email_plugin import EmailPlugin
+    from backend.layer8_tools.plugins.notes_plugin import NotesPlugin
+    from backend.layer8_tools.plugins.reminders_plugin import RemindersPlugin
+    from backend.layer8_tools.plugins.web_search_plugin import WebSearchPlugin
+    from infra.db.action_recorder import PostgresActionRecorder
+
+    tm = ToolManager(recorder=PostgresActionRecorder(session_factory, user_id))
+    for plugin in (RemindersPlugin(), NotesPlugin(), CalendarPlugin(),
+                   EmailPlugin(), WebSearchPlugin()):
+        tm.register_plugin(plugin)
+    return tm
 
 
 def make_state_update_writer(store, embed_client, session_factory, threshold: float) -> Callable:
@@ -191,12 +211,15 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions))
+    default_user_id = config["system"]["default_user_id"]
+    tool_manager = build_tool_manager(session_factory, default_user_id)
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
-        cold_start=make_cold_start_provider(session_factory, grad_sessions))
+        cold_start=make_cold_start_provider(session_factory, grad_sessions),
+        tool_manager=tool_manager)
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
         orchestrator=ConversationOrchestrator(steps),
-        default_user_id=config["system"]["default_user_id"])
+        default_user_id=default_user_id, tool_manager=tool_manager)

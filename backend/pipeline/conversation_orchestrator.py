@@ -45,6 +45,7 @@ class PipelineSteps:
     classify: Optional[Callable] = None         # L3  (message, input_packet, recalled) -> EI
     safety_scan: Optional[Callable] = None      # L11 SC-2 (user_id, message, input_packet) -> CA
     build_persona: Optional[Callable] = None    # L4  (ctx) -> persona_packet
+    tool_use: Optional[Callable] = None         # L8  (ctx) -> ToolTurnOutcome | None
     plan: Optional[Callable] = None             # L4a (ctx) -> draft
     refine: Optional[Callable] = None           # L4b (ctx, draft) -> refined
     guardrails: Optional[Callable] = None       # L11 SC-1 (ctx, response) -> result
@@ -74,6 +75,7 @@ class TurnContext:
     semantic_draft: str = ""
     response_text: str = ""
     refined: bool = False
+    tool_invoked: bool = False
     crisis_active: bool = False
     crisis_tier: Any = None
     crisis_assessment: Any = None
@@ -91,6 +93,7 @@ class OrchestratedOutput:
     cognitive_system: str
     conversation_mode: str
     refined: bool
+    tool_invoked: bool
     crisis_active: bool
     crisis_tier: Any
     confabulation_guard: bool
@@ -215,19 +218,44 @@ class ConversationOrchestrator:
         ctx.layers_run.append("layer11_escalation")
 
     def _generate_normal(self, ctx: TurnContext) -> None:
+        # ── Layer 8: tool use — a handled tool turn supplies the response and skips generation ──
+        if self._handle_tool_use(ctx):
+            self._run_guardrails(ctx)
+            return
         ctx.cognitive_system = route_system(ctx.emotion_intent)
         if ctx.cognitive_system == "system1":
             run_system1(ctx, self.steps)
         else:
             run_system2(ctx, self.steps)
         ctx.layers_run.append("layer4_persona")
-        # Layer 11 SC-1: post-generation ethical guardrails
-        if self.steps.guardrails is not None:
-            result = self.steps.guardrails(ctx, ctx.response_text)
-            ctx.layers_run.append("layer11_guardrails")
-            if not getattr(result, "approved", True):
-                ctx.response_text = getattr(result, "replacement", None) or ctx.response_text
-                ctx.guardrail_flags = list(getattr(result, "flags", []) or [])
+        self._run_guardrails(ctx)
+
+    def _handle_tool_use(self, ctx: TurnContext) -> bool:
+        """Run Layer 8 before generation. Returns True when a tool turn owns the response
+        (a clarification question, a confirmation prompt, or an executed result)."""
+        if self.steps.tool_use is None:
+            return False
+        try:
+            outcome = self.steps.tool_use(ctx)
+        except Exception:  # tools must never break the turn — fall back to normal generation
+            logger.exception("tool-use step failed; falling back to normal generation")
+            return False
+        if outcome is None or not getattr(outcome, "handled", False):
+            return False
+        ctx.tool_invoked = True
+        ctx.response_text = getattr(outcome, "response_text", "") or ctx.response_text
+        ctx.layers_run.append("layer8_tools")
+        return True
+
+    def _run_guardrails(self, ctx: TurnContext) -> None:
+        """Layer 11 SC-1: post-generation ethical guardrails (runs before Layer 9 delivers)."""
+        if self.steps.guardrails is None:
+            return
+        result = self.steps.guardrails(ctx, ctx.response_text)
+        ctx.layers_run.append("layer11_guardrails")
+        if not getattr(result, "approved", True):
+            ctx.response_text = getattr(result, "replacement", None) or ctx.response_text
+            ctx.guardrail_flags = list(getattr(result, "flags", []) or [])
 
     def _safe_deliver(self, ctx: TurnContext):
         try:
@@ -253,7 +281,8 @@ class ConversationOrchestrator:
         return OrchestratedOutput(
             response_text=ctx.response_text, delivered=ctx.delivered,
             cognitive_system=ctx.cognitive_system, conversation_mode=ctx.conversation_mode,
-            refined=ctx.refined, crisis_active=ctx.crisis_active, crisis_tier=ctx.crisis_tier,
+            refined=ctx.refined, tool_invoked=ctx.tool_invoked,
+            crisis_active=ctx.crisis_active, crisis_tier=ctx.crisis_tier,
             confabulation_guard=ctx.confabulation_guard, cold_start_active=ctx.cold_start_active,
             proactivity_mode=ctx.proactivity_mode, pending_elicitation=ctx.pending_elicitation,
             guardrail_flags=ctx.guardrail_flags, degraded=ctx.degraded,

@@ -20,6 +20,7 @@ from api.routes.memory import router as memory_router
 from api.routes.onboarding import router as onboarding_router
 from api.routes.safety import router as safety_router
 from api.routes.sessions import router as sessions_router
+from api.routes.tools import router as tools_router
 from api.state import build_app_state
 
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(safety_router)
     app.include_router(onboarding_router)
     app.include_router(sessions_router)
+    app.include_router(tools_router)
     return app
 
 

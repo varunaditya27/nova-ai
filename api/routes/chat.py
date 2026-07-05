@@ -36,6 +36,7 @@ def chat(req: ChatRequest, state=Depends(get_state),
         cognitive_system=getattr(out, "cognitive_system", "system1"),
         crisis_active=getattr(out, "crisis_active", False),
         refined=getattr(out, "refined", False),
+        tool_invoked=getattr(out, "tool_invoked", False),
         session_id=session_id)
 
 
