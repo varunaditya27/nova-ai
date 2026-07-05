@@ -1,7 +1,7 @@
 # Onboarding-State Persistence — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Persist Layer-13 cold-start progression (active flag + session count) to Postgres so
 onboarding advances across restarts and self-graduates. Third slice of increment **#2b**.
 
