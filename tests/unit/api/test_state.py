@@ -92,3 +92,26 @@ def test_goal_writer_persists_extracted_goal():
     make_goal_writer(factory, GoalLLM(), FakeLLM())(GoalCtx())
     active = PostgresGoalStore(factory, "local-user").load_by_status(["active"])
     assert any(g.title == "run a 5k" for g in active)
+
+
+def test_safety_writer_records_crisis_and_skips_none():
+    from types import SimpleNamespace
+    from infra.db.safety_store import PostgresSafetyLog
+    from backend.layer11_safety.schemas import CrisisSignal
+    from api.state import make_safety_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    writer = make_safety_writer(factory)
+
+    def _ctx(tier):
+        sig = CrisisSignal(tier=tier)
+        return SimpleNamespace(user_id="local-user", session_id="s1",
+                               crisis_assessment=SimpleNamespace(signal=sig))
+
+    writer(_ctx("none"))
+    assert PostgresSafetyLog(factory).recent("local-user") == []
+    writer(_ctx("tier_2"))
+    recent = PostgresSafetyLog(factory).recent("local-user")
+    assert len(recent) == 1 and recent[0].tier == "tier_2" and recent[0].user_id == "local-user"
