@@ -1,7 +1,7 @@
 # Goal Persistence — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Persist Layer-7 goals to Postgres and run the real `run_goal_pipeline` on the post-turn
 path, so goals the user states are extracted, tracked, and survive restarts. First slice of
 increment **#2b** (per-user Layer 4/5/7/11/13 state); establishes the load+save pattern the other
