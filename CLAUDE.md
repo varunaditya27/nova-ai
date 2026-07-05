@@ -138,6 +138,14 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `GET /safety/events`; `GET /onboarding`; `GET /sessions`. Each builds the relevant Postgres store
   from `state.session_factory`+`default_user_id`; a `POST /chat` turn's writes are readable back
   through these (see `docs/superpowers/specs/2026-07-05-api-read-surface-design.md`).
+- **Tools (Layer 8)** (`api/routes/tools.py`): `GET /tools/pending`, `POST /tools/confirm/{id}`,
+  `POST /tools/deny/{id}`, `GET /tools/history`. A single `ToolManager` lives on `AppState`
+  (`build_tool_manager`) with the five plugins registered against **local/offline backends** (no
+  third-party creds) and a durable **`PostgresActionRecorder`** (`infra/db/action_recorder.py` →
+  `tool_action` JSONB). The `/chat` pipeline runs Layer 8 **before generation** via the orchestrator's
+  `tool_use` hook: a detected intent short-circuits generation with a clarification question, a
+  confirmation prompt, or an executed result; SOFT/HARD actions register a pending token confirmable
+  on a later request through `/tools/confirm`. `ChatResponse.tool_invoked` flags a tool turn.
 
 `api/assembly.py` is the adapter layer mapping **all 12** `PipelineSteps` hooks onto real
 layer entrypoints — every `/chat` turn now exercises all 13 layers. SC-1 `guardrails` run

@@ -78,9 +78,17 @@ class _GuardrailResult:
     flags: list
 
 
+@dataclass
+class _ToolTurnOutcome:
+    """Orchestrator-shaped view of a Layer-8 ToolUseOutput (handled + the response it owns)."""
+    handled: bool
+    response_text: str = ""
+
+
 def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_writer: Optional[Callable] = None,
                          cold_start: Optional[Callable] = None,
+                         tool_manager=None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
     from backend.layer2_memory import memory_arbiter
@@ -165,6 +173,26 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             logger.exception("escalate adapter failed; using crisis fallback")
             return _CRISIS_TEXT
 
+    def tool_use(ctx):
+        """Layer 8: detect a tool intent and drive intent->clarify->confirm->execute for the turn.
+        Returns a handled outcome (the response the tool turn owns) or None to fall through to
+        normal generation. Only local/offline plugin backends — no third-party creds."""
+        if tool_manager is None:
+            return None
+        out = tool_manager.process(ctx.message, user_id=ctx.user_id,
+                                   session_id=getattr(ctx, "session_id", "") or None)
+        if getattr(out, "clarification_question", None):
+            return _ToolTurnOutcome(handled=True, response_text=out.clarification_question)
+        req = getattr(out, "confirmation_request", None)
+        if req is not None:
+            desc = getattr(req, "action_description", "that")
+            return _ToolTurnOutcome(handled=True, response_text=(
+                f"I can {desc}. Want me to go ahead? (confirmation id: {req.request_id})"))
+        if getattr(out, "tool_invoked", False) and getattr(out, "result", None) is not None:
+            summary = getattr(out.result, "result_summary", "") or "Done."
+            return _ToolTurnOutcome(handled=True, response_text=summary)
+        return None
+
     def guardrails(ctx, response):
         """SC-1 post-generation ethical guardrails. Maps EthicalGuardrailResult -> the
         orchestrator's {approved, replacement, flags}: any SC-1 alteration (hard block or moderate
@@ -188,5 +216,6 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
 
     return PipelineSteps(
         perceive=perceive, recall=recall, classify=classify, cold_start=cold_start,
-        safety_scan=safety_scan, build_persona=build_persona, plan=plan, refine=refine,
-        guardrails=guardrails, escalate=escalate, deliver=deliver, state_update=state_update)
+        safety_scan=safety_scan, build_persona=build_persona, tool_use=tool_use,
+        plan=plan, refine=refine, guardrails=guardrails, escalate=escalate,
+        deliver=deliver, state_update=state_update)
