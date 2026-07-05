@@ -23,6 +23,7 @@ from backend.layer7_goals import run_goal_pipeline
 from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
+from infra.db.onboarding_store import PostgresOnboardingStore
 from api.assembly import build_pipeline_steps
 from api.reinforcement import used_memory_ids
 
@@ -131,6 +132,17 @@ def make_safety_writer(session_factory) -> Callable:
     return _write
 
 
+def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callable:
+    """Post-turn: advance the per-user onboarding session counter (self-graduating)."""
+    def _write(ctx) -> None:
+        try:
+            PostgresOnboardingStore(session_factory, ctx.user_id, graduation_sessions) \
+                .record_turn(getattr(ctx, "session_id", "") or "default")
+        except Exception:
+            logger.exception("onboarding writer failed; turn already delivered")
+    return _write
+
+
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
     config = config or load_config()
@@ -147,10 +159,12 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
 
     store = PostgresMemoryStore(session_factory)
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
+    grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
     session_writer = _chain_writers(
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
-        make_safety_writer(session_factory))
+        make_safety_writer(session_factory),
+        make_onboarding_writer(session_factory, grad_sessions))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer)

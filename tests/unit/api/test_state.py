@@ -115,3 +115,19 @@ def test_safety_writer_records_crisis_and_skips_none():
     writer(_ctx("tier_2"))
     recent = PostgresSafetyLog(factory).recent("local-user")
     assert len(recent) == 1 and recent[0].tier == "tier_2" and recent[0].user_id == "local-user"
+
+
+def test_onboarding_writer_counts_and_graduates():
+    from types import SimpleNamespace
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    from api.state import make_onboarding_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    writer = make_onboarding_writer(factory, graduation_sessions=2)
+    writer(SimpleNamespace(user_id="local-user", session_id="s1"))
+    assert PostgresOnboardingStore(factory, "local-user").state()["cold_start_active"] is True
+    writer(SimpleNamespace(user_id="local-user", session_id="s2"))
+    st = PostgresOnboardingStore(factory, "local-user").state()
+    assert st["session_index"] == 2 and st["cold_start_active"] is False

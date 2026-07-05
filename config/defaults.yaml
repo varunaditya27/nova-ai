@@ -38,6 +38,9 @@ memory:
   decay_rate: 0.92
   reinforcement_similarity_threshold: 0.5
 
+onboarding:
+  graduation_sessions: 5
+
 timing:
   system1_timeout_ms: 2000
   system2_timeout_ms: 30000
