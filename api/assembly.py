@@ -7,13 +7,16 @@ there is no already-running event loop in the calling thread). Every LLM-touchin
 injected ``LLMClient``-shaped object, so the whole pipeline runs offline with fakes — see
 ``tests/unit/api/test_assembly_turn.py``.
 
-Wired this increment: perceive, recall, classify, build_persona, plan, refine, deliver, state_update,
-safety_scan (SC-2 crisis detection), escalate (SC-3 crisis response). Left as documented follow-ups
-(both hooks are optional; the orchestrator treats them as no-ops when absent):
-  - cold_start (Layer 13): a faithful session context depends on the onboarding-persistence layer
-    (graduation state) — wiring a synthetic one would flag every turn cold-start-active.
-  - guardrails (Layer 11 SC-1): `run_all_checks` returns an `EthicalGuardrailResult` whose shape
-    (`passed`/`final_response`) needs adapting to the orchestrator's `approved`/`replacement`.
+All 13-layer hooks are now wired: perceive, recall, classify, cold_start (Layer 13), safety_scan
+(SC-2), build_persona, plan, refine, guardrails (SC-1), escalate (SC-3), deliver, state_update.
+
+  - guardrails (Layer 11 SC-1): built here — `run_all_checks` returns an `EthicalGuardrailResult`
+    (`passed`/`final_response`); the adapter reports `approved=False` with the SC-1 `final_response`
+    whenever SC-1 altered the text, so any block/modification is applied post-generation.
+  - cold_start (Layer 13): injected by `api/state.py` (needs Postgres). It is persisted-state-driven
+    — reads `PostgresOnboardingStore.state()` and overlays observe-only/gated directives while
+    cold-starting, `None` once graduated. The full elicitation machinery (which needs a persisted
+    session_context this increment does not build) is a documented follow-up.
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Callable, Optional
 
 from backend.pipeline import PipelineSteps
@@ -66,8 +70,17 @@ class _CrisisAssessment:
     signal: object = None
 
 
+@dataclass
+class _GuardrailResult:
+    """Orchestrator-shaped view of an SC-1 EthicalGuardrailResult (approved/replacement/flags)."""
+    approved: bool
+    replacement: Optional[str]
+    flags: list
+
+
 def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_writer: Optional[Callable] = None,
+                         cold_start: Optional[Callable] = None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
     from backend.layer2_memory import memory_arbiter
@@ -77,7 +90,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     from backend.layer4_persona import generate_semantic_draft
     from backend.layer4_persona.schemas import PersonaPacket
     from backend.layer9_output import deliver as l9_deliver
-    from backend.layer11_safety import evaluate, generate_crisis_response
+    from backend.layer11_safety import evaluate, generate_crisis_response, run_all_checks
     from backend.layer11_safety.schemas import CrisisTier
 
     embedder = _EmbedderAdapter(embed)
@@ -152,6 +165,19 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             logger.exception("escalate adapter failed; using crisis fallback")
             return _CRISIS_TEXT
 
+    def guardrails(ctx, response):
+        """SC-1 post-generation ethical guardrails. Maps EthicalGuardrailResult -> the
+        orchestrator's {approved, replacement, flags}: any SC-1 alteration (hard block or moderate
+        modification) is applied by reporting approved=False with the SC-1 final_response."""
+        gctx = SimpleNamespace(session_id=getattr(ctx, "session_id", "") or None,
+                               has_real_deadline=False, vulnerability_score=0.0)
+        result = run_all_checks(response, gctx)
+        final = getattr(result, "final_response", None) or response
+        changed = final != response
+        return _GuardrailResult(
+            approved=not changed, replacement=final,
+            flags=[v.check_name for v in getattr(result, "violations", []) or []])
+
     def deliver(ctx, response, crisis_mode_active):
         result = l9_deliver(response, ctx.conversation_mode, crisis_mode_active=crisis_mode_active)
         return getattr(result, "final_message_text", None) or response
@@ -161,6 +187,6 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             session_writer(ctx)
 
     return PipelineSteps(
-        perceive=perceive, recall=recall, classify=classify,
+        perceive=perceive, recall=recall, classify=classify, cold_start=cold_start,
         safety_scan=safety_scan, build_persona=build_persona, plan=plan, refine=refine,
-        escalate=escalate, deliver=deliver, state_update=state_update)
+        guardrails=guardrails, escalate=escalate, deliver=deliver, state_update=state_update)
