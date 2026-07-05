@@ -72,3 +72,23 @@ def test_writer_reinforces_similarity_matched_recalled_memory():
         recalled_memories = [ScoredMemory(memory=mem, effective_score=0.9)]
     make_state_update_writer(store, FakeLLM(), factory, threshold=0.1)(C())
     assert store.get_episodic(mem.memory_id).S_current > 0.5
+
+
+def test_goal_writer_persists_extracted_goal():
+    from infra.db.goal_store import PostgresGoalStore
+    from api.state import make_goal_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class GoalLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            return '{"goal_detected": true, "new_goal": {"inferred_title": "run a 5k", "confidence": 0.8}}'
+
+    class GoalCtx(Ctx):
+        message = "I want to run a 5k next month"
+
+    make_goal_writer(factory, GoalLLM(), FakeLLM())(GoalCtx())
+    active = PostgresGoalStore(factory, "local-user").load_by_status(["active"])
+    assert any(g.title == "run a 5k" for g in active)

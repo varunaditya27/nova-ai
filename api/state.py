@@ -17,8 +17,11 @@ import infra.db.models as models
 from infra.db.memory_store import PostgresMemoryStore
 from infra.db.audit_trail import PostgresAuditTrail
 from backend.layer2_memory import state_updater
+from backend.layer2_memory.embedding import cosine_similarity
 from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector, ShortTermMemoryBuffer
+from backend.layer7_goals import run_goal_pipeline
 from backend.pipeline import ConversationOrchestrator
+from infra.db.goal_store import PostgresGoalStore
 from api.assembly import build_pipeline_steps
 from api.reinforcement import used_memory_ids
 
@@ -79,6 +82,38 @@ def make_state_update_writer(store, embed_client, session_factory, threshold: fl
     return _write
 
 
+def _chain_writers(*writers) -> Callable:
+    """Compose post-turn writers; each runs in its own try/except so one failure never blocks another."""
+    def _run(ctx) -> None:
+        for w in writers:
+            try:
+                w(ctx)
+            except Exception:
+                logger.exception("composed post-turn writer failed; turn already delivered")
+    return _run
+
+
+def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
+    """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres."""
+    def _extractor_llm(prompt):
+        return system1_client.complete(prompt)
+
+    def _sim(a, b):
+        return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
+
+    def _write(ctx) -> None:
+        try:
+            store = PostgresGoalStore(session_factory, ctx.user_id)
+            run_goal_pipeline(
+                getattr(ctx, "message", "") or "", goal_store=store,
+                message_id=getattr(ctx, "session_id", "") or "",
+                extractor_llm_fn=_extractor_llm, similarity_fn=_sim,
+                now=getattr(ctx, "now", None) or datetime.now(timezone.utc))
+        except Exception:
+            logger.exception("goal writer failed; turn already delivered")
+    return _write
+
+
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
     config = config or load_config()
@@ -95,11 +130,12 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
 
     store = PostgresMemoryStore(session_factory)
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
+    session_writer = _chain_writers(
+        make_state_update_writer(store, llm_clients["embed"], session_factory, threshold),
+        make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
-        embed=llm_clients["embed"], memory_store=store,
-        session_writer=make_state_update_writer(store, llm_clients["embed"],
-                                                session_factory, threshold))
+        embed=llm_clients["embed"], memory_store=store, session_writer=session_writer)
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,

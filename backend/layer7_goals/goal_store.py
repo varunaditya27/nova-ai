@@ -70,6 +70,13 @@ class GoalStore:
     def add_goal(self, goal: Goal) -> None:
         self.goals.append(goal)
 
+    def update_goal(self, goal: Goal) -> None:
+        for i, g in enumerate(self.goals):
+            if g.goal_id == goal.goal_id:
+                self.goals[i] = goal
+                return
+        self.goals.append(goal)
+
     def get(self, goal_id: str) -> Optional[Goal]:
         return next((g for g in self.goals if g.goal_id == goal_id), None)
 

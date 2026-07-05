@@ -62,6 +62,9 @@ def test_goal_model_has_status_and_user_scope():
     init_db(engine)
     factory = make_session_factory(engine)
     with session_scope(factory) as s:
-        s.add(models.Goal(user_id="u1", description="run 5k", status="active"))
+        s.add(models.Goal(user_id="u1", goal_id="g1", status="active",
+                          payload={"title": "run 5k"}))
     with session_scope(factory) as s:
+        row = s.query(models.Goal).filter_by(goal_id="g1").one()
+        assert row.status == "active" and row.payload["title"] == "run 5k"
         assert s.query(models.Goal).filter_by(status="active").count() == 1
