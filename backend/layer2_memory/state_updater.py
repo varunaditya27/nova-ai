@@ -83,6 +83,7 @@ def state_updater(
             signal = max(0.0, min(1.0, scored.effective_score))
             mem.S_current = ms.reinforce(mem.S_current, signal)
             mem.reinforcement_count += 1
+            store.save_episodic(mem)  # persist strength through the store (store-agnostic)
             result.memories_reinforced += 1
             _safe_audit(audit, AuditEvent(
                 user_id=user_id, timestamp=now, event_type=AuditEventType.MEMORY_REINFORCED,

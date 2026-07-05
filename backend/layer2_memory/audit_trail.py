@@ -35,7 +35,7 @@ ENTITY_LINK_WEIGHT = 0.4
 LinkClassifier = Callable[[EpisodicMemory, EpisodicMemory], NarrativeLinkType]
 
 
-def _compute_hash(event: AuditEvent) -> str:
+def compute_event_hash(event: AuditEvent) -> str:
     """SHA-256 over the event's content + the previous event's hash (chain integrity)."""
     payload = "|".join(
         [
@@ -52,6 +52,9 @@ def _compute_hash(event: AuditEvent) -> str:
         ]
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+_compute_hash = compute_event_hash  # backward-compatible internal alias
 
 
 class AuditTrail:

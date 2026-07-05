@@ -17,7 +17,7 @@ The ``arbiter`` is the single read interface (returns a ``MemoryPacket``); the
 """
 
 from .arbiter import build_query_embedding, memory_arbiter
-from .audit_trail import AuditTrail, detect_narrative_links
+from .audit_trail import AuditTrail, compute_event_hash, detect_narrative_links
 from .competitive_recall import effective_score, select_recall, softmax, temperature_for_mode
 from .context_gate import gate_value, memory_gate_kind
 from .embedding import (
