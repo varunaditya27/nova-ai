@@ -1,7 +1,7 @@
 # Safety-Event Persistence — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Persist Layer-11 crisis assessments as append-only `SafetyEvent` records, so a turn's
 `CrisisSignal` survives restarts and feeds the weekly dependency check. Second slice of increment
 **#2b** (per-user state); follows the goal-persistence slice.
