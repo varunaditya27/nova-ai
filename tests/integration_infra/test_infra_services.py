@@ -43,7 +43,8 @@ def test_postgres_model_crud(postgres_url):
     init_db(engine)
     factory = make_session_factory(engine)
     with session_scope(factory) as s:
-        s.add(models.Goal(user_id="itest", description="ship infra", status="active"))
+        s.add(models.Goal(user_id="itest", goal_id="g-itest", status="active",
+                          payload={"title": "ship infra"}))
     with session_scope(factory) as s:
         assert s.query(models.Goal).filter_by(user_id="itest").count() >= 1
         s.query(models.Goal).filter_by(user_id="itest").delete()

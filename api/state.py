@@ -132,6 +132,32 @@ def make_safety_writer(session_factory) -> Callable:
     return _write
 
 
+@dataclass
+class _ColdStartDirectives:
+    """The subset of Layer-13 directives the orchestrator consumes during cold-start overlay."""
+    proactivity_mode: str = "observe_only"
+    personality_drift_gate: float = 0.30
+    pending_elicitation: Any = None
+
+
+def make_cold_start_provider(session_factory, graduation_sessions: int) -> Callable:
+    """Layer-13 cold-start hook: persisted-state-driven overlay.
+
+    Reads the per-user onboarding record and, while still cold-starting, returns observe-only /
+    drift-gated directives; returns None once graduated so the overlay self-terminates (the
+    graduation counter is advanced post-turn by make_onboarding_writer). The full elicitation /
+    feature-pacing machinery needs a persisted session_context this increment does not build.
+    """
+    def _provider(user_id, message):
+        try:
+            state = PostgresOnboardingStore(session_factory, user_id, graduation_sessions).state()
+        except Exception:
+            logger.exception("cold-start state read failed; skipping overlay")
+            return None
+        return _ColdStartDirectives() if state.get("cold_start_active") else None
+    return _provider
+
+
 def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callable:
     """Post-turn: advance the per-user onboarding session counter (self-graduating)."""
     def _write(ctx) -> None:
@@ -167,7 +193,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_onboarding_writer(session_factory, grad_sessions))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
-        embed=llm_clients["embed"], memory_store=store, session_writer=session_writer)
+        embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
+        cold_start=make_cold_start_provider(session_factory, grad_sessions))
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,

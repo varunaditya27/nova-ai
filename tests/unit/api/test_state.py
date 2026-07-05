@@ -9,7 +9,7 @@ import infra.db.models as models
 from infra.db.memory_store import PostgresMemoryStore
 from infra.db.audit_trail import PostgresAuditTrail
 from backend.layer2_memory.schemas import EpisodicMemory, ScoredMemory
-from api.state import build_app_state, make_state_update_writer
+from api.state import build_app_state, make_state_update_writer, make_cold_start_provider
 
 
 class FakeLLM:
@@ -131,3 +131,21 @@ def test_onboarding_writer_counts_and_graduates():
     writer(SimpleNamespace(user_id="local-user", session_id="s2"))
     st = PostgresOnboardingStore(factory, "local-user").state()
     assert st["session_index"] == 2 and st["cold_start_active"] is False
+
+
+def test_cold_start_provider_active_then_graduated():
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    from api.state import make_onboarding_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    provider = make_cold_start_provider(factory, graduation_sessions=1)
+    # No record yet → still cold-starting → directives with observe-only overlay.
+    d = provider("local-user", "hi")
+    assert d is not None and d.proactivity_mode == "observe_only" and d.personality_drift_gate == 0.30
+    # Advance past graduation → provider returns None (overlay self-terminates).
+    make_onboarding_writer(factory, graduation_sessions=1)(
+        __import__("types").SimpleNamespace(user_id="local-user", session_id="s1"))
+    assert PostgresOnboardingStore(factory, "local-user").state()["cold_start_active"] is False
+    assert provider("local-user", "hi") is None

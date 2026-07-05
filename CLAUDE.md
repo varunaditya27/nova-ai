@@ -125,6 +125,13 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `orchestrator.run_turn`. **Sync `def` on purpose** — FastAPI runs it in a worker thread so
   `api/assembly.py`'s async→sync bridge (`_run`) is safe (Layers 1 & 2 are `async`; the orchestrator
   is sync).
+- **`POST /chat/stream`** (`ChatRequest` → `text/event-stream`): the same full turn, streamed as
+  Server-Sent Events (`meta` → `token`×N → `done`), paced by Layer 9's `StreamTypingOverlay`
+  (`api/streaming.py`). **Not** token-from-LLM: the whole turn (crisis veto + SC-1 + post-turn
+  writes) runs first, then the *delivered, guardrailed* text is replayed as paced token frames —
+  honoring the invariant that SC-1 runs before Layer 9 delivers. Tokens concatenate losslessly to
+  the delivered text. Sync generator ⇒ Starlette iterates it in the threadpool (bridge stays safe).
+  See `docs/superpowers/specs/2026-07-06-chat-streaming-and-full-integration-design.md`.
 - **`GET /health`** (liveness; compose healthcheck) and **`GET /health/ready`** (probes Postgres).
 - **Read surface over persisted state** (single-user, no auth; `api/routes/`): `GET /goals`
   (+`?status=`), `GET /goals/{id}`, `POST /goals`; `GET /memory/audit`, `GET /memory/{id}`;
@@ -132,8 +139,13 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   from `state.session_factory`+`default_user_id`; a `POST /chat` turn's writes are readable back
   through these (see `docs/superpowers/specs/2026-07-05-api-read-surface-design.md`).
 
-`api/assembly.py` is the adapter layer mapping the orchestrator's 12 `PipelineSteps` hooks onto real
-layer entrypoints. Single-user: `user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).
+`api/assembly.py` is the adapter layer mapping **all 12** `PipelineSteps` hooks onto real
+layer entrypoints — every `/chat` turn now exercises all 13 layers. SC-1 `guardrails` run
+post-generation (adapter maps `EthicalGuardrailResult.final_response` onto `approved`/`replacement`,
+so any block/modification is applied before Layer 9 delivers). The Layer-13 `cold_start` overlay is
+persisted-state-driven (`make_cold_start_provider` reads `PostgresOnboardingStore`): observe-only /
+drift-gated directives while cold-starting, `None` once graduated (self-terminating). Single-user:
+`user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).
 The live recall path reads Layer-2 candidates from **`PostgresMemoryStore`** (`infra/db/memory_store.py`),
 and the post-turn writer runs the **real Layer-2 `state_updater`** (`make_state_update_writer`):
 it persists a new `EpisodicMemory` (JSONB payload + embedding, via `infra/db/memory_serde.py`),
@@ -149,10 +161,14 @@ turn's crisis assessment to an append-only safety log (`make_safety_writer` → 
 composed via `_chain_writers`. See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`,
 `docs/superpowers/specs/2026-07-05-layer2-write-path-persistence-design.md`, and
 `docs/superpowers/specs/2026-07-05-goal-persistence-design.md`. **Not yet wired (documented
-follow-ups):** `cold_start` (Layer 13 — needs onboarding-persistence), SC-1 `guardrails` (needs a
-result-shape adapter), WebSocket streaming, auth, goal accountability-injection into generation,
-per-user Layer 4/5/11/13 state, and the Chroma ANN live-path (deferred as YAGNI for single-user). See
-`docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md` §8 for the full roadmap.
+follow-ups):** auth/multi-user, WebSocket transport for streaming (SSE is live; WS is the future
+bidirectional upgrade), the full Layer-13 elicitation/feature-pacing machinery (the cold-start
+overlay reads persisted graduation state but does not yet run per-turn elicitation — needs a
+persisted session_context), goal accountability-injection into generation, per-user Layer 4/5
+state, Layer-8 tool execution, Layer-12 sync/deletion, and the Chroma ANN live-path (deferred as
+YAGNI for single-user). See `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md`
+§8 and `docs/superpowers/specs/2026-07-06-chat-streaming-and-full-integration-design.md` for the
+full roadmap.
 
 ### Infrastructure Stack
 
