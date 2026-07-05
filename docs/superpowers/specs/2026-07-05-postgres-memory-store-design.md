@@ -1,7 +1,7 @@
 # PostgresMemoryStore — Layer-2 Store↔ORM Bridge — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design), pending implementation plan
+**Status:** Implemented
 **Scope:** Give Layer 2 a Postgres-backed memory store that is a drop-in replacement for
 `InMemoryMemoryStore`, so `/chat` accumulates real, recallable episodic memories that survive a
 process restart. This is sub-project **#1** of the four documented under §8.A ("Persistence
