@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, JSON, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -42,7 +42,7 @@ class UserWorldModel(UserScopedMixin, Base):
 
 class MemoryAudit(UserScopedMixin, Base):
     __tablename__ = "memory_audit"
-    event: Mapped[str] = mapped_column(String(64))
-    reason: Mapped[str] = mapped_column(Text)
+    entry_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    entry_hash: Mapped[str] = mapped_column(String(64))
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    payload: Mapped[dict] = mapped_column(_JSONB)

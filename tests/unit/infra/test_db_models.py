@@ -44,6 +44,19 @@ def test_user_world_model_one_per_user():
         assert s.query(models.UserWorldModel).filter_by(user_id="u1").one().payload["update_version"] == 0
 
 
+def test_memory_audit_payload_shape():
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as s:
+        s.add(models.MemoryAudit(user_id="u1", entry_hash="h1", prev_hash=None,
+                                 event_type="memory_created", payload={"reason": "x"}))
+    with session_scope(factory) as s:
+        row = s.query(models.MemoryAudit).filter_by(entry_hash="h1").one()
+        assert row.event_type == "memory_created" and row.payload["reason"] == "x"
+        assert row.prev_hash is None
+
+
 def test_goal_model_has_status_and_user_scope():
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
