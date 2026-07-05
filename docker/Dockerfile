@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Install deps first for layer caching; only the infra extra is needed at runtime.
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir ".[infra]"
+RUN pip install --no-cache-dir ".[infra,api]"
 
 # Copy source and hand ownership to the unprivileged user.
 COPY . .

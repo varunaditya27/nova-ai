@@ -1,18 +1,45 @@
-# FastAPI Application Factory
-#
-# Responsibility: Create and configure the FastAPI app instance.
-#
-# Performs:
-#   1. Create app instance
-#   2. Register all routers (chat, memory, goals, etc.)
-#   3. Register middleware (logging, error handlers)
-#   4. Configure lifespan events (startup, shutdown)
-#   5. Set up dependency injection
-#   6. Configure CORS (for NextJS frontend on localhost:3000)
-#
-# Main function:
-#   - create_app() -> FastAPI
-#
-# Lifespan events:
-#   - on_startup(): Initialize LLM clients, DB, vector store, scheduler
-#   - on_shutdown(): Clean up connections, gracefully shut down background jobs
+"""FastAPI application factory + lifespan (boots the infra substrate once).
+
+`uvicorn api.main:app` serves the conversation API. The lifespan builds the AppState (config → LLM
+clients → Postgres engine+init_db → Chroma store → orchestrator assembled from real-layer adapters)
+and stores it at `app.state.nova`; the engine is disposed on shutdown.
+"""
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.middleware.logging import RequestLoggingMiddleware
+from api.routes.chat import router as chat_router
+from api.routes.health import router as health_router
+from api.state import build_app_state
+
+logging.basicConfig(level=logging.INFO)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.nova = build_app_state()
+    try:
+        yield
+    finally:
+        engine = getattr(app.state.nova, "engine", None)
+        if engine is not None and hasattr(engine, "dispose"):
+            engine.dispose()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Nova AI", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["http://localhost:3000"],
+        allow_methods=["*"], allow_headers=["*"])
+    app.include_router(health_router)
+    app.include_router(chat_router)
+    return app
+
+
+app = create_app()
