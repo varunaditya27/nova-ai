@@ -138,6 +138,13 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `GET /safety/events`; `GET /onboarding`; `GET /sessions`. Each builds the relevant Postgres store
   from `state.session_factory`+`default_user_id`; a `POST /chat` turn's writes are readable back
   through these (see `docs/superpowers/specs/2026-07-05-api-read-surface-design.md`).
+- **Privacy (Layer 12)** (`api/routes/memory.py`): `DELETE /memory/{id}` runs the real Layer-12
+  single-memory selective deletion — a genuine "forget" (logical `is_deleted` + embedding/content
+  zeroed so it can never be recalled again, row retained for proof), returning a signed
+  `DeletionCertificate` and appending a tamper-evident entry to the **`PostgresPrivacyAudit`** SHA-256
+  chain (`infra/db/privacy_audit.py` → `privacy_audit` table). `GET /memory/integrity` verifies both
+  the Layer-2 memory-audit chain and the Layer-12 privacy chain. (Cross-store semantic/personality/
+  longitudinal cascade is a documented follow-up — Layer-12's cascade schema differs from Layer-2's.)
 - **Tools (Layer 8)** (`api/routes/tools.py`): `GET /tools/pending`, `POST /tools/confirm/{id}`,
   `POST /tools/deny/{id}`, `GET /tools/history`. A single `ToolManager` lives on `AppState`
   (`build_tool_manager`) with the five plugins registered against **local/offline backends** (no

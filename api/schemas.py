@@ -102,3 +102,17 @@ class OnboardingOut(BaseModel):
 class SessionOut(BaseModel):
     session_key: str
     turn_count: int = 0
+
+
+# ── Privacy (Layer 12) ───────────────────────────────────────────────────
+class MemoryDeletionOut(BaseModel):
+    deleted: int
+    memory_id: str
+    certificate: str
+    cascade: str = ""
+
+
+class IntegrityOut(BaseModel):
+    status: str          # INTACT | TAMPER_DETECTED
+    audit_chain_ok: bool
+    privacy_chain_ok: bool

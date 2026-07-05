@@ -55,6 +55,31 @@ class PostgresMemoryStore:
                     .filter_by(user_id=str(user_id), is_deleted=False, is_archived=False).all())
             return [from_jsonable(EpisodicMemory, r.payload) for r in rows]
 
+    def update_episodic(self, memory_id, fields: dict) -> None:
+        """Patch fields on a stored episode (used by Layer-12 secure-zeroing before deletion)."""
+        mem = self.get_episodic(memory_id)
+        if mem is None:
+            return
+        for k, v in (fields or {}).items():
+            if hasattr(mem, k):
+                setattr(mem, k, v)
+        self.save_episodic(mem)
+
+    def delete_episodic(self, memory_id) -> bool:
+        """Logical delete (Layer-12 'forget'): flag is_deleted and zero the recall signal so the
+        memory can never surface again, while the row + audit certificate remain for proof."""
+        with session_scope(self._sf) as s:
+            row = s.query(m.EpisodicMemory).filter_by(memory_id=str(memory_id)).one_or_none()
+            if row is None:
+                return False
+            payload = dict(row.payload or {})
+            payload["embedding"] = None
+            payload["summary"] = ""
+            payload["is_deleted"] = True
+            row.payload = payload
+            row.is_deleted = True
+            return True
+
     # ── Semantic ─────────────────────────────────────────────────────────
     def save_semantic(self, memory: SemanticMemory) -> UUID:
         with session_scope(self._sf) as s:
