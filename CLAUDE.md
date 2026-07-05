@@ -126,6 +126,11 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `api/assembly.py`'s async→sync bridge (`_run`) is safe (Layers 1 & 2 are `async`; the orchestrator
   is sync).
 - **`GET /health`** (liveness; compose healthcheck) and **`GET /health/ready`** (probes Postgres).
+- **Read surface over persisted state** (single-user, no auth; `api/routes/`): `GET /goals`
+  (+`?status=`), `GET /goals/{id}`, `POST /goals`; `GET /memory/audit`, `GET /memory/{id}`;
+  `GET /safety/events`; `GET /onboarding`; `GET /sessions`. Each builds the relevant Postgres store
+  from `state.session_factory`+`default_user_id`; a `POST /chat` turn's writes are readable back
+  through these (see `docs/superpowers/specs/2026-07-05-api-read-surface-design.md`).
 
 `api/assembly.py` is the adapter layer mapping the orchestrator's 12 `PipelineSteps` hooks onto real
 layer entrypoints. Single-user: `user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).

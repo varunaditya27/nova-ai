@@ -1,7 +1,7 @@
 # API Read Surface — Design Spec
 
 **Date:** 2026-07-05
-**Status:** Approved (design)
+**Status:** Implemented
 **Scope:** Expose the persisted domain state (goals, memory, safety, onboarding, sessions) as REST
 endpoints wired end-to-end through `AppState`, so `POST /chat` writes are readable back via `GET`.
 Completes the single-user backend API surface (increment **B**, read portion).
