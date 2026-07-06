@@ -171,6 +171,15 @@ class LongitudinalSummaryOut(BaseModel):
     week_narrative: str = ""
 
 
+# ── Relationship (Layer 4/5) ─────────────────────────────────────────────
+class RelationshipOut(BaseModel):
+    stage: str
+    total_sessions: int = 0
+    total_messages_exchanged: int = 0
+    tie_strength: float = 0.0
+    trust_score: float = 0.0
+
+
 # ── Admin (job trigger) ──────────────────────────────────────────────────
 class JobRunOut(BaseModel):
     job: str
