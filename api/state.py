@@ -43,10 +43,16 @@ class AppState:
     tool_manager: Any = None
 
 
-def build_tool_manager(session_factory, user_id):
+def build_tool_manager(session_factory, user_id, intent_client=None):
     """A single Layer-8 ToolManager for the process: durable action audit + registered plugins
     (local/offline backends). Held on AppState so the /chat pipeline and /tools routes share it —
-    pending confirmations issued in a turn are confirmable on a later request."""
+    pending confirmations issued in a turn are confirmable on a later request.
+
+    When an ``intent_client`` (a fast small model, e.g. gemma2:2b) is supplied, tool turns route by
+    keyword (conservative) but have their parameters filled by the model, so SOFT/HARD actions form
+    a real confirmation instead of asking one clarification per turn. Without it, the deterministic
+    keyword fallback is used (offline-safe).
+    """
     from backend.layer8_tools import ToolManager
     from backend.layer8_tools.plugins.calendar_plugin import CalendarPlugin
     from backend.layer8_tools.plugins.email_plugin import EmailPlugin
@@ -59,6 +65,18 @@ def build_tool_manager(session_factory, user_id):
     for plugin in (RemindersPlugin(), NotesPlugin(), CalendarPlugin(),
                    EmailPlugin(), WebSearchPlugin()):
         tm.register_plugin(plugin)
+
+    if intent_client is not None:
+        from backend.layer8_tools.llm_intent import make_llm_intent_fn
+
+        def _required_for(tool, operation):
+            p = tm.get_plugin(tool)
+            if p is None or not p.supports(operation):
+                return []
+            return list(getattr(p.capability_for(operation), "required_params", []) or [])
+
+        tm._intent_fn = make_llm_intent_fn(lambda prompt: intent_client.complete(prompt),
+                                           _required_for)
     return tm
 
 
@@ -257,7 +275,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_onboarding_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory))
     default_user_id = config["system"]["default_user_id"]
-    tool_manager = build_tool_manager(session_factory, default_user_id)
+    tool_manager = build_tool_manager(session_factory, default_user_id,
+                                      intent_client=llm_clients.get("intent"))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,

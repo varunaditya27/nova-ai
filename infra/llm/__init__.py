@@ -45,8 +45,11 @@ def build_llm_client(role: str, config: dict) -> "LLMClient":
 
 
 def build_llm_clients(config: dict) -> dict:
-    return {
+    clients = {
         "system1": build_llm_client("system1", config),
         "system2": build_llm_client("system2", config),
         "embed": build_llm_client("embeddings", config),
     }
+    if "intent" in config.get("llm", {}):        # optional fast small-model for Layer-8 tool intent
+        clients["intent"] = build_llm_client("intent", config)
+    return clients

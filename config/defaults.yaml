@@ -25,6 +25,11 @@ llm:
   embeddings:
     provider: ollama
     model: nomic-embed-text
+  intent:                       # Layer-8 tool intent: fast, lightweight model for param extraction
+    provider: ollama
+    model: gemma2:2b
+    temperature: 0.0            # deterministic structured JSON
+    max_tokens: 256
   providers:
     groq:
       base_url: https://api.groq.com/openai/v1
