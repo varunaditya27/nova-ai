@@ -116,3 +116,37 @@ class IntegrityOut(BaseModel):
     status: str          # INTACT | TAMPER_DETECTED
     audit_chain_ok: bool
     privacy_chain_ok: bool
+
+
+# ── Sync (Layer 12, zero-knowledge) ──────────────────────────────────────
+class SyncDeltaIn(BaseModel):
+    delta_id: str
+    source_device: str
+    seq: int = 0
+    encrypted_payload: str        # opaque AES ciphertext — server never decrypts
+    size_bytes: Optional[int] = None
+
+
+class SyncPushOut(BaseModel):
+    stored: bool
+    delta_id: str
+
+
+class SyncDeltaOut(BaseModel):
+    cursor: int
+    delta_id: str
+    source_device: str
+    seq: int
+    encrypted_payload: str
+    size_bytes: int = 0
+
+
+class SyncPullOut(BaseModel):
+    deltas: list[SyncDeltaOut] = []
+    cursor: int = 0
+
+
+class SyncStatusOut(BaseModel):
+    total_deltas: int
+    by_device: dict = {}
+    latest_cursor: int = 0
