@@ -22,6 +22,9 @@ from api.routes.safety import router as safety_router
 from api.routes.sessions import router as sessions_router
 from api.routes.tools import router as tools_router
 from api.routes.sync import router as sync_router
+from api.routes.proactive import router as proactive_router
+from api.routes.longitudinal import router as longitudinal_router
+from api.routes.admin import router as admin_router
 from api.state import build_app_state
 
 logging.basicConfig(level=logging.INFO)
@@ -30,9 +33,17 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.nova = build_app_state()
+    scheduler = None
+    try:
+        from background.scheduler import start_scheduler
+        scheduler = start_scheduler(app.state.nova)   # no-op unless config.scheduler.enabled
+    except Exception:
+        logging.getLogger("nova.api").exception("scheduler failed to start; continuing without it")
     try:
         yield
     finally:
+        if scheduler is not None and hasattr(scheduler, "shutdown"):
+            scheduler.shutdown(wait=False)
         engine = getattr(app.state.nova, "engine", None)
         if engine is not None and hasattr(engine, "dispose"):
             engine.dispose()
@@ -53,6 +64,9 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(tools_router)
     app.include_router(sync_router)
+    app.include_router(proactive_router)
+    app.include_router(longitudinal_router)
+    app.include_router(admin_router)
     return app
 
 
