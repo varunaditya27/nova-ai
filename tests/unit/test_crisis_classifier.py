@@ -91,3 +91,16 @@ def test_no_crisis_returns_signal_object():
 def test_false_positive_risk_is_inverse_of_confidence():
     sig = _evaluate("i'm going to kill myself")
     assert abs(sig.false_positive_risk - (1.0 - sig.confidence)) < 1e-9
+
+
+def test_direct_death_wish_phrasings_are_crisis():
+    # Regression: these direct ideation phrasings previously matched no lexical pattern.
+    for msg in ("i don't want to be alive anymore", "I don't want to live anymore",
+                "i wish i was dead", "i want to die", "i want to end it all",
+                "i'd be better off dead"):
+        sig = _evaluate(msg)
+        assert sig.tier in (CrisisTier.TIER_1.value, CrisisTier.TIER_2.value), msg
+
+
+def test_death_wish_hyperbole_about_code_still_none():
+    assert _evaluate("this bug makes me want to kill my code").tier == CrisisTier.NONE.value

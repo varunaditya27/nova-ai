@@ -129,7 +129,8 @@ def _chain_writers(*writers) -> Callable:
 def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
     """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres."""
     def _extractor_llm(prompt):
-        return system1_client.complete(prompt)
+        from infra.llm.json_extract import extract_json
+        return extract_json(system1_client.complete(prompt))   # clean fenced/prose JSON for the extractor
 
     def _sim(a, b):
         return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
@@ -233,7 +234,7 @@ def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callabl
 
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
-    config = config or load_config()
+    config = config or load_config("local.yaml")   # local.yaml overlay is optional (skipped if absent)
     if llm_clients is None:
         from infra.llm import build_llm_clients
         llm_clients = build_llm_clients(config)

@@ -1,0 +1,12 @@
+# Local / offline all-Ollama overlay (auto-loaded by build_app_state when present).
+#
+# Runs the WHOLE pipeline on local Ollama with no cloud dependency: System 2 is repointed from Groq
+# to a local model so the app is fully live without a GROQ_API_KEY. Groq remains the production
+# System 2 — delete this file (or unset the override) once a key is configured. Endpoints still come
+# from env (DATABASE_URL / CHROMA_HOST / CHROMA_PORT / OLLAMA_BASE_URL); see scripts/run_local.sh.
+llm:
+  system2:
+    provider: ollama
+    model: qwen2.5:7b
+    temperature: 0.7
+    max_tokens: 2048
