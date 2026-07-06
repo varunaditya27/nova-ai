@@ -89,6 +89,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_writer: Optional[Callable] = None,
                          cold_start: Optional[Callable] = None,
                          tool_manager=None,
+                         goal_provider: Optional[Callable] = None,
+                         relationship_provider: Optional[Callable] = None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
     from backend.layer2_memory import memory_arbiter
@@ -150,11 +152,43 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return _CrisisAssessment(is_crisis=tier in veto_tiers, tier=tier, signal=signal)
 
     def build_persona(ctx):
-        return PersonaPacket()
+        """Per-user Layer-4/5 persona packet: loads the persisted relationship state and turns the
+        qualitative stage into a plain-language familiarity directive for the planner prompt."""
+        packet = PersonaPacket()
+        if relationship_provider is not None:
+            try:
+                rel = relationship_provider(ctx.user_id)
+                if rel is not None:
+                    packet.relationship_state = rel
+                    stage = getattr(rel, "stage", "new")
+                    msgs = getattr(rel, "total_messages_exchanged", 0)
+                    sessions = getattr(rel, "total_sessions", 0)
+                    packet.persona_instruction = (
+                        f"You and the user are at the '{stage}' stage of a long-term relationship "
+                        f"({msgs} messages across {sessions} sessions). Match that familiarity — "
+                        f"warmer and more casual as it deepens; do not over-familiarize when new.")
+            except Exception:
+                logger.exception("relationship provider failed; using default persona")
+        return packet
+
+    def _goal_directive(ctx) -> str:
+        if goal_provider is None:
+            return ""
+        try:
+            titles = [t for t in (goal_provider(ctx.user_id, ctx.message) or []) if t]
+        except Exception:
+            logger.exception("goal provider failed; no accountability injection this turn")
+            return ""
+        if not titles:
+            return ""
+        joined = "; ".join(f"'{t}'" for t in titles[:3])
+        return (f"The user has active goal(s): {joined}. If it fits naturally, reference their "
+                f"progress or gently encourage them — never force it or lecture.")
 
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
         draft = generate_semantic_draft(ctx.message, persona_packet=ctx.persona_packet,
+                                        response_instruction=_goal_directive(ctx),
                                         llm_fn=lambda p: client.complete(p))
         return draft.text
 

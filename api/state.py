@@ -24,6 +24,7 @@ from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
 from infra.db.onboarding_store import PostgresOnboardingStore
+from infra.db.relationship_store import PostgresRelationshipStore
 from api.assembly import build_pipeline_steps
 from api.reinforcement import used_memory_ids
 
@@ -178,6 +179,37 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
     return _provider
 
 
+def make_goal_provider(session_factory, embed_client) -> Callable:
+    """Layer-7 → Layer-4: return the titles of goals relevant to this turn, for accountability
+    injection into the planner prompt (via response_instruction)."""
+    def _sim(a, b):
+        return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
+
+    def _provider(user_id, message):
+        relevant = PostgresGoalStore(session_factory, user_id).get_relevant_goals(
+            message or "", similarity_fn=_sim)
+        return [rg.goal.title for rg in relevant if getattr(rg.goal, "title", None)]
+    return _provider
+
+
+def make_relationship_provider(session_factory) -> Callable:
+    """Load the persisted per-user relationship state for the persona packet."""
+    def _provider(user_id):
+        return PostgresRelationshipStore(session_factory, user_id).load()
+    return _provider
+
+
+def make_relationship_writer(session_factory) -> Callable:
+    """Post-turn: advance the per-user relationship (message/session counters + stage)."""
+    def _write(ctx) -> None:
+        try:
+            PostgresRelationshipStore(session_factory, ctx.user_id).record_turn(
+                getattr(ctx, "session_id", "") or "default")
+        except Exception:
+            logger.exception("relationship writer failed; turn already delivered")
+    return _write
+
+
 def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callable:
     """Post-turn: advance the per-user onboarding session counter (self-graduating)."""
     def _write(ctx) -> None:
@@ -210,14 +242,17 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
-        make_onboarding_writer(session_factory, grad_sessions))
+        make_onboarding_writer(session_factory, grad_sessions),
+        make_relationship_writer(session_factory))
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id)
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
         cold_start=make_cold_start_provider(session_factory, grad_sessions),
-        tool_manager=tool_manager)
+        tool_manager=tool_manager,
+        goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
+        relationship_provider=make_relationship_provider(session_factory))
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,

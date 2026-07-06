@@ -25,6 +25,7 @@ from api.routes.sync import router as sync_router
 from api.routes.proactive import router as proactive_router
 from api.routes.longitudinal import router as longitudinal_router
 from api.routes.admin import router as admin_router
+from api.routes.relationship import router as relationship_router
 from api.state import build_app_state
 
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(proactive_router)
     app.include_router(longitudinal_router)
     app.include_router(admin_router)
+    app.include_router(relationship_router)
     return app
 
 

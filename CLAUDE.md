@@ -145,6 +145,15 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   chain (`infra/db/privacy_audit.py` → `privacy_audit` table). `GET /memory/integrity` verifies both
   the Layer-2 memory-audit chain and the Layer-12 privacy chain. (Cross-store semantic/personality/
   longitudinal cascade is a documented follow-up — Layer-12's cascade schema differs from Layer-2's.)
+- **Relationship + goal accountability (Layer 4/5/7 → generation)** (`api/routes/relationship.py`):
+  `GET /relationship` reads the per-user Layer-4/5 relationship state (`PostgresRelationshipStore` →
+  `relationship_state` JSONB). Every `/chat` turn advances it (`make_relationship_writer.record_turn`:
+  message/session counters + qualitative `stage` on the architecture's session thresholds new→…→close)
+  and feeds it back into generation: `build_persona` turns the stage into a plain-language familiarity
+  directive on the `PersonaPacket.persona_instruction`, and the `plan` adapter injects a **goal
+  accountability** directive (relevant active goal titles from `PostgresGoalStore.get_relevant_goals`
+  via `make_goal_provider`) through the planner's `response_instruction` — both reach
+  `build_planner_prompt`, honoring the "plain-language directives, no raw scores" invariant.
 - **Proactivity + Longitudinal + Admin** (`api/routes/{proactive,longitudinal,admin}.py`):
   `GET /proactive` polls the Layer-6 outreach queue (top pending candidates; no push channel without
   a frontend), `GET /longitudinal/summaries` + `GET /longitudinal/latest` read Layer-10 weekly
