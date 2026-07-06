@@ -141,7 +141,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                   "valence (-1..1), arousal (0..1), confidence (0..1), crisis_flag (bool), "
                   "primary_intent (str). Message: " + text)
         try:
-            data = json.loads(system1.complete(prompt))
+            from infra.llm.json_extract import extract_json
+            data = json.loads(extract_json(system1.complete(prompt)))
             return LLMClassificationOutput(
                 primary_label=str(data.get("primary_label", "neutral")),
                 secondary_labels=[], valence=float(data.get("valence", 0.0)),
