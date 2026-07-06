@@ -150,3 +150,28 @@ class SyncStatusOut(BaseModel):
     total_deltas: int
     by_device: dict = {}
     latest_cursor: int = 0
+
+
+# ── Proactivity (Layer 6) ────────────────────────────────────────────────
+class ProactiveItemOut(BaseModel):
+    item_id: str
+    item_type: str
+    status: str
+    content_basis: str = ""
+    current_priority: float = 0.0
+
+
+# ── Longitudinal (Layer 10) ──────────────────────────────────────────────
+class LongitudinalSummaryOut(BaseModel):
+    summary_id: str
+    week_start_date: Optional[str] = None
+    week_end_date: Optional[str] = None
+    session_count: int = 0
+    dominant_theme: str = ""
+    week_narrative: str = ""
+
+
+# ── Admin (job trigger) ──────────────────────────────────────────────────
+class JobRunOut(BaseModel):
+    job: str
+    result: dict = {}

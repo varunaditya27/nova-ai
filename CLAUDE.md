@@ -145,6 +145,17 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   chain (`infra/db/privacy_audit.py` → `privacy_audit` table). `GET /memory/integrity` verifies both
   the Layer-2 memory-audit chain and the Layer-12 privacy chain. (Cross-store semantic/personality/
   longitudinal cascade is a documented follow-up — Layer-12's cascade schema differs from Layer-2's.)
+- **Proactivity + Longitudinal + Admin** (`api/routes/{proactive,longitudinal,admin}.py`):
+  `GET /proactive` polls the Layer-6 outreach queue (top pending candidates; no push channel without
+  a frontend), `GET /longitudinal/summaries` + `GET /longitudinal/latest` read Layer-10 weekly
+  summaries, and `POST /admin/jobs/{name}` runs any background job on demand (single-user, no auth).
+  The five jobs (`background/*.py`, registry in `background/scheduler.py`) are plain
+  `run(app_state) -> dict` callables operating on the persisted stores: `integrity_check` (verify
+  both hash chains), `memory_consolidation` (Layer-2 `decay_sweep` + persist), `proactive_check`
+  (queue recompute/expire, suppressed while cold-starting), `longitudinal_summary` (generate + persist
+  a `WeeklySummary`), `pattern_detection`. `start_scheduler` runs them in-process via APScheduler,
+  **opt-in through `config.scheduler.enabled`** (lazy-imported so the offline gate never needs it;
+  no-op if disabled/absent), started/stopped in the app lifespan.
 - **Sync (Layer 12, zero-knowledge)** (`api/routes/sync.py`): `POST /sync/push`, `GET /sync/pull`,
   `GET /sync/status`. The server is a **blind relay** — it stores opaque AES ciphertext produced
   on-device by `SyncCoordinator.build_delta` (`PostgresSyncStore` → `sync_delta` table) and hands
@@ -200,7 +211,7 @@ full roadmap.
 - **Cloud LLM**: Groq API (llama-3.3-70b-versatile) for System 2
 - **Layer 3 classifier**: Phi-3 Mini / Gemma 2B (emotion+intent classification, fast path)
 - **TTS**: Kokoro (custom Docker image on port 8880, OpenAI-compatible API)
-- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly Sunday)
+- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS`, run in-process **opt-in via `config.scheduler.enabled`** (APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
 - **Session Cache**: `infra/session_cache.py` — ephemeral per-turn in-memory buffer holding intermediate layer outputs. Distinct from Layer 2's Short-Term Memory Buffer.
 
 ### Docker Services

@@ -1,11 +1,24 @@
-# Pattern Detection Job
-#
-# Responsibility: Run weekly sweep for temporal-emotional pattern detection.
-#
-# Trigger: Weekly (configurable day, typically Sunday 2 AM)
-#
-# Executes:
-#   - layer6_proactivity.pattern_detector.detect_patterns() for all users
-#   - Detected patterns feed into proactive queue
-#
-# Performance: Typically 30 sec - 2 min depending on history volume
+"""Pattern detection job — Layer-10 behavioural-pattern sweep over persisted longitudinal data.
+
+Runs weekly. Detects recurring patterns from persisted episodes + sessions. Detected patterns are
+returned (a follow-up feeds high-confidence patterns into the Layer-6 proactive queue).
+"""
+from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger("nova.jobs")
+
+
+def run(app_state) -> dict:
+    from infra.db.memory_store import PostgresMemoryStore
+    from backend.layer10_longitudinal.progress_tracker import detect_behavioral_patterns
+    from background._adapters import episodic_records, session_records
+
+    uid = app_state.default_user_id
+    store = PostgresMemoryStore(app_state.session_factory)
+    eps = episodic_records(store, uid)
+    sessions = session_records(app_state.session_factory, uid)
+    patterns = detect_behavioral_patterns([], sessions, eps)
+    logger.info("pattern detection: episodes=%d patterns=%d", len(eps), len(patterns))
+    return {"episodes": len(eps), "sessions": len(sessions), "patterns": len(patterns)}
