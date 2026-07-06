@@ -17,6 +17,11 @@ docker compose up -d
 # Run development API server
 uvicorn api.main:app --reload
 
+# Run the FULL pipeline live on local Ollama (no cloud / no GROQ_API_KEY needed)
+#   prereqs: docker services up + models pulled: `ollama pull qwen2.5:7b nomic-embed-text`
+#   config/local.yaml repoints System 2 (Groq) -> local qwen2.5:7b; build_app_state auto-loads it.
+bash scripts/run_local.sh
+
 # Run all tests
 pytest
 

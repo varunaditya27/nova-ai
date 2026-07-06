@@ -28,13 +28,21 @@ def test_ollama_complete_and_embed(ollama_url):
 
 @pytest.mark.docker
 def test_chroma_add_query_delete(chroma_hostport):
+    from infra.vector_store.collections import COLLECTIONS
     host, port = chroma_hostport
     store = ChromaVectorStore(host=host, port=port)
+    # Hermetic: drop the shared collection so this test controls its embedding dimension regardless
+    # of any prior real (768-dim nomic) or toy state left on the shared Chroma instance.
+    try:
+        store._client.delete_collection(COLLECTIONS["episodic"]["name"])
+    except Exception:
+        pass
     store.add("episodic", ids=["m1"], embeddings=[[0.1, 0.2, 0.3]],
               metadatas=[{"user_id": "u1"}], documents=["first"])
     hits = store.query("episodic", [0.1, 0.2, 0.3], n_results=1)
     assert hits and hits[0]["id"] == "m1"
     store.delete("episodic", ["m1"])
+    store._client.delete_collection(COLLECTIONS["episodic"]["name"])  # leave no shared residue
 
 
 @pytest.mark.docker

@@ -37,6 +37,12 @@ TIER_2_LEXICAL_PATTERNS = [
     r"(can't breathe|having a panic|heart is racing|can't stop shaking)",
     r"(he|she|they) (hit|hurt|choked|threatened) me",
     r"(can't|cannot) (stop|control) (drinking|using|taking)",
+    # Direct death-wish / suicidal ideation (no explicit plan → warm safety response, §4.3).
+    r"(don'?t|do not|no longer) want to (be alive|live|exist|wake up|be here)( any ?more)?",
+    r"(i )?wish i (was|were|wasn'?t) (dead|here|around|born)",
+    r"i (want to|wanna) die",
+    r"(i )?want to end (it all|my life|everything)",
+    r"(i'?d|i would) (be )?better off dead",
 ]
 TIER_3_LEXICAL_PATTERNS = [
     r"(feel like|feeling like) (a burden|worthless|nothing)",
