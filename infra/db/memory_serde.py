@@ -13,7 +13,7 @@ Pure stdlib (no SQLAlchemy) so it imports on a bare interpreter.
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Union, get_args, get_origin, get_type_hints
 from uuid import UUID
@@ -35,6 +35,8 @@ def to_jsonable(obj: Any) -> Any:
     if isinstance(obj, UUID):
         return str(obj)
     if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):        # after datetime (datetime is a subclass of date)
         return obj.isoformat()
     if dataclasses.is_dataclass(obj):
         return {f.name: to_jsonable(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
@@ -77,4 +79,6 @@ def from_jsonable(tp: Any, data: Any) -> Any:
             return data  # opaque string id — keep as-is (advisory UUID annotation)
     if tp is datetime:
         return datetime.fromisoformat(data)
+    if tp is date:
+        return date.fromisoformat(data)
     return data
