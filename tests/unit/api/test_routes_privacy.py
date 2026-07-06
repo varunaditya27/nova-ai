@@ -67,6 +67,18 @@ def test_double_delete_is_404():
     assert client.delete(f"/memory/{mem.memory_id}").status_code == 404
 
 
+def test_get_deleted_memory_is_404():
+    """A forgotten memory must read as not-found via GET, not return a zeroed 200 — get_episodic
+    returns raw rows (Layer-12 deletion needs them), so the route must honor is_deleted."""
+    client, factory = _client()
+    store = PostgresMemoryStore(factory)
+    mem = EpisodicMemory(user_id="local-user", summary="secret", embedding=[0.1, 0.2])
+    store.save_episodic(mem)
+    assert client.get(f"/memory/{mem.memory_id}").status_code == 200      # present before delete
+    assert client.delete(f"/memory/{mem.memory_id}").status_code == 200
+    assert client.get(f"/memory/{mem.memory_id}").status_code == 404      # forgotten → not found
+
+
 def test_integrity_reports_intact_chains():
     client, _ = _client()
     body = client.get("/memory/integrity").json()

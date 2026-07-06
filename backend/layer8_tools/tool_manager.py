@@ -61,6 +61,8 @@ class _Pending:
     action_type: str
     user_id: Optional[str]
     session_id: Optional[str]
+    tier: str = "soft"          # carried so a pending-list view reports the real gate…
+    reversible: bool = True     # …and whether the awaiting action can be undone (HARD/irreversible)
 
 
 def _fingerprint(tool_name: str, operation: str, parameters: dict, user_id) -> str:
@@ -158,7 +160,8 @@ class ToolManager:
                                          intent.parameters, user_id),
                 tool_name=intent.tool_name, operation=intent.operation,
                 parameters=intent.parameters, action_type=cap.action_type,
-                user_id=user_id, session_id=session_id)
+                user_id=user_id, session_id=session_id,
+                tier=tier, reversible=cap.reversible)
             return ToolUseOutput(tool_invoked=False, intent=intent, confirmation_request=req)
 
         # 3) AUTO → execute + record.

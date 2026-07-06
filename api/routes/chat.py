@@ -30,13 +30,16 @@ def chat(req: ChatRequest, state=Depends(get_state),
     except Exception:
         logger.exception("turn failed")
         raise HTTPException(status_code=503, detail="conversation temporarily unavailable")
+    tier = getattr(out, "crisis_tier", None)
     return ChatResponse(
         response=out.response_text,
         conversation_mode=getattr(out, "conversation_mode", "casual"),
         cognitive_system=getattr(out, "cognitive_system", "system1"),
         crisis_active=getattr(out, "crisis_active", False),
+        crisis_tier=str(tier) if tier is not None else None,
         refined=getattr(out, "refined", False),
         tool_invoked=getattr(out, "tool_invoked", False),
+        confabulation_guard=getattr(out, "confabulation_guard", False),
         session_id=session_id)
 
 

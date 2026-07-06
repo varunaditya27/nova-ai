@@ -33,6 +33,17 @@ def test_chat_returns_response_shape():
     assert body["response"] == "hey there" and body["cognitive_system"] == "system1"
 
 
+def test_chat_response_includes_stream_parity_fields():
+    """`/chat` JSON must carry the same turn metadata the SSE `meta` frame exposes
+    (confabulation_guard) plus crisis_tier, so a frontend sees one consistent contract."""
+    out = SimpleNamespace(response_text="hey", conversation_mode="crisis",
+                          cognitive_system="system2", crisis_active=True, crisis_tier="tier_2",
+                          refined=True, tool_invoked=False, confabulation_guard=True)
+    body = _client(out=out).post("/chat", json={"message": "hi"}).json()
+    assert body["confabulation_guard"] is True
+    assert body["crisis_tier"] == "tier_2"
+
+
 def test_chat_503_on_orchestrator_error():
     r = _client(raises=True).post("/chat", json={"message": "hi"})
     assert r.status_code == 503

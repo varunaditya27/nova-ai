@@ -73,6 +73,21 @@ def test_deny_removes_pending():
     assert client.get("/tools/pending").json() == []
 
 
+def test_pending_reports_real_tier_and_reversibility():
+    """GET /tools/pending must reflect the bound action's real gate/reversibility — a HARD,
+    irreversible action must not be reported to the frontend as soft/reversible."""
+    client, tm = _client()
+    from backend.layer8_tools.tool_manager import _Pending
+    tm._pending["rid-hard"] = _Pending(
+        fingerprint="fp", tool_name="email", operation="send",
+        parameters={"to": "x@y.com"}, action_type="write", user_id="local-user",
+        session_id="s1", tier="hard", reversible=False)
+    pending = client.get("/tools/pending").json()
+    assert len(pending) == 1
+    assert pending[0]["tier"] == "hard"
+    assert pending[0]["reversible"] is False
+
+
 def test_confirm_unknown_id_is_404():
     client, _ = _client()
     assert client.post("/tools/confirm/nope").status_code == 404

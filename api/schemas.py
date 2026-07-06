@@ -16,8 +16,10 @@ class ChatResponse(BaseModel):
     conversation_mode: str
     cognitive_system: str
     crisis_active: bool
+    crisis_tier: Optional[str] = None       # populated when crisis_active (frontend crisis UI)
     refined: bool
     tool_invoked: bool = False
+    confabulation_guard: bool = False        # parity with the SSE `meta` frame
     session_id: str
 
 

@@ -29,7 +29,8 @@ def _pending_views(tm):
     for rid, p in getattr(tm, "_pending", {}).items():
         views.append(ConfirmationRequest(
             tool_name=p.tool_name, action_type=p.action_type,
-            action_description=f"{p.tool_name}.{p.operation}", tier="soft",
+            action_description=f"{p.tool_name}.{p.operation}",
+            tier=getattr(p, "tier", "soft"), reversible=getattr(p, "reversible", True),
             parameters=dict(p.parameters or {}), request_id=rid))
     return views
 

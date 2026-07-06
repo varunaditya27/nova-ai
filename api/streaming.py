@@ -13,10 +13,13 @@ Wire protocol (``text/event-stream``): one ``meta`` frame, then one ``token`` fr
 from __future__ import annotations
 
 import json
+import logging
 import random as _random
 import re
 from datetime import datetime, timezone
 from typing import Iterator, Optional
+
+logger = logging.getLogger("nova.api")
 
 # Layer-3 conversation modes -> Layer-9 StreamTypingOverlay pacing modes.
 _MODE_TO_TYPING = {
@@ -60,33 +63,41 @@ def stream_turn(orchestrator, overlay, user_id: str, message: str, *, session_id
                 now: Optional[datetime] = None, rng=_random) -> Iterator[str]:
     """Run a full turn, then yield SSE frames (meta -> token* -> done) with overlay-paced delays."""
     now = now or datetime.now(timezone.utc)
-    out = orchestrator.run_turn(user_id, message, now=now, session_id=session_id)
+    try:
+        out = orchestrator.run_turn(user_id, message, now=now, session_id=session_id)
 
-    mode = getattr(out, "conversation_mode", "casual")
-    typing_mode = _MODE_TO_TYPING.get(mode, _DEFAULT_TYPING_MODE)
-    band = _circadian_band(now)
+        mode = getattr(out, "conversation_mode", "casual")
+        typing_mode = _MODE_TO_TYPING.get(mode, _DEFAULT_TYPING_MODE)
+        band = _circadian_band(now)
 
-    yield _sse("meta", {
-        "session_id": session_id,
-        "conversation_mode": mode,
-        "cognitive_system": getattr(out, "cognitive_system", "system1"),
-        "crisis_active": getattr(out, "crisis_active", False),
-        "refined": getattr(out, "refined", False),
-        "confabulation_guard": getattr(out, "confabulation_guard", False),
-    })
+        yield _sse("meta", {
+            "session_id": session_id,
+            "conversation_mode": mode,
+            "cognitive_system": getattr(out, "cognitive_system", "system1"),
+            "crisis_active": getattr(out, "crisis_active", False),
+            "refined": getattr(out, "refined", False),
+            "confabulation_guard": getattr(out, "confabulation_guard", False),
+        })
 
-    text = getattr(out, "delivered", None) or getattr(out, "response_text", "") or ""
-    prev = ""
-    for token in _tokenize(text):
-        events = overlay.emit_token(token, prev, typing_mode, band, rng=rng)
-        delay = sum(getattr(e, "delay_before_ms", 0) for e in events)
-        yield _sse("token", {"token": token, "delay_ms": int(delay)})
-        prev = token
+        text = getattr(out, "delivered", None) or getattr(out, "response_text", "") or ""
+        prev = ""
+        for token in _tokenize(text):
+            events = overlay.emit_token(token, prev, typing_mode, band, rng=rng)
+            delay = sum(getattr(e, "delay_before_ms", 0) for e in events)
+            yield _sse("token", {"token": token, "delay_ms": int(delay)})
+            prev = token
 
-    yield _sse("done", {
-        "session_id": session_id,
-        "conversation_mode": mode,
-        "cognitive_system": getattr(out, "cognitive_system", "system1"),
-        "crisis_active": getattr(out, "crisis_active", False),
-        "refined": getattr(out, "refined", False),
-    })
+        yield _sse("done", {
+            "session_id": session_id,
+            "conversation_mode": mode,
+            "cognitive_system": getattr(out, "cognitive_system", "system1"),
+            "crisis_active": getattr(out, "crisis_active", False),
+            "refined": getattr(out, "refined", False),
+        })
+    except Exception:
+        # The turn itself is defensive (the orchestrator degrades rather than raising), so this is
+        # a last-resort guard for a failure in streaming/pacing: emit a terminal error frame so the
+        # client gets a clean, handleable signal instead of a silently truncated stream.
+        logger.exception("stream_turn failed; emitting error frame")
+        yield _sse("error", {"session_id": session_id,
+                             "message": "stream interrupted; please retry"})

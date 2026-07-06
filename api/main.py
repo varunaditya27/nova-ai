@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import load_config
 from api.middleware.logging import RequestLoggingMiddleware
 from api.routes.chat import router as chat_router
 from api.routes.goals import router as goals_router
@@ -50,11 +51,23 @@ async def lifespan(app: FastAPI):
             engine.dispose()
 
 
+def _cors_origins() -> list[str]:
+    """Read allowed origins from config (defaults.yaml + optional local.yaml overlay) so the
+    frontend dev can point any origin (Vite :5173, a deployed host, …) at the API without a code
+    change. Falls back to the localhost dev origin if config is unreadable."""
+    try:
+        cfg = load_config("local.yaml")
+    except Exception:
+        cfg = {}
+    origins = (cfg.get("api") or {}).get("cors_origins")
+    return list(origins) if origins else ["http://localhost:3000"]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Nova AI", version="0.1.0", lifespan=lifespan)
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(
-        CORSMiddleware, allow_origins=["http://localhost:3000"],
+        CORSMiddleware, allow_origins=_cors_origins(),
         allow_methods=["*"], allow_headers=["*"])
     app.include_router(health_router)
     app.include_router(chat_router)
