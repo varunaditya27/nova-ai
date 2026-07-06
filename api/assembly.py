@@ -91,6 +91,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          tool_manager=None,
                          goal_provider: Optional[Callable] = None,
                          relationship_provider: Optional[Callable] = None,
+                         vector_store=None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
     from backend.layer2_memory import memory_arbiter
@@ -114,11 +115,25 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return packet
 
     def recall(user_id, input_packet):
+        # NOTE: pass the RAW user_id (not a uuid5) so recall matches the write path + read routes,
+        # which persist/read episodes under the raw user_id. With a vector store present, retrieve
+        # candidates by ANN (nearest episodic neighbours) instead of a linear scan; degrades to the
+        # linear path when the index is cold or the vector store is unavailable.
+        query = getattr(input_packet, "raw_message", "") or ""
+        recall_store = memory_store
+        if vector_store is not None and query:
+            try:
+                from infra.db.ann_recall_store import AnnRecallStore
+                recall_store = AnnRecallStore(memory_store, vector_store,
+                                              embedder.embed(query), user_id)
+            except Exception:
+                logger.exception("ANN recall store setup failed; using base store")
+                recall_store = memory_store
         packet = _run(memory_arbiter(
-            _uuid_for(user_id), getattr(input_packet, "raw_message", "") or "",
+            user_id, query,
             EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral"),
             ConversationMode.CASUAL, datetime.now(timezone.utc),
-            store=memory_store, embedder=embedder))
+            store=recall_store, embedder=embedder))
         return list(getattr(packet, "recalled_memories", []) or [])
 
     def _json_classifier(text):

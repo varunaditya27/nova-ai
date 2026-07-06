@@ -62,7 +62,8 @@ def build_tool_manager(session_factory, user_id):
     return tm
 
 
-def make_state_update_writer(store, embed_client, session_factory, threshold: float) -> Callable:
+def make_state_update_writer(store, embed_client, session_factory, threshold: float,
+                             vector_store=None) -> Callable:
     """Post-turn writer that runs the real Layer-2 state_updater against Postgres.
 
     Upserts the Session turn count, then extracts a new episode from the turn, reinforces the
@@ -91,10 +92,19 @@ def make_state_update_writer(store, embed_client, session_factory, threshold: fl
             def _extractor(_stm, _emotion):
                 if not message:
                     return []
-                return [EpisodicMemory(
+                ep = EpisodicMemory(
                     user_id=ctx.user_id, summary=message[:2000],
                     embedding=embed_client.embed([message])[0], created_at=now,
-                    importance_score=0.3, S_current=1.0, creation_agent="api.state_update")]
+                    importance_score=0.3, S_current=1.0, creation_agent="api.state_update")
+                if vector_store is not None:   # index for the ANN live recall path (best-effort)
+                    try:
+                        vector_store.add("episodic", ids=[str(ep.memory_id)],
+                                         embeddings=[ep.embedding],
+                                         metadatas=[{"user_id": str(ctx.user_id)}],
+                                         documents=[message[:500]])
+                    except Exception:
+                        logger.exception("vector-store index failed; recall falls back to linear")
+                return [ep]
 
             stm = ShortTermMemoryBuffer(session_id=key, user_id=ctx.user_id)
             audit = PostgresAuditTrail(session_factory, ctx.user_id)
@@ -239,7 +249,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
     grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
     session_writer = _chain_writers(
-        make_state_update_writer(store, llm_clients["embed"], session_factory, threshold),
+        make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
+                                 vector_store=vector_store),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
@@ -252,7 +263,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         cold_start=make_cold_start_provider(session_factory, grad_sessions),
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
-        relationship_provider=make_relationship_provider(session_factory))
+        relationship_provider=make_relationship_provider(session_factory),
+        vector_store=vector_store)
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,

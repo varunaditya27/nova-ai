@@ -97,6 +97,12 @@ def delete_memory(memory_id: str, state=Depends(get_state)):
     report = dry_run_deletion(req, adapter, semantic_store=None)
     req.status = "confirmed"
     cert = execute_deletion(req, adapter)
+    vs = getattr(state, "vector_store", None)
+    if vs is not None:   # drop it from the ANN index too (best-effort — audit row remains)
+        try:
+            vs.delete("episodic", [str(memory_id)])
+        except Exception:
+            pass
     PostgresPrivacyAudit(state.session_factory, uid).append(
         "delete_memory", {"memory_id": str(memory_id), "certificate": cert.token})
     return MemoryDeletionOut(deleted=cert.deleted_count, memory_id=str(memory_id),
