@@ -186,9 +186,15 @@ so any block/modification is applied before Layer 9 delivers). The Layer-13 `col
 persisted-state-driven (`make_cold_start_provider` reads `PostgresOnboardingStore`): observe-only /
 drift-gated directives while cold-starting, `None` once graduated (self-terminating). Single-user:
 `user_id` = `config['system']['default_user_id']` (env `NOVA_USER_ID`).
-The live recall path reads Layer-2 candidates from **`PostgresMemoryStore`** (`infra/db/memory_store.py`),
-and the post-turn writer runs the **real Layer-2 `state_updater`** (`make_state_update_writer`):
-it persists a new `EpisodicMemory` (JSONB payload + embedding, via `infra/db/memory_serde.py`),
+The live recall path retrieves Layer-2 candidates by **ChromaDB ANN** when a vector store is present:
+`recall` wraps `PostgresMemoryStore` in **`AnnRecallStore`** (`infra/db/ann_recall_store.py`) bound to
+the query embedding — it asks Chroma for the nearest episodic neighbours and hydrates them from
+Postgres, degrading to the linear candidate scan when the index is cold or the vector store is
+unavailable. **Recall passes the raw `user_id`** (not a uuid5) so it matches the write path + read
+routes (a prior uuid5 mismatch meant persisted episodes were never recalled — now fixed).
+The post-turn writer runs the **real Layer-2 `state_updater`** (`make_state_update_writer`):
+it persists a new `EpisodicMemory` (JSONB payload + embedding, via `infra/db/memory_serde.py`) **and
+indexes its embedding into Chroma** for the ANN path (deletion drops it from the index too),
 reinforces the recalled memories the response actually reflected (similarity-gated `S_current`
 write-back), bumps the UWM version if present, appends a durable SHA-256 audit chain
 (**`PostgresAuditTrail`**, `infra/db/audit_trail.py`, continues across restarts), and upserts a
@@ -204,9 +210,9 @@ composed via `_chain_writers`. See `docs/superpowers/specs/2026-07-05-postgres-m
 follow-ups):** auth/multi-user, WebSocket transport for streaming (SSE is live; WS is the future
 bidirectional upgrade), the full Layer-13 elicitation/feature-pacing machinery (the cold-start
 overlay reads persisted graduation state but does not yet run per-turn elicitation — needs a
-persisted session_context), goal accountability-injection into generation, per-user Layer 4/5
-state, Layer-8 tool execution, Layer-12 sync/deletion, and the Chroma ANN live-path (deferred as
-YAGNI for single-user). See `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md`
+persisted session_context) and per-user Layer 4/5 persona-param *learning* (relationship
+progression is wired; persona warmth/verbosity learning is not). See
+`docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md`
 §8 and `docs/superpowers/specs/2026-07-06-chat-streaming-and-full-integration-design.md` for the
 full roadmap.
 
