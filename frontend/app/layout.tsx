@@ -5,6 +5,7 @@ import "@fontsource-variable/instrument-sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";
+import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
 
 export const metadata: Metadata = {
   title: "Nova",
@@ -24,7 +25,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeNoFlashScript }} />
       </head>
       <body className="relative min-h-full">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AcousticsProvider>{children}</AcousticsProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
