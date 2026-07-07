@@ -35,7 +35,7 @@ From `frontend/personality-reference.md` + `frontend/ui-design-reference.md`:
 | Aesthetic soul | **Ivory + Ink** (paper/library), with a true **Obsidian dark study mode** as its faithful shadow |
 | Brass | **earned accent only** — milestones, firsts, bookmarks — in both themes |
 | Display type | **Fraunces** (variable: optical-size + SOFT axes) — warm editorial serif |
-| Body/UI type | **Switzer** (variable grotesk, self-hosted) — warmer than Inter/Geist |
+| Body/UI type | **Instrument Sans** (variable, self-hosted via `@fontsource-variable`) — the grotesk the vision doc calls "criminally underrated"; pairs with Fraunces and never touches a font CDN |
 | Mono | **Geist Mono** — rare tabular/code; tabular figures everywhere |
 | Styling | **Tailwind v4** (`@theme`) over a **strict design-token layer** — no arbitrary values |
 | Motion | **`motion` (Framer Motion)** — springs only, no CSS easing |
