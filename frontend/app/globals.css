@@ -1,26 +1,72 @@
 @import "tailwindcss";
+@import "../lib/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * Map the material tokens onto Tailwind utilities. `inline` keeps the var reference in the
+ * generated utility (e.g. bg-paper -> background-color: var(--paper)), so flipping data-theme
+ * on <html> re-themes everything with no re-render.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-hairline: var(--hairline);
+  --color-brass: var(--brass);
+  --color-brass-soft: var(--brass-soft);
+
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --font-body: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-mono);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    font-family: var(--font-body);
+    /* tabular figures everywhere — numbers should never dance */
+    font-feature-settings: "tnum" 1;
+    text-rendering: optimizeLegibility;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Paper grain — a near-invisible tooth on the ivory. Absent at night (opacity 0). */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: url("/grain.svg");
+    background-size: 200px 200px;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: multiply;
+  }
+
+  /* Display type wants soft optical sizing — set the Fraunces axes when .font-display is used. */
+  .font-display {
+    font-variation-settings: "opsz" 40, "SOFT" 40, "wght" 460;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--brass-soft);
+    color: var(--paper);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brass);
+    outline-offset: 2px;
+  }
 }
