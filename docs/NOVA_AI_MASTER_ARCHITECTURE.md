@@ -335,10 +335,10 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 | Component | Production target |
 |---|---|
-| API | FastAPI (`api/main.py`) — **live for `POST /chat` + `GET /health[/ready]`**; sync `/chat` bridges to the async layers via a threadpool. WebSocket streaming is a follow-up. |
+| API | FastAPI (`api/main.py`) — **live: 25 REST routes across all 13 layers + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`)**; sync `/chat` bridges to the async layers via a threadpool. WebSocket transport is a follow-up. **Full endpoint + schema reference: [`API_REFERENCE.md`](API_REFERENCE.md).** |
 | Relational store | PostgreSQL 16 + SQLAlchemy 2.x (`infra/db/`) |
 | Vector store | ChromaDB service (`infra/vector_store/`); Ollama `nomic-embed-text` embeddings |
-| Local LLM (System 1) | Ollama + qwen2.5:7b (also gemma3:4b, nomic-embed-text) |
+| Local LLM (System 1) | Ollama + qwen2.5:7b (also gemma2:2b for Layer-8 tool-intent params, nomic-embed-text) |
 | Cloud LLM (System 2) | Groq API + llama-3.3-70b-versatile |
 | LLM client layer | `infra/llm/` — official `groq`/`ollama` SDKs behind one `LLMClient` ABC, config-driven factory |
 | Layer 3 classifier | Phi-3 Mini / Gemma 2B (fast emotion+intent) |

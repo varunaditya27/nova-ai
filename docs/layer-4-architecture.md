@@ -1248,3 +1248,14 @@ This keeps the resolver runnable against the real UWM without inventing schema f
 ---
 
 *This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation. No behavior of Layer 4 requires assumptions or inferences from other documents.*
+
+### Live integration update (2026-07-07) — per-user persona-param learning
+
+The four communication-style calibration params (`formality_preference`,
+`response_length_preference`, `question_tolerance`, `unsolicited_advice_tolerance`) are now **learned
+per user in the live turn**. `backend/layer4_persona/style_learning.py` EMA-updates them from each
+message (length → verbosity; casual/formal markers → formality; `?` → question tolerance;
+advice-seeking → advice tolerance) and emits a plain-language `persona_style_directive` (no raw
+scores to the LLM). The relationship writer applies it (`PostgresRelationshipStore.record_turn(
+user_message=…)`), `api/assembly.build_persona` folds the directive into the persona instruction, and
+`GET /relationship` exposes the learned params. See `docs/API_REFERENCE.md`.

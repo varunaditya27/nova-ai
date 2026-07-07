@@ -131,7 +131,7 @@ flowchart TD
     end
 
     subgraph P5 ["🛡️ Safety & Delivery"]
-        L8["Layer 8 · Crisis & Safeguarding\nProtective overrides · Crisis handling"]
+        L8["Layer 8 · Tool Use & Actions\nCalendar · Email · Reminders · Web search"]
         L9["Layer 9 · Interaction Orchestration\nTyping behavior · Voice synthesis"]
     end
 
@@ -291,19 +291,21 @@ without requiring explicit task management.
 
 ---
 
-## 🛡️ Layer 8 — Crisis & Safeguarding
+## 🛠️ Layer 8 — Tool Use & Actions
 
-A deeply personalized AI system becomes dangerous without proper safeguards.
+Nova can act in the world, not just talk about it.
 
 This layer handles:
 
-* crisis detection
-* distress analysis
-* escalation protocols
-* protective response overrides
-* post-crisis handling
+* intent detection → parameter resolution → confirmation → execution → durable audit
+* a confirmation gate (AUTO / SOFT / HARD) with single-use, ownership-checked tokens
+* swappable plugins: calendar, email, reminders, notes, web search
+* natural-language parameter extraction via a fast lightweight model (gemma2:2b)
 
-Safety systems can fully override the normal response pipeline when required.
+Tool routing is conservative (keyword-gated) so ordinary conversation is never hijacked.
+
+> Crisis detection and safety overrides are **Layer 11 (Ethical Safety)** — not this layer.
+> An earlier revision mislabeled Layer 8 as "Crisis & Safeguarding"; that has been corrected.
 
 ---
 
@@ -549,7 +551,13 @@ pytest
 
 # ✦ Documentation
 
-Each layer has its own dedicated architecture document inside `docs/`.
+- **[`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)** — complete HTTP API reference (all 25 routes +
+  schemas). Start here for frontend integration. Live schema at `GET /openapi.json`, explorer at `/docs`.
+- **[`docs/NOVA_AI_MASTER_ARCHITECTURE.md`](docs/NOVA_AI_MASTER_ARCHITECTURE.md)** — canonical top-level
+  architecture (read first).
+- **`CLAUDE.md`** — how the code is wired together, for contributors.
+
+Each layer also has its own dedicated architecture document inside `docs/`.
 
 These specifications include:
 

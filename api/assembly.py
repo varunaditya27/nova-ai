@@ -183,6 +183,14 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         f"You and the user are at the '{stage}' stage of a long-term relationship "
                         f"({msgs} messages across {sessions} sessions). Match that familiarity — "
                         f"warmer and more casual as it deepens; do not over-familiarize when new.")
+                    # Fold in the per-user learned communication style (Layer 4/5 persona learning).
+                    try:
+                        from backend.layer4_persona.style_learning import persona_style_directive
+                        style = persona_style_directive(rel)
+                        if style:
+                            packet.persona_instruction = f"{packet.persona_instruction} {style}"
+                    except Exception:
+                        logger.exception("style directive failed; persona without learned style")
             except Exception:
                 logger.exception("relationship provider failed; using default persona")
         return packet
@@ -201,10 +209,20 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return (f"The user has active goal(s): {joined}. If it fits naturally, reference their "
                 f"progress or gently encourage them — never force it or lecture.")
 
+    def _elicitation_directive(ctx) -> str:
+        """Layer-13: weave a surfaced onboarding question in naturally (never front-loaded)."""
+        item = getattr(ctx, "pending_elicitation", None)
+        question = getattr(item, "question", None) if item is not None else None
+        if not question:
+            return ""
+        return (f"Somewhere that feels natural in your reply — never as a form or an interrogation — "
+                f"gently work in this question: \"{question}\". If it doesn't fit naturally, let it go.")
+
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
+        directive = " ".join(d for d in (_goal_directive(ctx), _elicitation_directive(ctx)) if d)
         draft = generate_semantic_draft(ctx.message, persona_packet=ctx.persona_packet,
-                                        response_instruction=_goal_directive(ctx),
+                                        response_instruction=directive,
                                         llm_fn=lambda p: client.complete(p))
         return draft.text
 

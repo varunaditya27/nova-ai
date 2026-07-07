@@ -1,0 +1,334 @@
+# Nova AI — API Reference
+
+Complete reference for the Nova AI HTTP backend: every endpoint, its request/response schema, and
+the conventions a frontend needs. Generated from the live FastAPI app (`api/main.py`); the
+machine-readable schema is always available at **`GET /openapi.json`** and an interactive explorer at
+**`GET /docs`** (Swagger UI) / **`GET /redoc`**.
+
+- **Base URL (local):** `http://127.0.0.1:8000`
+- **Content type:** `application/json` for all request/response bodies except `POST /chat/stream`
+  (`text/event-stream`) and `POST /voice` (`audio/mpeg`).
+- **Auth:** none yet — single-user. The active user is `config.system.default_user_id`
+  (env `NOVA_USER_ID`, default `local-user`). Auth/multi-user is a deliberate follow-up.
+- **CORS:** allowed origins come from `config.api.cors_origins` (`config/defaults.yaml`, overridable
+  via `config/local.yaml`). Add your frontend origin there (e.g. `http://localhost:5173`).
+- **Errors:** uniform FastAPI shape `{"detail": "<message>"}`. Codes used: `404` (not found),
+  `422` (request validation), `503` (a backend dependency — DB/model/TTS — is unavailable),
+  `500` (unexpected job failure). `POST /chat` degrades internally and returns `503` only if the
+  whole turn throws.
+
+---
+
+## Conventions
+
+- **Timestamps** in responses are ISO-8601 strings (or `null`). The LLM itself never sees raw
+  timestamps (Layer-1 fuzzy labels), but the API surfaces real ISO times for the UI.
+- **No raw scores reach the model**, but the API *does* expose numeric fields (recall importance,
+  relationship calibration, priorities) for the UI to render.
+- **Single `ToolManager` + `voice_backend` + orchestrator** live on the app for the process, so a
+  tool confirmation issued during a `/chat` turn is confirmable later via `/tools/confirm`.
+
+---
+
+## Health
+
+### `GET /health`
+Liveness. Always `200`.
+```json
+{ "status": "ok" }
+```
+
+### `GET /health/ready`
+Readiness — probes Postgres. `200` when reachable, `503` otherwise (never leaks DB detail).
+```json
+{ "status": "ready" }                          // 200
+{ "status": "not_ready", "component": "postgres" }  // 503
+```
+
+---
+
+## Conversation
+
+### `POST /chat`
+Drive one full conversation turn (all 13 layers: crisis veto → recall → classify → cold-start
+overlay → tool use → generate → SC-1 guardrails → Layer-9 delivery → post-turn writes).
+
+**Request — `ChatRequest`**
+| field | type | required | notes |
+|---|---|---|---|
+| `message` | string | yes | the user's message |
+| `session_id` | string \| null | no | omitted → a new UUID is minted and returned |
+
+**Response — `ChatResponse`**
+| field | type | notes |
+|---|---|---|
+| `response` | string | the delivered, guardrailed text |
+| `conversation_mode` | string | `casual` \| `emotional_support` \| `crisis` \| `celebration` \| `technical_discussion` \| `goal_planning` \| `social_coaching` \| `life_review` |
+| `cognitive_system` | string | `system1` (fast, local) or `system2` (deep) |
+| `crisis_active` | bool | true when Layer-11 replaced the response |
+| `crisis_tier` | string \| null | `tier_1` \| `tier_2` \| `tier_3` when crisis, else null |
+| `refined` | bool | Agent 4b emotion-refinement ran |
+| `tool_invoked` | bool | a Layer-8 tool handled the turn (see `/tools/*`) |
+| `confabulation_guard` | bool | true when no memories were recalled (model told not to invent) |
+| `session_id` | string | echo (or minted) session id |
+
+`curl -X POST /chat -d '{"message":"hey Nova","session_id":"s1"}'`
+
+### `POST /chat/stream`
+The **same full turn**, streamed as Server-Sent Events. Not token-from-LLM: the whole turn (crisis
+veto + guardrails + post-turn writes) runs first, then the delivered text is replayed as
+overlay-paced token frames — so SC-1 always runs before delivery. Response header `X-Session-Id`
+carries the session id. Media type `text/event-stream`.
+
+**Frame sequence:** one `meta`, then N `token`, then one `done`. On failure a terminal `error`.
+```
+event: meta
+data: {"session_id":"s1","conversation_mode":"casual","cognitive_system":"system1",
+       "crisis_active":false,"refined":false,"confabulation_guard":false}
+
+event: token
+data: {"token":"Hey ","delay_ms":40}          // concatenating all tokens == response text
+
+event: done
+data: {"session_id":"s1","conversation_mode":"casual","cognitive_system":"system1",
+       "crisis_active":false,"refined":false}
+
+event: error
+data: {"session_id":"s1","message":"stream interrupted; please retry"}   // only on failure
+```
+
+### `POST /voice`
+Synthesize a text response to speech (Layer-9 SSML → Kokoro TTS). Returns raw audio
+(`audio/mpeg`), or `503` if TTS is unavailable/failed (fall back to text).
+
+**Request — `VoiceRequest`**
+| field | type | required | notes |
+|---|---|---|---|
+| `text` | string | yes | text to speak |
+| `conversation_mode` | string | no | the mode `/chat` returned; mapped to a Layer-9 prosody profile. Default `casual` |
+| `voice_id` | string \| null | no | Kokoro voice (`af_sky`, `af_bella`, `am_adam`, …); default from config |
+
+Response body: binary MP3. `curl -X POST /voice -d '{"text":"hello"}' --output out.mp3`
+
+---
+
+## Goals (Layer 7)
+
+### `GET /goals?status=<status>`
+Active goals by default; pass `status` to filter (`tentative`|`active`|`on_track`|`at_risk`|…).
+Returns `[GoalOut]`.
+
+### `GET /goals/{goal_id}` → `GoalOut` (`404` if absent)
+
+### `POST /goals` → `GoalOut` (`201`)
+**Request — `GoalCreate`:** `{ "title": string, "description": string? }`
+
+**`GoalOut`**
+| field | type |
+|---|---|
+| `goal_id` | string |
+| `title` | string |
+| `status` | string |
+| `progress_score` | float |
+| `description` | string |
+
+> Goals are also **extracted automatically** from `/chat` messages (Layer-7 pipeline). A goal with an
+> upcoming `deadline`/milestone seeds a proactive check-in (see `/proactive`).
+
+---
+
+## Memory (Layer 2) + Privacy (Layer 12)
+
+### `GET /memory/audit` → `MemoryAuditOut`
+```
+{ "episodic": [MemoryOut], "semantic": [SemanticOut] }
+```
+- **`MemoryOut`**: `memory_id, summary, importance (float), created_at (iso|null), topic_tags[]`
+- **`SemanticOut`**: `memory_id, statement, confidence (float)`
+
+### `GET /memory/{memory_id}` → `MemoryOut` (`404` if absent or deleted)
+
+### `GET /memory/integrity` → `IntegrityOut`
+Verifies both tamper-evident hash chains.
+```
+{ "status": "INTACT" | "TAMPER_DETECTED", "audit_chain_ok": bool, "privacy_chain_ok": bool }
+```
+
+### `DELETE /memory/{memory_id}` → `MemoryDeletionOut`
+Real Layer-12 selective deletion — a genuine "forget" (content/embedding zeroed, unrecallable; row
+retained for proof), a signed certificate, and a privacy-audit chain entry. `404` if already gone.
+```
+{ "deleted": int, "memory_id": string, "certificate": string, "cascade": string }
+```
+
+---
+
+## Safety (Layer 11)
+
+### `GET /safety/events?limit=20` → `[SafetyEventOut]`
+Recent crisis assessments (append-only log; `NONE` tier turns are not logged).
+| field | type |
+|---|---|
+| `tier` | string (`tier_1`\|`tier_2`\|`tier_3`) |
+| `confidence` | float |
+| `detected_at` | iso \| null |
+| `signal_types` | list |
+
+---
+
+## Relationship (Layer 4/5)
+
+### `GET /relationship` → `RelationshipOut`
+Per-user relationship state — stage progression **and** the learned communication-style calibration
+(persona-param learning). Every `/chat` turn advances it.
+| field | type | notes |
+|---|---|---|
+| `stage` | string | `new`→`acquaintance`→`developing`→`established`→`close` (by session count) |
+| `total_sessions` | int | |
+| `total_messages_exchanged` | int | |
+| `tie_strength` | float | |
+| `trust_score` | float | |
+| `formality_preference` | float | 0=casual … 1=formal (learned) |
+| `response_length_preference` | float | 0=terse … 1=verbose (learned) |
+| `question_tolerance` | float | 0=dislikes being asked … 1=welcomes it (learned) |
+| `unsolicited_advice_tolerance` | float | 0=don't advise … 1=open to suggestions (learned) |
+
+---
+
+## Onboarding (Layer 13)
+
+### `GET /onboarding` → `OnboardingOut`
+```
+{ "cold_start_active": bool, "session_index": int }
+```
+While `cold_start_active`, Nova runs **active elicitation** — it weaves at most one onboarding
+question per session into `/chat` replies when a natural topic arises (never front-loaded, never
+repeated). It self-graduates at `config.onboarding.graduation_sessions` (default 5).
+
+---
+
+## Sessions
+
+### `GET /sessions` → `[SessionOut]`
+`{ "session_key": string, "turn_count": int }` per session.
+
+---
+
+## Proactivity (Layer 6)
+
+### `GET /proactive?limit=5` → `[ProactiveItemOut]`
+Top pending outreach candidates (highest priority first). Populated per-turn from active goals with
+an upcoming deadline/milestone; maintained (re-prioritized/expired) by the `proactive_check` job.
+Empty while the user is cold-starting.
+| field | type |
+|---|---|
+| `item_id` | string |
+| `item_type` | string (e.g. `goal_check_in`) |
+| `status` | string (`pending`\|`deferred`) |
+| `content_basis` | string |
+| `current_priority` | float |
+
+---
+
+## Longitudinal (Layer 10)
+
+### `GET /longitudinal/summaries?limit=10` → `[LongitudinalSummaryOut]`
+### `GET /longitudinal/latest` → `LongitudinalSummaryOut` (`404` if none yet)
+| field | type |
+|---|---|
+| `summary_id` | string |
+| `week_start_date` / `week_end_date` | iso \| null |
+| `session_count` | int |
+| `dominant_theme` | string |
+| `week_narrative` | string |
+
+> Summaries are generated by the `longitudinal_summary` job (runs on the scheduler, or on demand via
+> `POST /admin/jobs/longitudinal_summary`).
+
+---
+
+## Tools (Layer 8)
+
+Natural-language tool requests are detected during `/chat` (`tool_invoked: true`). A fast model
+(gemma2:2b) fills the parameters; AUTO actions execute immediately, while SOFT/HARD actions register
+a pending confirmation surfaced here.
+
+### `GET /tools/pending` → `[ToolConfirmationOut]`
+| field | type | notes |
+|---|---|---|
+| `request_id` | string | pass to confirm/deny |
+| `tool_name` | string | `email`\|`calendar`\|`reminders`\|`notes`\|`web_search` |
+| `action_type` | string | |
+| `action_description` | string | human-readable |
+| `tier` | string | `soft`\|`hard` (real gate) |
+| `reversible` | bool | false for irreversible actions (e.g. send email) |
+
+### `POST /tools/confirm/{request_id}` → `ToolResultOut`
+Executes the pending action (single-use, ownership-checked). `404` if the id is unknown.
+```
+{ "ok": bool, "tool_name": string, "operation": string, "outcome": string,
+  "result_summary": string, "error_message": string|null }
+```
+
+### `POST /tools/deny/{request_id}`
+Drops the pending action. `{ "denied": "<request_id>" }`; `404` if unknown.
+
+### `GET /tools/history` → `[ToolActionOut]`
+Durable audit of executed actions.
+`{ action_id, tool_name, operation, action_type, outcome, result_summary, undone }`
+
+---
+
+## Sync (Layer 12 — zero-knowledge)
+
+The server is a **blind relay**: it stores opaque AES ciphertext produced on-device and hands each
+device the deltas from *other* devices past its cursor. It never holds the key or decrypts.
+
+### `POST /sync/push` → `SyncPushOut` (`201`)
+**`SyncDeltaIn`:** `{ delta_id, source_device, seq, encrypted_payload, size_bytes? }`
+(`encrypted_payload` is opaque base64 ciphertext). Idempotent on `delta_id`.
+Response: `{ "stored": bool, "delta_id": string }`
+
+### `GET /sync/pull?device_id=<id>&after=<cursor>` → `SyncPullOut`
+```
+{ "deltas": [ {cursor, delta_id, source_device, seq, encrypted_payload, size_bytes} ], "cursor": int }
+```
+
+### `GET /sync/status` → `SyncStatusOut`
+`{ "total_deltas": int, "by_device": { device: count }, "latest_cursor": int }`
+
+---
+
+## Admin
+
+### `POST /admin/jobs/{name}` → `JobRunOut`
+Run a background job on demand (single-user, no auth). `404` for an unknown job, `500` on failure.
+Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
+**`longitudinal_summary`**, **`pattern_detection`**.
+```
+{ "job": string, "result": { … job-specific summary … } }
+```
+
+> The same jobs run automatically on the in-process scheduler (`config.scheduler.enabled: true` by
+> default). Set it to `false` to opt out and drive jobs only through this endpoint.
+
+---
+
+## Endpoint index (25 paths)
+
+| Method | Path | Layer |
+|---|---|---|
+| GET | `/health`, `/health/ready` | infra |
+| POST | `/chat`, `/chat/stream` | 1–13 |
+| POST | `/voice` | 9 |
+| GET/POST | `/goals`, `/goals/{id}` | 7 |
+| GET/DELETE | `/memory/audit`, `/memory/integrity`, `/memory/{id}` | 2/12 |
+| GET | `/safety/events` | 11 |
+| GET | `/relationship` | 4/5 |
+| GET | `/onboarding` | 13 |
+| GET | `/sessions` | — |
+| GET | `/proactive` | 6 |
+| GET | `/longitudinal/summaries`, `/longitudinal/latest` | 10 |
+| GET/POST | `/tools/pending`, `/tools/confirm/{id}`, `/tools/deny/{id}`, `/tools/history` | 8 |
+| POST/GET | `/sync/push`, `/sync/pull`, `/sync/status` | 12 |
+| POST | `/admin/jobs/{name}` | infra |

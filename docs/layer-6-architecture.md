@@ -1128,3 +1128,12 @@ The single LLM call (SC-4) is injected as `llm_fn` (`str -> str`). The two exter
 ---
 
 *This document specifies Layer 6 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the Proactive Queue Manager schema and priority scoring, Initiative Classifier taxonomy, Timing Gate full condition set, Message Generator prompt and validation, Response Tracker feedback loop, intake contracts from all four upstream layers, user preference schema, and delivery interface — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 6 requires assumptions or inferences from other documents.*
+
+### Live integration update (2026-07-07) — proactivity wired into the turn
+
+Candidate generation is now connected to the live conversation. `api/proactive_gen.py`
+(`goal_checkin_item`) turns each active Layer-7 goal with an upcoming deadline/milestone into a
+deterministic `GOAL_CHECK_IN` `ProactiveItem`; the post-turn `make_proactive_writer` upserts them
+into `PostgresProactiveQueue` (idempotent by goal-derived id, suppressed while cold-starting), so
+`GET /proactive` accumulates real candidates. The `proactive_check` scheduler job continues to own
+re-prioritization/expiry. See `docs/API_REFERENCE.md`.

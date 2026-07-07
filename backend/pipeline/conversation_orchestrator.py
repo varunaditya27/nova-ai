@@ -196,7 +196,7 @@ class ConversationOrchestrator:
     def _apply_cold_start_overlay(self, ctx: TurnContext) -> None:
         if self.steps.cold_start is None:
             return
-        directives = self.steps.cold_start(ctx.user_id, ctx.message)
+        directives = self.steps.cold_start(ctx.user_id, ctx.message, ctx.session_id)
         ctx.layers_run.append("layer13_onboarding")
         if directives is None:
             return

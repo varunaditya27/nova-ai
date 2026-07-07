@@ -16,9 +16,18 @@ class ChatResponse(BaseModel):
     conversation_mode: str
     cognitive_system: str
     crisis_active: bool
+    crisis_tier: Optional[str] = None       # populated when crisis_active (frontend crisis UI)
     refined: bool
     tool_invoked: bool = False
+    confabulation_guard: bool = False        # parity with the SSE `meta` frame
     session_id: str
+
+
+# ── Voice (Layer 9 / Kokoro TTS) ──────────────────────────────────────────
+class VoiceRequest(BaseModel):
+    text: str
+    conversation_mode: str = "casual"       # the mode /chat returned; mapped to Layer-9 prosody
+    voice_id: str | None = None
 
 
 # ── Tools (Layer 8) ──────────────────────────────────────────────────────
@@ -178,6 +187,11 @@ class RelationshipOut(BaseModel):
     total_messages_exchanged: int = 0
     tie_strength: float = 0.0
     trust_score: float = 0.0
+    # Learned communication-style calibration (Layer 4/5 persona learning).
+    formality_preference: float = 0.5
+    response_length_preference: float = 0.5
+    question_tolerance: float = 0.5
+    unsolicited_advice_tolerance: float = 0.5
 
 
 # ── Admin (job trigger) ──────────────────────────────────────────────────

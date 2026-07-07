@@ -47,3 +47,17 @@ def test_is_user_scoped():
     f = make_session_factory(engine)
     PostgresRelationshipStore(f, "u1").record_turn("s1")
     assert PostgresRelationshipStore(f, "u2").load().total_messages_exchanged == 0
+
+
+def test_record_turn_learns_communication_style():
+    store = _store()
+    for i in range(6):
+        store.record_turn(f"s{i}", user_message="ok")     # terse messages
+    rel = store.load()
+    assert rel.response_length_preference < 0.4            # learned: prefers short replies
+
+
+def test_record_turn_without_message_leaves_style_neutral():
+    store = _store()
+    store.record_turn("s1")                                 # no message → no learning
+    assert store.load().response_length_preference == 0.5

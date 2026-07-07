@@ -52,7 +52,7 @@ def test_manipulation_response_is_blocked_and_replaced():
 def test_cold_start_overlay_applied_when_active():
     directives = SimpleNamespace(proactivity_mode="observe_only",
                                  personality_drift_gate=0.30, pending_elicitation=None)
-    steps = _steps(cold_start=lambda uid, msg: directives)
+    steps = _steps(cold_start=lambda uid, msg, sid="": directives)
     out = ConversationOrchestrator(steps).run_turn("local-user", "hi")
     assert out.cold_start_active is True
     assert out.proactivity_mode == "observe_only"
@@ -60,7 +60,7 @@ def test_cold_start_overlay_applied_when_active():
 
 
 def test_cold_start_overlay_skipped_after_graduation():
-    steps = _steps(cold_start=lambda uid, msg: None)
+    steps = _steps(cold_start=lambda uid, msg, sid="": None)
     out = ConversationOrchestrator(steps).run_turn("local-user", "hi")
     assert out.cold_start_active is False
     assert "layer13_onboarding" in out.layers_run  # hook ran, returned no overlay

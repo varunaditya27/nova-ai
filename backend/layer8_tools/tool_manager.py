@@ -51,6 +51,25 @@ _KEYWORD_RULES = [
 ]
 
 
+def keyword_route(message: str) -> Optional[tuple[str, str]]:
+    """Conservative (tool, operation) routing from keywords — the low-false-positive gate shared by
+    the deterministic fallback and the LLM param-extractor (which only enriches, never re-routes)."""
+    low = (message or "").lower()
+    for keywords, tool, operation in _KEYWORD_RULES:
+        if any(kw in low for kw in keywords):
+            return tool, operation
+    return None
+
+
+def extract_search_query(message: str) -> str:
+    """Deterministic web-search query extraction (strip the lead-in marker)."""
+    low = (message or "").lower()
+    for marker in ("search for ", "look up ", "search "):
+        if marker in low:
+            return message[low.index(marker) + len(marker):].strip()
+    return (message or "").strip()
+
+
 @dataclass
 class _Pending:
     """A confirmation awaiting the user, bound to one exact action + user."""
@@ -61,6 +80,8 @@ class _Pending:
     action_type: str
     user_id: Optional[str]
     session_id: Optional[str]
+    tier: str = "soft"          # carried so a pending-list view reports the real gate…
+    reversible: bool = True     # …and whether the awaiting action can be undone (HARD/irreversible)
 
 
 def _fingerprint(tool_name: str, operation: str, parameters: dict, user_id) -> str:
@@ -109,23 +130,13 @@ class ToolManager:
         return None
 
     def _keyword_intent(self, message: str) -> Optional[ToolIntent]:
-        low = message.lower()
-        for keywords, tool, operation in _KEYWORD_RULES:
-            for kw in keywords:
-                if kw in low:
-                    params = {}
-                    if tool == "web_search":
-                        params = {"query": self._extract_query(low, message)}
-                    return ToolIntent(tool_name=tool, operation=operation, parameters=params,
-                                      confidence=0.5, raw_text=message)
-        return None
-
-    @staticmethod
-    def _extract_query(low: str, message: str) -> str:
-        for marker in ("search for ", "look up ", "search "):
-            if marker in low:
-                return message[low.index(marker) + len(marker):].strip()
-        return message.strip()
+        route = keyword_route(message)
+        if route is None:
+            return None
+        tool, operation = route
+        params = {"query": extract_search_query(message)} if tool == "web_search" else {}
+        return ToolIntent(tool_name=tool, operation=operation, parameters=params,
+                          confidence=0.5, raw_text=message)
 
     # ── Full per-message orchestration ────────────────────────────────────────
     def process(
@@ -158,7 +169,8 @@ class ToolManager:
                                          intent.parameters, user_id),
                 tool_name=intent.tool_name, operation=intent.operation,
                 parameters=intent.parameters, action_type=cap.action_type,
-                user_id=user_id, session_id=session_id)
+                user_id=user_id, session_id=session_id,
+                tier=tier, reversible=cap.reversible)
             return ToolUseOutput(tool_invoked=False, intent=intent, confirmation_request=req)
 
         # 3) AUTO → execute + record.

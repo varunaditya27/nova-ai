@@ -1264,3 +1264,10 @@ Post-delivery:
 ---
 
 *This document specifies Layer 9 completely. All four sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the streaming-with-typing-overlay architecture (cold-start problem), response length calibration with Layer 4 upstream injection, the complete six-type micro-interaction taxonomy with trigger conditions and frequency caps, the SSML generation pipeline with prosody tables and filler policy, the voice content transform layer, the TTS engine abstraction interface, the Format Decision Matrix with all seven conversation modes, the markdown prohibition enforcement, the User Format Profile with its update logic, and the engagement signal feedback loop — are fully resolved. No behavior of Layer 9 requires assumptions or inferences from other documents.*
+
+### Live integration update (2026-07-07) — voice endpoint
+
+Voice synthesis is exposed over HTTP: `POST /voice` (`api/routes/voice.py`) builds prosody-annotated
+SSML for the given conversation mode and dispatches it to the **Kokoro** backend
+(`build_voice_backend` on `AppState`, httpx transport), returning `audio/mpeg` — or `503` so the
+client falls back to text (Layer-9 degrade-to-text contract). See `docs/API_REFERENCE.md`.

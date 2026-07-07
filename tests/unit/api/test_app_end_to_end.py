@@ -21,3 +21,18 @@ def test_app_boots_and_chat_works(monkeypatch):
         assert client.get("/health").status_code == 200
         r = client.post("/chat", json={"message": "hi"})
         assert r.status_code == 200 and r.json()["response"] == "hello from nova"
+
+
+def test_cors_origins_read_from_config(monkeypatch):
+    """The `api.cors_origins` config knob must actually drive CORS — a frontend on a non-default
+    origin (e.g. Vite :5173) has to be configurable without a code change."""
+    monkeypatch.setattr(main, "load_config",
+                        lambda *a, **k: {"api": {"cors_origins": ["https://app.example.com"]}})
+    assert main._cors_origins() == ["https://app.example.com"]
+
+
+def test_cors_origins_falls_back_when_config_unreadable(monkeypatch):
+    def _boom(*a, **k):
+        raise RuntimeError("no config")
+    monkeypatch.setattr(main, "load_config", _boom)
+    assert main._cors_origins() == ["http://localhost:3000"]

@@ -72,7 +72,9 @@ def memory_integrity(state=Depends(get_state)):
 @router.get("/{memory_id}", response_model=MemoryOut)
 def get_memory(memory_id: str, state=Depends(get_state)):
     m = _store(state).get_episodic(memory_id)
-    if m is None:
+    # get_episodic returns raw rows (Layer-12 deletion needs them); a logically-deleted memory is a
+    # genuine 'forget' and must read as not-found — mirror the DELETE handler's is_deleted guard.
+    if m is None or getattr(m, "is_deleted", False):
         raise HTTPException(status_code=404, detail="memory not found")
     return _ep_out(m)
 

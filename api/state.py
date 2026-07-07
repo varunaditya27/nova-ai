@@ -25,7 +25,10 @@ from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
 from infra.db.onboarding_store import PostgresOnboardingStore
 from infra.db.relationship_store import PostgresRelationshipStore
+from infra.db.proactive_store import PostgresProactiveQueue
+from backend.layer7_goals.schemas import GoalStatus
 from api.assembly import build_pipeline_steps
+from api.proactive_gen import goal_checkin_item
 from api.reinforcement import used_memory_ids
 
 logger = logging.getLogger("nova.api")
@@ -41,12 +44,43 @@ class AppState:
     orchestrator: ConversationOrchestrator
     default_user_id: str
     tool_manager: Any = None
+    voice_backend: Any = None
 
 
-def build_tool_manager(session_factory, user_id):
+def build_voice_backend(config: dict):
+    """Kokoro TTS backend (Layer-9) with a real httpx transport, or None if httpx is unavailable.
+    Adapts an httpx response to the `.ok/.status_code/.content` shape the backend expects; any
+    connection error degrades to a non-ok AudioResult inside the backend (voice falls back to text)."""
+    from types import SimpleNamespace
+    try:
+        import httpx
+    except Exception:
+        logger.warning("httpx unavailable; voice synthesis disabled")
+        return None
+    from backend.layer9_output.tts_backends.kokoro_backend import KokoroBackend
+
+    tts = config.get("tts", {}) or {}
+    endpoint = tts.get("endpoint") or "http://localhost:8880"
+
+    def _request(method, url, payload=None):
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(url, json=payload) if method == "POST" else client.get(url)
+        return SimpleNamespace(ok=r.is_success, status_code=r.status_code, content=r.content)
+
+    return KokoroBackend(endpoint=endpoint, default_voice=tts.get("default_voice", "af_sky"),
+                         request_fn=_request)
+
+
+def build_tool_manager(session_factory, user_id, intent_client=None):
     """A single Layer-8 ToolManager for the process: durable action audit + registered plugins
     (local/offline backends). Held on AppState so the /chat pipeline and /tools routes share it —
-    pending confirmations issued in a turn are confirmable on a later request."""
+    pending confirmations issued in a turn are confirmable on a later request.
+
+    When an ``intent_client`` (a fast small model, e.g. gemma2:2b) is supplied, tool turns route by
+    keyword (conservative) but have their parameters filled by the model, so SOFT/HARD actions form
+    a real confirmation instead of asking one clarification per turn. Without it, the deterministic
+    keyword fallback is used (offline-safe).
+    """
     from backend.layer8_tools import ToolManager
     from backend.layer8_tools.plugins.calendar_plugin import CalendarPlugin
     from backend.layer8_tools.plugins.email_plugin import EmailPlugin
@@ -59,6 +93,18 @@ def build_tool_manager(session_factory, user_id):
     for plugin in (RemindersPlugin(), NotesPlugin(), CalendarPlugin(),
                    EmailPlugin(), WebSearchPlugin()):
         tm.register_plugin(plugin)
+
+    if intent_client is not None:
+        from backend.layer8_tools.llm_intent import make_llm_intent_fn
+
+        def _required_for(tool, operation):
+            p = tm.get_plugin(tool)
+            if p is None or not p.supports(operation):
+                return []
+            return list(getattr(p.capability_for(operation), "required_params", []) or [])
+
+        tm._intent_fn = make_llm_intent_fn(lambda prompt: intent_client.complete(prompt),
+                                           _required_for)
     return tm
 
 
@@ -180,13 +226,28 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
     graduation counter is advanced post-turn by make_onboarding_writer). The full elicitation /
     feature-pacing machinery needs a persisted session_context this increment does not build.
     """
-    def _provider(user_id, message):
+    def _provider(user_id, message, session_id=""):
         try:
-            state = PostgresOnboardingStore(session_factory, user_id, graduation_sessions).state()
+            store = PostgresOnboardingStore(session_factory, user_id, graduation_sessions)
+            state = store.state()
         except Exception:
             logger.exception("cold-start state read failed; skipping overlay")
             return None
-        return _ColdStartDirectives() if state.get("cold_start_active") else None
+        if not state.get("cold_start_active"):
+            return None
+        directives = _ColdStartDirectives()
+        # Active elicitation: pick at most one onboarding question to weave into this turn.
+        try:
+            from api.elicitation import select_elicitation
+            el = store.elicitation_state(session_id)
+            item = select_elicitation(message, state.get("session_index", 0) + 1,
+                                      el["surfaced_targets"], el["asked_this_session"])
+            if item is not None:
+                directives.pending_elicitation = item
+                store.record_elicitation(session_id, item.inference_target)   # never re-ask it
+        except Exception:
+            logger.exception("elicitation selection failed; overlay without a question")
+        return directives
     return _provider
 
 
@@ -215,9 +276,37 @@ def make_relationship_writer(session_factory) -> Callable:
     def _write(ctx) -> None:
         try:
             PostgresRelationshipStore(session_factory, ctx.user_id).record_turn(
-                getattr(ctx, "session_id", "") or "default")
+                getattr(ctx, "session_id", "") or "default",
+                user_message=getattr(ctx, "message", "") or "")
         except Exception:
             logger.exception("relationship writer failed; turn already delivered")
+    return _write
+
+
+def make_proactive_writer(session_factory, graduation_sessions: int) -> Callable:
+    """Post-turn: wire the Layer-6 candidate-generation into the turn — enqueue/refresh a grounded
+    GOAL_CHECK_IN for each active goal with an upcoming deadline/milestone, so ``GET /proactive``
+    accumulates real outreach candidates. Suppressed while cold-starting (Layer-13 keeps proactivity
+    observe-only). Idempotent: items are upserted by a goal-derived id, so re-running never dupes."""
+    _ACTIVE = [GoalStatus.ACTIVE.value, GoalStatus.ON_TRACK.value, GoalStatus.AT_RISK.value]
+
+    def _write(ctx) -> None:
+        try:
+            uid = ctx.user_id
+            if PostgresOnboardingStore(session_factory, uid, graduation_sessions) \
+                    .state().get("cold_start_active"):
+                return
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            goals = PostgresGoalStore(session_factory, uid).load_by_status(_ACTIVE)
+            if not goals:
+                return
+            queue = PostgresProactiveQueue(session_factory, uid)
+            for goal in goals:
+                item = goal_checkin_item(goal, now)
+                if item is not None:
+                    queue.upsert(item)
+        except Exception:
+            logger.exception("proactive writer failed; turn already delivered")
     return _write
 
 
@@ -255,9 +344,11 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
-        make_relationship_writer(session_factory))
+        make_relationship_writer(session_factory),
+        make_proactive_writer(session_factory, grad_sessions))
     default_user_id = config["system"]["default_user_id"]
-    tool_manager = build_tool_manager(session_factory, default_user_id)
+    tool_manager = build_tool_manager(session_factory, default_user_id,
+                                      intent_client=llm_clients.get("intent"))
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
@@ -270,4 +361,5 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
         orchestrator=ConversationOrchestrator(steps),
-        default_user_id=default_user_id, tool_manager=tool_manager)
+        default_user_id=default_user_id, tool_manager=tool_manager,
+        voice_backend=build_voice_backend(config))
