@@ -69,6 +69,34 @@ def memory_integrity(state=Depends(get_state)):
                         audit_chain_ok=audit_ok, privacy_chain_ok=privacy_ok)
 
 
+@router.get("/search", response_model=list[MemoryOut])
+def memory_search(q: str, limit: int = 5, state=Depends(get_state)):
+    """Semantic ('AI') search over episodic memory — "the time I was scared". Embeds the query and
+    asks the vector store for nearest episodes, hydrating from Postgres; degrades to a keyword scan
+    over summaries when the vector store is cold/unavailable (distinct from /messages/search)."""
+    uid = state.default_user_id
+    store = _store(state)
+    vs = getattr(state, "vector_store", None)
+    limit = max(1, min(limit, 25))
+    try:
+        if vs is not None and q:
+            emb = state.llm_clients["embed"].embed([q])[0]
+            hits = vs.query("episodic", emb, n_results=limit, where={"user_id": str(uid)})
+            out = []
+            for h in hits or []:
+                mem = store.get_episodic(h.get("id"))
+                if mem is not None and not getattr(mem, "is_deleted", False):
+                    out.append(_ep_out(mem))
+            if out:
+                return out
+        # Fallback: keyword scan over active episodic summaries.
+        ql = (q or "").lower()
+        return [_ep_out(m) for m in store.active_episodic(uid)
+                if ql in (getattr(m, "summary", "") or "").lower()][:limit]
+    except Exception:
+        raise HTTPException(status_code=503, detail="memory search unavailable")
+
+
 @router.get("/{memory_id}", response_model=MemoryOut)
 def get_memory(memory_id: str, state=Depends(get_state)):
     m = _store(state).get_episodic(memory_id)

@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.layer9_output.stream_typing_overlay import StreamTypingOverlay
 from api.dependencies import get_state, get_orchestrator
-from api.schemas import ChatRequest, ChatResponse
+from api.schemas import ChatRequest, ChatResponse, EchoOut
 from api.streaming import stream_turn
 
 logger = logging.getLogger("nova.api")
@@ -31,6 +31,8 @@ def chat(req: ChatRequest, state=Depends(get_state),
         logger.exception("turn failed")
         raise HTTPException(status_code=503, detail="conversation temporarily unavailable")
     tier = getattr(out, "crisis_tier", None)
+    from api.echoes import project_echoes
+    echoes = [EchoOut(**e) for e in project_echoes(getattr(out, "recalled_memories", []))]
     return ChatResponse(
         response=out.response_text,
         conversation_mode=getattr(out, "conversation_mode", "casual"),
@@ -40,6 +42,7 @@ def chat(req: ChatRequest, state=Depends(get_state),
         refined=getattr(out, "refined", False),
         tool_invoked=getattr(out, "tool_invoked", False),
         confabulation_guard=getattr(out, "confabulation_guard", False),
+        echoes=echoes,
         session_id=session_id)
 
 

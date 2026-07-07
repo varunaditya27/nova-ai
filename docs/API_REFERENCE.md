@@ -70,6 +70,7 @@ overlay → tool use → generate → SC-1 guardrails → Layer-9 delivery → p
 | `refined` | bool | Agent 4b emotion-refinement ran |
 | `tool_invoked` | bool | a Layer-8 tool handled the turn (see `/tools/*`) |
 | `confabulation_guard` | bool | true when no memories were recalled (model told not to invent) |
+| `echoes` | list | memories Nova recalled this turn: `{summary, when, created_at}` — render as tiny dismissible "echoes" |
 | `session_id` | string | echo (or minted) session id |
 
 `curl -X POST /chat -d '{"message":"hey Nova","session_id":"s1"}'`
@@ -109,6 +110,73 @@ Synthesize a text response to speech (Layer-9 SSML → Kokoro TTS). Returns raw 
 | `voice_id` | string \| null | no | Kokoro voice (`af_sky`, `af_bella`, `am_adam`, …); default from config |
 
 Response body: binary MP3. `curl -X POST /voice -d '{"text":"hello"}' --output out.mp3`
+
+---
+
+## Conversation log + annotations
+
+The single permanent thread. Every turn (user + Nova) is persisted; the UI loads history here rather
+than replaying `/chat`. Navigate by search / jump / continue-from-bottom, never long scrolling.
+
+### `GET /messages?limit=50&before=<row_id>` → `[MessageOut]`
+Newest-first page. To page back, pass the smallest `row_id`… actually the client passes the last
+item's numeric cursor as `before`. Each item:
+| field | type | notes |
+|---|---|---|
+| `message_id` | string | annotate via the endpoints below |
+| `role` | string | `user` \| `nova` |
+| `content` | string | |
+| `created_at` | iso \| null | |
+| `conversation_mode` | string \| null | on Nova turns |
+| `crisis_active` / `tool_invoked` | bool | on Nova turns |
+| `echoes` | list | `{summary, when, created_at}` recalled that turn |
+| `bookmarked` / `bookmark_category` | bool / string | |
+| `is_milestone` / `milestone_label` | bool / string | |
+
+### `GET /messages/search?q=&start=&end=&limit=` → `[MessageOut]`
+Deterministic **keyword + date-range** search (`start`/`end` are ISO datetimes). Predictable, no AI.
+
+### `GET /memory/search?q=&limit=5` → `[MemoryOut]`
+Semantic **"AI" search** over episodic memory ("the time I was scared") — embeds the query and returns
+nearest episodes; degrades to a keyword scan when the vector index is cold. Distinct from keyword search.
+
+### Bookmarks
+- `POST /messages/{id}/bookmark` `{ "category"?: string }` → `MessageOut` (`404` if unknown)
+- `DELETE /messages/{id}/bookmark` → `MessageOut`
+- `GET /bookmarks?category=` → `[MessageOut]`
+
+### Milestones
+- `POST /messages/{id}/milestone` `{ "label"?: string }` → `MessageOut`
+- `DELETE /messages/{id}/milestone` → `MessageOut`
+- `GET /milestones` → `[MessageOut]` (oldest-first — a life album)
+
+---
+
+## Continuity — Digital Desk / calendar / museum
+
+Lenses derived over data other layers already produce; the chat is never touched.
+
+### `GET /home` → `HomeOut`
+The authenticated landing ("Digital Desk").
+```
+{ "greeting": "Good evening", "current_chapter": <latest longitudinal theme|null>,
+  "relationship_stage": "acquaintance", "last_interaction_at": <iso|null>,
+  "weather": "sunny|clear|cloudy|distant",  "active_goals": 4,
+  "top_proactive": <the thought Nova is holding|null>, "cold_start_active": false,
+  "message_count": 128 }
+```
+
+### `GET /calendar?start=&end=` → `CalendarOut`
+Per-day message counts for a heatmap (defaults to the current month).
+```
+{ "start": iso, "end": iso, "days": { "2026-07-07": 12, "2026-07-08": 3 } }
+```
+
+### `GET /museum` → `MuseumOut`
+"Firsts" derived from the log + milestones + goals.
+```
+{ "entries": [ { "label": "First conversation", "content": "...", "when": iso }, … ] }
+```
 
 ---
 
@@ -314,15 +382,19 @@ Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
 
 ---
 
-## Endpoint index (25 paths)
+## Endpoint index (35 paths)
 
 | Method | Path | Layer |
 |---|---|---|
 | GET | `/health`, `/health/ready` | infra |
 | POST | `/chat`, `/chat/stream` | 1–13 |
 | POST | `/voice` | 9 |
+| GET | `/messages`, `/messages/search` | log |
+| POST/DELETE | `/messages/{id}/bookmark`, `/messages/{id}/milestone` | log |
+| GET | `/bookmarks`, `/milestones` | log |
+| GET | `/home`, `/calendar`, `/museum` | continuity |
 | GET/POST | `/goals`, `/goals/{id}` | 7 |
-| GET/DELETE | `/memory/audit`, `/memory/integrity`, `/memory/{id}` | 2/12 |
+| GET/DELETE | `/memory/audit`, `/memory/integrity`, `/memory/search`, `/memory/{id}` | 2/12 |
 | GET | `/safety/events` | 11 |
 | GET | `/relationship` | 4/5 |
 | GET | `/onboarding` | 13 |

@@ -11,6 +11,13 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
+class EchoOut(BaseModel):
+    """A memory Nova recalled while writing this turn (rendered as a tiny, dismissible 'echo')."""
+    summary: str
+    when: Optional[str] = None               # human label, e.g. "a few weeks ago"
+    created_at: Optional[str] = None
+
+
 class ChatResponse(BaseModel):
     response: str
     conversation_mode: str
@@ -20,7 +27,62 @@ class ChatResponse(BaseModel):
     refined: bool
     tool_invoked: bool = False
     confabulation_guard: bool = False        # parity with the SSE `meta` frame
+    echoes: list[EchoOut] = []               # what Nova recalled this turn (Principle 7)
     session_id: str
+
+
+# ── Conversation log (the permanent thread) ──────────────────────────────
+class MessageOut(BaseModel):
+    message_id: str
+    role: str                                # "user" | "nova"
+    content: str
+    created_at: Optional[str] = None
+    session_key: str = ""
+    conversation_mode: Optional[str] = None
+    crisis_active: bool = False
+    tool_invoked: bool = False
+    echoes: list[EchoOut] = []
+    bookmarked: bool = False
+    bookmark_category: Optional[str] = None
+    is_milestone: bool = False
+    milestone_label: Optional[str] = None
+
+
+class BookmarkIn(BaseModel):
+    category: Optional[str] = None
+
+
+class MilestoneIn(BaseModel):
+    label: Optional[str] = None
+
+
+# ── Continuity / Digital Desk ────────────────────────────────────────────
+class HomeOut(BaseModel):
+    greeting: str                            # "Good evening"
+    current_chapter: Optional[str] = None    # latest longitudinal narrative/theme
+    relationship_stage: str = "new"
+    last_interaction_at: Optional[str] = None
+    weather: str = "clear"                   # relationship "weather" from recency
+    active_goals: int = 0
+    top_proactive: Optional[str] = None      # the thought Nova is holding
+    cold_start_active: bool = False
+    message_count: int = 0
+
+
+class CalendarOut(BaseModel):
+    start: Optional[str] = None
+    end: Optional[str] = None
+    days: dict = {}                          # {"2026-07-07": 12, ...} message counts per day
+
+
+class MuseumEntryOut(BaseModel):
+    label: str                               # "First conversation", "First milestone", …
+    content: str = ""
+    when: Optional[str] = None
+
+
+class MuseumOut(BaseModel):
+    entries: list[MuseumEntryOut] = []
 
 
 # ── Voice (Layer 9 / Kokoro TTS) ──────────────────────────────────────────
