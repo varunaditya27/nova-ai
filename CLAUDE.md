@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1120 tests passing** — `/usr/bin/python3.11 -m pytest tests/ -q`). The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
+**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1168 tests passing offline** — `/usr/bin/python3.11 -m pytest tests/ -q`; ~1325 with the third-party-dep suites in the venv). The full HTTP surface (25 routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
 
 ## Commands
 
@@ -18,7 +18,8 @@ docker compose up -d
 uvicorn api.main:app --reload
 
 # Run the FULL pipeline live on local Ollama (no cloud / no GROQ_API_KEY needed)
-#   prereqs: docker services up + models pulled: `ollama pull qwen2.5:7b nomic-embed-text`
+#   prereqs: docker services up (incl. kokoro for /voice) + models pulled:
+#     `ollama pull qwen2.5:7b gemma2:2b nomic-embed-text`
 #   config/local.yaml repoints System 2 (Groq) -> local qwen2.5:7b; build_app_state auto-loads it.
 bash scripts/run_local.sh
 
@@ -183,6 +184,13 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `tool_use` hook: a detected intent short-circuits generation with a clarification question, a
   confirmation prompt, or an executed result; SOFT/HARD actions register a pending token confirmable
   on a later request through `/tools/confirm`. `ChatResponse.tool_invoked` flags a tool turn.
+  Tool **routing** stays on conservative keyword rules (no chat hijacking), while a fast lightweight
+  model (**gemma2:2b**, `llm.intent` role) fills the parameters each capability declares
+  (`backend/layer8_tools/llm_intent.py`), so natural-language requests form real confirmations
+  instead of endless clarifications; any LLM/JSON failure degrades to keyword params.
+- **Voice (Layer 9)** (`api/routes/voice.py`): `POST /voice` turns text into prosody-annotated SSML
+  and dispatches it to the **Kokoro** TTS backend (`build_voice_backend` on `AppState`, httpx
+  transport), returning `audio/mpeg`; degrades to `503` so the client falls back to text.
 
 `api/assembly.py` is the adapter layer mapping **all 12** `PipelineSteps` hooks onto real
 layer entrypoints — every `/chat` turn now exercises all 13 layers. SC-1 `guardrails` run
@@ -209,29 +217,41 @@ path also runs the **real Layer-7 goal pipeline** (`make_goal_writer` → `run_g
 turn's crisis assessment to an append-only safety log (`make_safety_writer` → `PostgresSafetyLog`,
 `infra/db/safety_store.py`), and advances a self-graduating onboarding session counter
 (`make_onboarding_writer` → `PostgresOnboardingStore`, `infra/db/onboarding_store.py`) — all writers
-composed via `_chain_writers`. See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`,
+composed via `_chain_writers`. The post-turn chain also runs the **Layer-6 proactive writer**
+(`make_proactive_writer` → `api/proactive_gen.py`): each active goal with an upcoming
+deadline/milestone seeds/refreshes an idempotent `goal_check_in` in the `PostgresProactiveQueue` (so
+`GET /proactive` accumulates real candidates; suppressed while cold-starting), and the
+**relationship writer now learns communication style** (`record_turn(user_message=…)` →
+`backend/layer4_persona/style_learning.py` EMA-updates verbosity/formality/question/advice
+calibration, surfaced on `GET /relationship` and folded into the persona instruction by
+`build_persona`). See `docs/superpowers/specs/2026-07-05-postgres-memory-store-design.md`,
 `docs/superpowers/specs/2026-07-05-layer2-write-path-persistence-design.md`, and
-`docs/superpowers/specs/2026-07-05-goal-persistence-design.md`. **Not yet wired (documented
-follow-ups):** auth/multi-user, WebSocket transport for streaming (SSE is live; WS is the future
-bidirectional upgrade), the full Layer-13 elicitation/feature-pacing machinery (the cold-start
-overlay reads persisted graduation state but does not yet run per-turn elicitation — needs a
-persisted session_context) and per-user Layer 4/5 persona-param *learning* (relationship
-progression is wired; persona warmth/verbosity learning is not). See
+`docs/superpowers/specs/2026-07-05-goal-persistence-design.md`.
+
+**Layer-13 active elicitation is live:** while cold-starting, `make_cold_start_provider`
+(`api/elicitation.py`) maps the message + session position to the elicitation items' natural
+triggers and surfaces at most one onboarding question per session (rate-limited, distress-suppressed,
+never repeated — asked targets persist in `PostgresOnboardingStore`); the orchestrator passes
+`session_id` to the `cold_start` hook and `assembly.plan` weaves the question into the planner
+directive. **Not yet wired (documented follow-ups):** auth/multi-user; WebSocket transport for
+streaming (SSE is live; WS is the future bidirectional upgrade); the Layer-13 *feature-pacing*
+machinery (elicitation is wired; progressive feature introduction is not); deeper persona learning
+beyond the four communication-style params. See
 `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md`
 §8 and `docs/superpowers/specs/2026-07-06-chat-streaming-and-full-integration-design.md` for the
-full roadmap.
+full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 
 ### Infrastructure Stack
 
-- **API**: FastAPI + WebSockets (`api/main.py`)
+- **API**: FastAPI (`api/main.py`) — 25 REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
 - **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used. The persistent schema is managed by **Alembic** (`alembic upgrade head`; baseline `migrations/versions/0001_baseline_schema.py` runs `create_all`); `init_db`/`create_all` remains the fast path for the offline SQLite test suite and ad-hoc bootstrap.
 - **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
 - **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
-- **Local LLM inference**: Ollama serving qwen2.5:7b (System 1), gemma3:4b, nomic-embed-text (embeddings)
+- **Local LLM inference**: Ollama serving qwen2.5:7b (System 1; also System 2 in local mode via `config/local.yaml`), **gemma2:2b** (Layer-8 tool-intent param extraction, `llm.intent`), nomic-embed-text (embeddings)
 - **Cloud LLM**: Groq API (llama-3.3-70b-versatile) for System 2
 - **Layer 3 classifier**: Phi-3 Mini / Gemma 2B (emotion+intent classification, fast path)
 - **TTS**: Kokoro (custom Docker image on port 8880, OpenAI-compatible API)
-- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS`, run in-process **opt-in via `config.scheduler.enabled`** (APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
+- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS`, run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
 - **Session Cache**: `infra/session_cache.py` — ephemeral per-turn in-memory buffer holding intermediate layer outputs. Distinct from Layer 2's Short-Term Memory Buffer.
 
 ### Docker Services

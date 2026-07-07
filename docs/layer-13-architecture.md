@@ -1639,3 +1639,14 @@ extractor or policy (matching the <20ms / <60ms performance targets in §10). Te
 ---
 
 *This document specifies Layer 13 completely. All three sub-components — SC-1 Progressive Elicitation (ElicitationItem and ElicitationQueue schemas with full population, priority taxonomy, three surfacing rules with enforcement logic, PassiveElicitationEngine with 8 fully implemented extractors for vocabulary register, emotional expression style, topic approach, self-disclosure comfort, named people, life context, urgency, and communication style, three-phase elicitation timeline), SC-2 Cold Start Handling (complete InitialState schema with population defaults and rationale for every value, ColdStartBehaviorConfig with all 7 behavioral constraints, first message template with requirements and anti-patterns, ColdStartContextBuilder with full message processing and personality vector drift algorithm, GraduationEvaluator with 7 required criteria as enforceable predicates, execute_graduation() handoff sequence), SC-3 Feature Introduction Pacing (IntroductionStyle enum with definitions, FeatureReadinessProfile and sub-schemas, complete Feature Introduction Registry with 11 features from personality adaptation through retrospective including safety exception, FeaturePacingController with is_feature_active() and queue_introduction_if_ready() logic) — are fully specified. The Cold Start Engine coordination architecture with on_session_start/on_message/on_session_end lifecycle, onboarding experience arc table, error handling for 9 failure cases, performance targets for all 8 operations, and 5 design principles with their enforcement mechanisms are all explicitly defined. No behavior of Layer 13 requires assumptions or inferences from other documents.*
+
+### Live integration update (2026-07-07) — active elicitation is live per-turn
+
+Active elicitation now runs in the live turn. `api/elicitation.py` maps the message + session
+position to the elicitation items' natural triggers and asks the `ElicitationQueue` for one
+highest-priority surfaceable question (rate-limited to one/session in the early period,
+distress-suppressed, never repeated — surfaced targets persist in `PostgresOnboardingStore`).
+`api/state.make_cold_start_provider` sets `pending_elicitation`, the orchestrator passes `session_id`
+to the `cold_start` hook, and `api/assembly.plan` weaves the question into the planner directive
+(never front-loaded). Feature-pacing/progressive feature introduction remains a follow-up. See
+`docs/API_REFERENCE.md`.

@@ -331,3 +331,12 @@ or crashes response generation.
 
 *This document specifies Layer 8 (Tool Use & Actions) completely. Crisis detection and safety
 are specified separately in `docs/layer-11-architecture.md`.*
+
+### Live integration update (2026-07-07) — LLM tool-intent parameter extraction
+
+Tool routing stays on the conservative keyword rules (no false-positive chat hijacking), but a fast
+lightweight model (**gemma2:2b**, the `llm.intent` client role) now fills the parameters each
+capability declares (`backend/layer8_tools/llm_intent.py`, keyword-gated + `extract_json`-hardened).
+Natural-language requests ("email sam@… saying I'll be late") therefore form real SOFT/HARD
+confirmations instead of endless clarifications; any LLM/JSON failure degrades to keyword params.
+`GET /tools/pending` reports the real tier + reversibility. See `docs/API_REFERENCE.md`.
