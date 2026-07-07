@@ -46,8 +46,12 @@ memory:
 onboarding:
   graduation_sessions: 5
 
+tts:                          # Layer-9 voice synthesis (Kokoro, OpenAI-compatible /v1/audio/speech)
+  endpoint: ${KOKORO_URL:-http://kokoro:8880}
+  default_voice: af_sky
+
 scheduler:
-  enabled: false            # opt-in: start the in-process APScheduler in the API lifespan
+  enabled: true             # start the in-process APScheduler in the API lifespan (set false to opt out)
   memory_consolidation_hours: 2
   proactive_check_minutes: 30
   pattern_detection_days: 7

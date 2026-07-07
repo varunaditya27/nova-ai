@@ -25,7 +25,10 @@ from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
 from infra.db.onboarding_store import PostgresOnboardingStore
 from infra.db.relationship_store import PostgresRelationshipStore
+from infra.db.proactive_store import PostgresProactiveQueue
+from backend.layer7_goals.schemas import GoalStatus
 from api.assembly import build_pipeline_steps
+from api.proactive_gen import goal_checkin_item
 from api.reinforcement import used_memory_ids
 
 logger = logging.getLogger("nova.api")
@@ -41,6 +44,31 @@ class AppState:
     orchestrator: ConversationOrchestrator
     default_user_id: str
     tool_manager: Any = None
+    voice_backend: Any = None
+
+
+def build_voice_backend(config: dict):
+    """Kokoro TTS backend (Layer-9) with a real httpx transport, or None if httpx is unavailable.
+    Adapts an httpx response to the `.ok/.status_code/.content` shape the backend expects; any
+    connection error degrades to a non-ok AudioResult inside the backend (voice falls back to text)."""
+    from types import SimpleNamespace
+    try:
+        import httpx
+    except Exception:
+        logger.warning("httpx unavailable; voice synthesis disabled")
+        return None
+    from backend.layer9_output.tts_backends.kokoro_backend import KokoroBackend
+
+    tts = config.get("tts", {}) or {}
+    endpoint = tts.get("endpoint") or "http://localhost:8880"
+
+    def _request(method, url, payload=None):
+        with httpx.Client(timeout=30.0) as client:
+            r = client.post(url, json=payload) if method == "POST" else client.get(url)
+        return SimpleNamespace(ok=r.is_success, status_code=r.status_code, content=r.content)
+
+    return KokoroBackend(endpoint=endpoint, default_voice=tts.get("default_voice", "af_sky"),
+                         request_fn=_request)
 
 
 def build_tool_manager(session_factory, user_id, intent_client=None):
@@ -239,6 +267,33 @@ def make_relationship_writer(session_factory) -> Callable:
     return _write
 
 
+def make_proactive_writer(session_factory, graduation_sessions: int) -> Callable:
+    """Post-turn: wire the Layer-6 candidate-generation into the turn — enqueue/refresh a grounded
+    GOAL_CHECK_IN for each active goal with an upcoming deadline/milestone, so ``GET /proactive``
+    accumulates real outreach candidates. Suppressed while cold-starting (Layer-13 keeps proactivity
+    observe-only). Idempotent: items are upserted by a goal-derived id, so re-running never dupes."""
+    _ACTIVE = [GoalStatus.ACTIVE.value, GoalStatus.ON_TRACK.value, GoalStatus.AT_RISK.value]
+
+    def _write(ctx) -> None:
+        try:
+            uid = ctx.user_id
+            if PostgresOnboardingStore(session_factory, uid, graduation_sessions) \
+                    .state().get("cold_start_active"):
+                return
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            goals = PostgresGoalStore(session_factory, uid).load_by_status(_ACTIVE)
+            if not goals:
+                return
+            queue = PostgresProactiveQueue(session_factory, uid)
+            for goal in goals:
+                item = goal_checkin_item(goal, now)
+                if item is not None:
+                    queue.upsert(item)
+        except Exception:
+            logger.exception("proactive writer failed; turn already delivered")
+    return _write
+
+
 def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callable:
     """Post-turn: advance the per-user onboarding session counter (self-graduating)."""
     def _write(ctx) -> None:
@@ -273,7 +328,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
-        make_relationship_writer(session_factory))
+        make_relationship_writer(session_factory),
+        make_proactive_writer(session_factory, grad_sessions))
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
@@ -289,4 +345,5 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
         orchestrator=ConversationOrchestrator(steps),
-        default_user_id=default_user_id, tool_manager=tool_manager)
+        default_user_id=default_user_id, tool_manager=tool_manager,
+        voice_backend=build_voice_backend(config))

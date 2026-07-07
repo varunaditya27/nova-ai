@@ -23,6 +23,13 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+# ── Voice (Layer 9 / Kokoro TTS) ──────────────────────────────────────────
+class VoiceRequest(BaseModel):
+    text: str
+    conversation_mode: str = "casual"       # the mode /chat returned; mapped to Layer-9 prosody
+    voice_id: str | None = None
+
+
 # ── Tools (Layer 8) ──────────────────────────────────────────────────────
 class ToolConfirmationOut(BaseModel):
     request_id: str

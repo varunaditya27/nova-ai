@@ -13,6 +13,7 @@ export NOVA_DATABASE_URL="${NOVA_DATABASE_URL:-$DATABASE_URL}"   # alembic env r
 export CHROMA_HOST="${CHROMA_HOST:-127.0.0.1}"
 export CHROMA_PORT="${CHROMA_PORT:-8001}"
 export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+export KOKORO_URL="${KOKORO_URL:-http://127.0.0.1:8880}"
 export NOVA_USER_ID="${NOVA_USER_ID:-local-user}"
 
 PY="${PY:-.venv/bin/python}"
