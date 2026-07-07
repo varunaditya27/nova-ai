@@ -6,9 +6,14 @@ import type { NextConfig } from "next";
 // authentication in at the Next edge later. Override the target with NEXT_PUBLIC_API_BASE.
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
+// Pin the project root to *this* directory. A stray package-lock.json in $HOME otherwise makes
+// Next detect the workspace root as $HOME, so it resolves frontend's node_modules and relative CSS
+// imports from the wrong base (MODULE_NOT_FOUND). __dirname is this file's dir under Next's loader.
+const PROJECT_ROOT = path.resolve(__dirname);
+
 const nextConfig: NextConfig = {
-  // Pin the project root so Turbopack doesn't walk up to a stray lockfile in $HOME.
-  turbopack: { root: path.resolve(__dirname) },
+  turbopack: { root: PROJECT_ROOT },
+  outputFileTracingRoot: PROJECT_ROOT,
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_BASE}/:path*` }];
   },

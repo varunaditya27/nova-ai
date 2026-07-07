@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 // Self-hosted variable fonts — bundled in node_modules, so the build never reaches a font CDN.
-import "@fontsource-variable/fraunces";
-import "@fontsource-variable/instrument-sans";
+import "@fontsource-variable/fraunces/index.css";
+import "@fontsource-variable/instrument-sans/index.css";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";

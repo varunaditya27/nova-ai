@@ -2,6 +2,9 @@
 
 // TEMPORARY token/verification swatch — replaced by the real Threshold in Task 9.
 import { useTheme } from "@/components/ThemeProvider";
+import { Surface } from "@/components/primitives/Surface";
+import { CarvedButton } from "@/components/primitives/CarvedButton";
+import { Hairline } from "@/components/primitives/Hairline";
 
 export default function Home() {
   const { theme, toggle } = useTheme();
@@ -31,12 +34,16 @@ export default function Home() {
         )}
       </div>
 
-      <button
-        onClick={toggle}
-        className="mt-10 rounded-md border border-hairline bg-surface px-4 py-2 text-sm text-ink transition-colors hover:bg-raised"
-      >
-        toggle theme
-      </button>
+      <Surface className="mt-10 p-6" interactive>
+        <p className="text-sm text-ink-soft">A surface that wakes on hover.</p>
+      </Surface>
+
+      <Hairline className="my-8" />
+
+      <div className="flex gap-3">
+        <CarvedButton onClick={toggle}>toggle theme</CarvedButton>
+        <CarvedButton variant="brass">earned action</CarvedButton>
+      </div>
     </main>
   );
 }
