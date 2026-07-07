@@ -20,7 +20,7 @@ def _directives(pending=None):
 
 def test_cold_start_overlay_applied_when_active():
     pending = SimpleNamespace(category="life_context", question="student or working?")
-    steps, rec = make_recording_steps(cold_start=lambda u, m: _directives(pending))
+    steps, rec = make_recording_steps(cold_start=lambda u, m, sid="": _directives(pending))
     out = ConversationOrchestrator(steps).run_turn("u1", "exams have been rough")
     assert out.cold_start_active is True
     assert out.proactivity_mode == "observe_only"
@@ -37,7 +37,7 @@ def test_real_cold_start_engine_plugs_into_pipeline():
     # Wire the actual Layer 13 ColdStartEngine into the pipeline's cold_start step.
     engine = ColdStartEngine("u1")
 
-    def cold_start_step(user_id, message):
+    def cold_start_step(user_id, message, session_id=""):
         sctx = SimpleNamespace(recent_history=[], emotional_intensity=0.1, current_topic="",
                                active_triggers=set(), elicitation_count_this_session=0,
                                feature_triggers={}, user_has_shared_personally=False,

@@ -226,13 +226,28 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
     graduation counter is advanced post-turn by make_onboarding_writer). The full elicitation /
     feature-pacing machinery needs a persisted session_context this increment does not build.
     """
-    def _provider(user_id, message):
+    def _provider(user_id, message, session_id=""):
         try:
-            state = PostgresOnboardingStore(session_factory, user_id, graduation_sessions).state()
+            store = PostgresOnboardingStore(session_factory, user_id, graduation_sessions)
+            state = store.state()
         except Exception:
             logger.exception("cold-start state read failed; skipping overlay")
             return None
-        return _ColdStartDirectives() if state.get("cold_start_active") else None
+        if not state.get("cold_start_active"):
+            return None
+        directives = _ColdStartDirectives()
+        # Active elicitation: pick at most one onboarding question to weave into this turn.
+        try:
+            from api.elicitation import select_elicitation
+            el = store.elicitation_state(session_id)
+            item = select_elicitation(message, state.get("session_index", 0) + 1,
+                                      el["surfaced_targets"], el["asked_this_session"])
+            if item is not None:
+                directives.pending_elicitation = item
+                store.record_elicitation(session_id, item.inference_target)   # never re-ask it
+        except Exception:
+            logger.exception("elicitation selection failed; overlay without a question")
+        return directives
     return _provider
 
 
@@ -261,7 +276,8 @@ def make_relationship_writer(session_factory) -> Callable:
     def _write(ctx) -> None:
         try:
             PostgresRelationshipStore(session_factory, ctx.user_id).record_turn(
-                getattr(ctx, "session_id", "") or "default")
+                getattr(ctx, "session_id", "") or "default",
+                user_message=getattr(ctx, "message", "") or "")
         except Exception:
             logger.exception("relationship writer failed; turn already delivered")
     return _write

@@ -29,6 +29,37 @@ class PostgresOnboardingStore:
                     "session_index": payload.get("session_index", 0),
                     "counted_session_keys": list(payload.get("counted_session_keys", []))}
 
+    def elicitation_state(self, session_key=None) -> dict:
+        """The persisted active-elicitation memory: which inference targets have already been
+        surfaced, and whether one was already surfaced in this session (early-period rate limit)."""
+        with session_scope(self._sf) as s:
+            row = s.query(m.OnboardingState).filter_by(user_id=self._user_id).one_or_none()
+            payload = dict(row.payload or {}) if row is not None else {}
+            surfaced = list(payload.get("surfaced_elicitation_targets", []))
+            sessions = list(payload.get("elicitation_session_keys", []))
+            return {"surfaced_targets": surfaced,
+                    "asked_this_session": str(session_key or "default") in sessions}
+
+    def record_elicitation(self, session_key, inference_target: str) -> None:
+        """Mark an inference target as surfaced (never re-ask it) and this session as having asked."""
+        key = str(session_key or "default")
+        with session_scope(self._sf) as s:
+            row = s.query(m.OnboardingState).filter_by(user_id=self._user_id).one_or_none()
+            if row is None:
+                row = m.OnboardingState(user_id=self._user_id, cold_start_active=True,
+                                        payload=dict(_DEFAULTS))
+                s.add(row)
+            payload = dict(row.payload or _DEFAULTS)
+            targets = list(payload.get("surfaced_elicitation_targets", []))
+            if inference_target and inference_target not in targets:
+                targets.append(inference_target)
+            payload["surfaced_elicitation_targets"] = targets
+            sessions = list(payload.get("elicitation_session_keys", []))
+            if key not in sessions:
+                sessions.append(key)
+            payload["elicitation_session_keys"] = sessions
+            row.payload = payload
+
     def record_turn(self, session_key) -> None:
         key = str(session_key or "default")
         with session_scope(self._sf) as s:

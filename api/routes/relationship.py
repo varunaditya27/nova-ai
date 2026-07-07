@@ -20,4 +20,8 @@ def get_relationship(state=Depends(get_state)):
         stage=rel.stage, total_sessions=rel.total_sessions,
         total_messages_exchanged=rel.total_messages_exchanged,
         tie_strength=getattr(rel, "tie_strength", 0.0),
-        trust_score=getattr(rel, "trust_score", 0.0))
+        trust_score=getattr(rel, "trust_score", 0.0),
+        formality_preference=getattr(rel, "formality_preference", 0.5),
+        response_length_preference=getattr(rel, "response_length_preference", 0.5),
+        question_tolerance=getattr(rel, "question_tolerance", 0.5),
+        unsolicited_advice_tolerance=getattr(rel, "unsolicited_advice_tolerance", 0.5))

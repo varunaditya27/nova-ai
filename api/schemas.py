@@ -187,6 +187,11 @@ class RelationshipOut(BaseModel):
     total_messages_exchanged: int = 0
     tie_strength: float = 0.0
     trust_score: float = 0.0
+    # Learned communication-style calibration (Layer 4/5 persona learning).
+    formality_preference: float = 0.5
+    response_length_preference: float = 0.5
+    question_tolerance: float = 0.5
+    unsolicited_advice_tolerance: float = 0.5
 
 
 # ── Admin (job trigger) ──────────────────────────────────────────────────

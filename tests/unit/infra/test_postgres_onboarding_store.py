@@ -38,3 +38,23 @@ def test_user_scoped():
     f = _factory()
     PostgresOnboardingStore(f, "u1").record_turn("s1")
     assert PostgresOnboardingStore(f, "u2").state()["session_index"] == 0
+
+
+def test_elicitation_state_and_record():
+    f = _factory()
+    store = PostgresOnboardingStore(f, "u1", graduation_sessions=5)
+    assert store.elicitation_state("s1") == {"surfaced_targets": [], "asked_this_session": False}
+    store.record_elicitation("s1", "user_handle")
+    st = store.elicitation_state("s1")
+    assert st["surfaced_targets"] == ["user_handle"] and st["asked_this_session"] is True
+    # a different session has not asked yet, but the surfaced target persists (never re-asked)
+    st2 = store.elicitation_state("s2")
+    assert st2["surfaced_targets"] == ["user_handle"] and st2["asked_this_session"] is False
+
+
+def test_record_elicitation_does_not_reset_graduation_counter():
+    f = _factory()
+    store = PostgresOnboardingStore(f, "u1", graduation_sessions=5)
+    store.record_turn("s1")
+    store.record_elicitation("s1", "life_phase")
+    assert PostgresOnboardingStore(f, "u1").state()["session_index"] == 1

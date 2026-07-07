@@ -45,9 +45,10 @@ class PostgresRelationshipStore:
                 row.stage = state.stage
                 row.payload = payload
 
-    def record_turn(self, session_key: str) -> RelationshipState:
-        """Advance the relationship for one turn: bump message count, count a distinct session, and
-        recompute the qualitative stage. Returns the updated state."""
+    def record_turn(self, session_key: str, user_message: str = "") -> RelationshipState:
+        """Advance the relationship for one turn: bump message count, count a distinct session,
+        recompute the qualitative stage, and — when a message is supplied — learn the user's
+        communication style (verbosity/formality/question & advice tolerance). Returns the state."""
         with session_scope(self._sf) as s:
             row = s.query(m.RelationshipState).filter_by(user_id=self._user_id).one_or_none()
             prior = dict(row.payload) if row else {}
@@ -59,6 +60,9 @@ class PostgresRelationshipStore:
                 keys.add(key)
                 state.total_sessions += 1
             state.stage = stage_for_sessions(state.total_sessions)
+            if user_message:
+                from backend.layer4_persona.style_learning import learn_communication_style
+                learn_communication_style(state, user_message)
             payload = to_jsonable(state)
             payload["_counted_session_keys"] = sorted(keys)   # tracked outside the dataclass
             if row is None:

@@ -27,7 +27,7 @@ def make_recording_steps(**overrides):
     def recall(user_id, input_packet):
         rec.order.append("L2_recall"); return [{"id": "m1", "text": "prior memory"}]
 
-    def cold_start(user_id, message):
+    def cold_start(user_id, message, session_id=""):
         rec.order.append("L13_coldstart"); return None        # graduated by default
 
     def classify(message, input_packet, recalled):
