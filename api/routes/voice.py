@@ -23,6 +23,8 @@ router = APIRouter(tags=["voice"])
 
 @router.post("/voice")
 def synthesize_voice(req: VoiceRequest, state=Depends(get_state)) -> Response:
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=422, detail="text must not be empty")
     backend = getattr(state, "voice_backend", None)
     if backend is None:
         raise HTTPException(status_code=503, detail="voice synthesis unavailable")

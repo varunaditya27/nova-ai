@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1168 tests passing offline** — `/usr/bin/python3.11 -m pytest tests/ -q`; ~1325 with the third-party-dep suites in the venv). The full HTTP surface (25 routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
+**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1171 tests passing offline** — `/usr/bin/python3.11 -m pytest tests/ -q`; ~1345 with the third-party-dep suites in the venv). The full HTTP surface (35 routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
 
 ## Commands
 
@@ -191,6 +191,16 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
 - **Voice (Layer 9)** (`api/routes/voice.py`): `POST /voice` turns text into prosody-annotated SSML
   and dispatches it to the **Kokoro** TTS backend (`build_voice_backend` on `AppState`, httpx
   transport), returning `audio/mpeg`; degrades to `503` so the client falls back to text.
+- **Conversation log + continuity** (`api/routes/messages.py`, `api/routes/continuity.py`): the single
+  permanent thread is persisted per turn by `make_message_writer` → **`PostgresMessageStore`**
+  (`infra/db/message_store.py` → `conversation_message`), so the chat UI loads history instead of
+  replaying `/chat`. `GET /messages` (newest-first, `before` cursor) + `GET /messages/search`
+  (keyword+date) + `GET /memory/search` (semantic/ANN); message **annotations**
+  (`POST/DELETE /messages/{id}/bookmark|milestone`, `GET /bookmarks|/milestones`); and derived
+  **continuity lenses** `GET /home` (Digital Desk: greeting, current chapter, proactive, stage +
+  weather), `GET /calendar` (per-day heatmap), `GET /museum` (firsts). **Echoes:** the memories Nova
+  recalled each turn (Layer-2 `ScoredMemory`) are projected by `api/echoes.py` onto
+  `ChatResponse.echoes` and each Nova `MessageOut.echoes`. Product/route map: `frontend/PRODUCT_SURFACE.md`.
 
 `api/assembly.py` is the adapter layer mapping **all 12** `PipelineSteps` hooks onto real
 layer entrypoints — every `/chat` turn now exercises all 13 layers. SC-1 `guardrails` run
@@ -243,7 +253,7 @@ full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 
 ### Infrastructure Stack
 
-- **API**: FastAPI (`api/main.py`) — 25 REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
+- **API**: FastAPI (`api/main.py`) — 35 REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
 - **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used. The persistent schema is managed by **Alembic** (`alembic upgrade head`; baseline `migrations/versions/0001_baseline_schema.py` runs `create_all`); `init_db`/`create_all` remains the fast path for the offline SQLite test suite and ad-hoc bootstrap.
 - **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
 - **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.

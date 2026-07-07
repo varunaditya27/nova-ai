@@ -44,9 +44,26 @@ def test_chat_response_includes_stream_parity_fields():
     assert body["crisis_tier"] == "tier_2"
 
 
+def test_chat_returns_echoes_from_recalled_memories():
+    """The memories Nova recalled this turn surface as 'echoes' on the response (Principle 7)."""
+    mem = SimpleNamespace(summary="you said you'd regret choosing Mongo", created_at=None)
+    out = SimpleNamespace(response_text="right", conversation_mode="casual",
+                          cognitive_system="system1", crisis_active=False, refined=False,
+                          tool_invoked=False, confabulation_guard=False, recalled_memories=[mem])
+    body = _client(out=out).post("/chat", json={"message": "databases again"}).json()
+    assert body["echoes"] and body["echoes"][0]["summary"].startswith("you said")
+
+
 def test_chat_503_on_orchestrator_error():
     r = _client(raises=True).post("/chat", json={"message": "hi"})
     assert r.status_code == 503
+
+
+def test_chat_rejects_empty_message():
+    c = _client(out=SimpleNamespace(response_text="x", conversation_mode="casual",
+                                    cognitive_system="system1", crisis_active=False, refined=False))
+    assert c.post("/chat", json={"message": "   "}).status_code == 422
+    assert c.post("/chat/stream", json={"message": ""}).status_code == 422
 
 
 def test_chat_stream_emits_sse_and_reconstructs_text():

@@ -104,6 +104,7 @@ class OrchestratedOutput:
     degraded: bool
     state_updated: bool
     layers_run: list
+    recalled_memories: list = field(default_factory=list)   # for "echoes" — what Nova recalled
 
 
 def route_system(emotion_intent) -> str:
@@ -286,4 +287,5 @@ class ConversationOrchestrator:
             confabulation_guard=ctx.confabulation_guard, cold_start_active=ctx.cold_start_active,
             proactivity_mode=ctx.proactivity_mode, pending_elicitation=ctx.pending_elicitation,
             guardrail_flags=ctx.guardrail_flags, degraded=ctx.degraded,
-            state_updated=ctx.state_updated, layers_run=ctx.layers_run)
+            state_updated=ctx.state_updated, layers_run=ctx.layers_run,
+            recalled_memories=list(ctx.recalled_memories or []))

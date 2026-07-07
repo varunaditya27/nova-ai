@@ -172,6 +172,36 @@ def _chain_writers(*writers) -> Callable:
     return _run
 
 
+def make_message_writer(session_factory) -> Callable:
+    """Post-turn: persist both halves of the turn to the permanent conversation log (the transcript
+    the /chat UI loads), attaching the recalled-memory echoes to Nova's message."""
+    from infra.db.message_store import PostgresMessageStore
+
+    def _write(ctx) -> None:
+        try:
+            store = PostgresMessageStore(session_factory, ctx.user_id)
+            key = getattr(ctx, "session_id", "") or ""
+            now = getattr(ctx, "now", None)
+            user_msg = getattr(ctx, "message", "") or ""
+            nova_msg = getattr(ctx, "delivered", None) or getattr(ctx, "response_text", "") or ""
+            if user_msg:
+                store.append("user", user_msg, session_key=key, created_at=now)
+            if nova_msg:
+                from api.echoes import project_echoes
+                store.append(
+                    "nova", nova_msg, session_key=key, created_at=now,
+                    echoes=project_echoes(getattr(ctx, "recalled_memories", [])),
+                    mode=getattr(ctx, "conversation_mode", None),
+                    cognitive_system=getattr(ctx, "cognitive_system", None),
+                    crisis_active=getattr(ctx, "crisis_active", False),
+                    crisis_tier=str(getattr(ctx, "crisis_tier", "") or "") or None,
+                    tool_invoked=getattr(ctx, "tool_invoked", False),
+                    refined=getattr(ctx, "refined", False))
+        except Exception:
+            logger.exception("message writer failed; turn already delivered")
+    return _write
+
+
 def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
     """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres."""
     def _extractor_llm(prompt):
@@ -339,6 +369,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
     grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
     session_writer = _chain_writers(
+        make_message_writer(session_factory),
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
                                  vector_store=vector_store),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
