@@ -65,7 +65,9 @@ class PostgresMessageStore:
         with session_scope(self._sf) as s:
             q = s.query(m.ConversationMessage).filter_by(user_id=self._uid)
             if query:
-                q = q.filter(m.ConversationMessage.content.ilike(f"%{query}%"))
+                # Escape LIKE wildcards so a literal % or _ in the query matches literally.
+                safe = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                q = q.filter(m.ConversationMessage.content.ilike(f"%{safe}%", escape="\\"))
             if start is not None:
                 q = q.filter(m.ConversationMessage.created_at >= start)
             if end is not None:

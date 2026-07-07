@@ -59,6 +59,13 @@ def test_chat_503_on_orchestrator_error():
     assert r.status_code == 503
 
 
+def test_chat_rejects_empty_message():
+    c = _client(out=SimpleNamespace(response_text="x", conversation_mode="casual",
+                                    cognitive_system="system1", crisis_active=False, refined=False))
+    assert c.post("/chat", json={"message": "   "}).status_code == 422
+    assert c.post("/chat/stream", json={"message": ""}).status_code == 422
+
+
 def test_chat_stream_emits_sse_and_reconstructs_text():
     out = SimpleNamespace(response_text="Hey there. Nice to see you!", delivered="Hey there. Nice to see you!",
                           conversation_mode="casual", cognitive_system="system1",

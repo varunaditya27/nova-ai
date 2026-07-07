@@ -40,6 +40,15 @@ def test_keyword_search():
     assert len(hits) == 1 and "hackathon" in hits[0]["content"]
 
 
+def test_search_escapes_like_wildcards():
+    st = _store()
+    st.append("user", "100% sure about this")
+    st.append("user", "totally unrelated")
+    # A literal '%' must not act as a SQL wildcard matching everything.
+    assert len(st.search(query="%")) == 1
+    assert st.search(query="%")[0]["content"].startswith("100%")
+
+
 def test_date_range_search():
     st = _store()
     old = datetime(2026, 1, 1, tzinfo=timezone.utc)

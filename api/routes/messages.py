@@ -28,7 +28,7 @@ def _iso(v):
 
 def _out(d: dict) -> MessageOut:
     return MessageOut(
-        message_id=d["message_id"], role=d["role"], content=d["content"],
+        message_id=d["message_id"], cursor=d.get("row_id", 0), role=d["role"], content=d["content"],
         created_at=_iso(d.get("created_at")), session_key=d.get("session_key", "") or "",
         conversation_mode=d.get("mode"), crisis_active=bool(d.get("crisis_active")),
         tool_invoked=bool(d.get("tool_invoked")),

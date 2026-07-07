@@ -34,6 +34,7 @@ class ChatResponse(BaseModel):
 # ── Conversation log (the permanent thread) ──────────────────────────────
 class MessageOut(BaseModel):
     message_id: str
+    cursor: int = 0                          # monotonic row id; pass the last item's as `before=` to page back
     role: str                                # "user" | "nova"
     content: str
     created_at: Optional[str] = None

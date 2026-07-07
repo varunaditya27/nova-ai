@@ -53,6 +53,7 @@ def test_goals_list_get_create():
     assert client.get("/goals/nope").status_code == 404
     created = client.post("/goals", json={"title": "learn guitar"})
     assert created.status_code == 201 and created.json()["title"] == "learn guitar"
+    assert client.post("/goals", json={"title": "   "}).status_code == 422   # empty title rejected
 
 
 def test_memory_audit_and_get():

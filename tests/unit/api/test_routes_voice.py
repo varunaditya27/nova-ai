@@ -43,3 +43,7 @@ def test_voice_503_when_backend_absent():
 
 def test_voice_503_when_synthesis_fails():
     assert _client(_FailBackend()).post("/voice", json={"text": "hi"}).status_code == 503
+
+
+def test_voice_rejects_empty_text():
+    assert _client(_OkBackend()).post("/voice", json={"text": "  "}).status_code == 422

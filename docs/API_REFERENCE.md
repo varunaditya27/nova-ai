@@ -118,12 +118,13 @@ Response body: binary MP3. `curl -X POST /voice -d '{"text":"hello"}' --output o
 The single permanent thread. Every turn (user + Nova) is persisted; the UI loads history here rather
 than replaying `/chat`. Navigate by search / jump / continue-from-bottom, never long scrolling.
 
-### `GET /messages?limit=50&before=<row_id>` → `[MessageOut]`
-Newest-first page. To page back, pass the smallest `row_id`… actually the client passes the last
-item's numeric cursor as `before`. Each item:
+### `GET /messages?limit=50&before=<cursor>` → `[MessageOut]`
+Newest-first page (max `limit` 200). To page **back** (older), pass the last item's `cursor` as
+`before`; a page shorter than `limit` means you've reached the start. Each item:
 | field | type | notes |
 |---|---|---|
 | `message_id` | string | annotate via the endpoints below |
+| `cursor` | int | monotonic row id; pass the last item's value as `before=` to page back |
 | `role` | string | `user` \| `nova` |
 | `content` | string | |
 | `created_at` | iso \| null | |

@@ -24,6 +24,8 @@ router = APIRouter(tags=["chat"])
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, state=Depends(get_state),
          orchestrator=Depends(get_orchestrator)) -> ChatResponse:
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be empty")
     session_id = req.session_id or str(uuid.uuid4())
     try:
         out = orchestrator.run_turn(state.default_user_id, req.message, session_id=session_id)
@@ -56,6 +58,8 @@ def chat_stream(req: ChatRequest, state=Depends(get_state),
     The full turn — crisis veto, SC-1 guardrails, and all post-turn writes — runs exactly as in
     ``/chat``; only delivery is paced (Layer 9 typing overlay). See ``api/streaming.py``.
     """
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be empty")
     session_id = req.session_id or str(uuid.uuid4())
     gen = stream_turn(orchestrator, StreamTypingOverlay(), state.default_user_id, req.message,
                       session_id=session_id)

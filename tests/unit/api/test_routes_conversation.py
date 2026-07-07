@@ -42,6 +42,18 @@ def test_history_returns_messages_newest_first_with_echoes():
     assert body[0]["echoes"][0]["summary"] == "you mentioned Mongo"
 
 
+def test_history_pagination_uses_exposed_cursor():
+    client, store = _client()
+    for i in range(4):
+        store.append("user", f"m{i}")
+    page1 = client.get("/messages", params={"limit": 2}).json()
+    assert [x["content"] for x in page1] == ["m3", "m2"]
+    cursor = page1[-1]["cursor"]                     # frontend pages back with the last item's cursor
+    assert cursor > 0
+    page2 = client.get("/messages", params={"limit": 2, "before": cursor}).json()
+    assert [x["content"] for x in page2] == ["m1", "m0"]
+
+
 def test_keyword_search_endpoint():
     client, store = _client()
     store.append("user", "the hackathon was wild")

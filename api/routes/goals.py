@@ -43,7 +43,9 @@ def get_goal(goal_id: str, state=Depends(get_state)):
 
 @router.post("", response_model=GoalOut, status_code=201)
 def create_goal(body: GoalCreate, state=Depends(get_state)):
-    goal = Goal(title=body.title, description=body.description, status=GoalStatus.ACTIVE.value)
+    if not body.title or not body.title.strip():
+        raise HTTPException(status_code=422, detail="title must not be empty")
+    goal = Goal(title=body.title.strip(), description=body.description, status=GoalStatus.ACTIVE.value)
     try:
         _store(state).add_goal(goal)
     except Exception:
