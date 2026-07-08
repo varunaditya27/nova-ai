@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useHome } from "@/lib/hooks/useHome";
+import { useOnboarding } from "@/lib/hooks/useNovaState";
 import { useAcoustics } from "@/lib/hooks/useAcoustics";
 import { GreetingBand } from "@/components/desk/GreetingBand";
 import { CurrentChapter } from "@/components/desk/CurrentChapter";
@@ -26,6 +27,7 @@ function DeskSkeleton() {
  */
 export default function Desk() {
   const { data, isLoading, isError } = useHome();
+  const { data: onboarding } = useOnboarding();
   const { play } = useAcoustics();
 
   return (
@@ -41,6 +43,12 @@ export default function Desk() {
       {data && (
         <>
           <GreetingBand greeting={data.greeting} />
+
+          {onboarding?.cold_start_active && (
+            <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-brass">
+              Still getting to know you · session {onboarding.session_index}
+            </p>
+          )}
 
           {data.message_count === 0 ? (
             <p className="max-w-lg text-lg leading-relaxed text-ink-soft">

@@ -56,6 +56,19 @@ def test_goals_list_get_create():
     assert client.post("/goals", json={"title": "   "}).status_code == 422   # empty title rejected
 
 
+def test_goals_patch_and_delete():
+    client, f = _client()
+    PostgresGoalStore(f, "local-user").add_goal(Goal(goal_id="g9", title="ship it", status="active"))
+    r = client.patch("/goals/g9", json={"progress_score": 0.5, "status": "completed"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed" and r.json()["progress_score"] == 0.5
+    assert client.patch("/goals/g9", json={"status": "bogus"}).status_code == 422   # invalid status
+    assert client.patch("/goals/nope", json={"progress_score": 0.2}).status_code == 404
+    assert client.delete("/goals/g9").status_code == 204
+    assert client.get("/goals/g9").status_code == 404
+    assert client.delete("/goals/g9").status_code == 404   # already gone
+
+
 def test_memory_audit_and_get():
     client, f = _client()
     store = PostgresMemoryStore(f)

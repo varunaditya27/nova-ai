@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CommandSurface,
   type CommandResult,
@@ -10,11 +11,13 @@ import { searchMemory, searchMessages } from "@/lib/api/client";
 import { relativeTime } from "@/lib/time";
 
 /**
- * The ⌘K search over the conversation. Keyword search jumps the thread to a message; semantic
- * search surfaces recalled memories. Results never render inside the thread itself.
+ * The ⌘K search over the conversation. A keyword hit is handed back to the thread via `onJump`
+ * (which pages back until the message is loaded, then scrolls to it); a semantic hit opens the
+ * matching memory in the vault. Results never render inside the thread itself.
  */
-export function ChatSearch() {
+export function ChatSearch({ onJump }: { onJump: (messageId: string) => void }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   const runSearch = async (kind: SearchKind, q: string): Promise<CommandResult[]> => {
     if (kind === "keyword") {
@@ -34,17 +37,8 @@ export function ChatSearch() {
   };
 
   const onSelect = (r: CommandResult, kind: SearchKind) => {
-    if (kind !== "keyword") return; // memories aren't messages — closing is enough for now
-    const el = document.getElementById(`msg-${r.id}`);
-    if (!el) return; // out of the loaded window (paging back to it is a later slice)
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.animate(
-      [
-        { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0.07)" },
-        { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0)" },
-      ],
-      { duration: 1400, easing: "ease-out" }
-    );
+    if (kind === "keyword") onJump(r.id);
+    else router.push(`/memories#${r.id}`); // r.id is `mem-<memory_id>`
   };
 
   return (

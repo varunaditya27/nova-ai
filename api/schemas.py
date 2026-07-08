@@ -128,6 +128,11 @@ class GoalCreate(BaseModel):
     description: str = ""
 
 
+class GoalUpdate(BaseModel):
+    status: str | None = None
+    progress_score: float | None = None
+
+
 class GoalOut(BaseModel):
     goal_id: str
     title: str

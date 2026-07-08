@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { PageShell } from "@/components/primitives/PageShell";
 import { Surface } from "@/components/primitives/Surface";
 import { Meter } from "@/components/primitives/Meter";
@@ -10,6 +11,25 @@ import { useMemoryAudit } from "@/lib/hooks/useVault";
 /** The vault — episodic memories (forgettable) and the stable facts distilled from them. */
 export default function Memories() {
   const { data, isLoading } = useMemoryAudit();
+
+  // Land on a specific memory when arriving from ⌘K semantic search (/memories#mem-<id>).
+  useEffect(() => {
+    const hash = window.location.hash.slice(1);
+    if (!hash || !data) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById(hash);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.animate(
+        [
+          { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0.08)" },
+          { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0)" },
+        ],
+        { duration: 1600, easing: "ease-out" }
+      );
+    }, 300);
+    return () => clearTimeout(t);
+  }, [data]);
   return (
     <PageShell
       title="What Nova remembers"
@@ -32,7 +52,9 @@ export default function Memories() {
             ) : (
               <div className="flex flex-col gap-3">
                 {data.episodic.map((m) => (
-                  <EpisodicCard key={m.memory_id} memory={m} />
+                  <div key={m.memory_id} id={`mem-${m.memory_id}`} className="scroll-mt-24">
+                    <EpisodicCard memory={m} />
+                  </div>
                 ))}
               </div>
             )}

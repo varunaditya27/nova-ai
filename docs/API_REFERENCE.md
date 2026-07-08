@@ -192,6 +192,14 @@ Returns `[GoalOut]`.
 ### `POST /goals` → `GoalOut` (`201`)
 **Request — `GoalCreate`:** `{ "title": string, "description": string? }`
 
+### `PATCH /goals/{goal_id}` → `GoalOut` (`404` if absent)
+Update a goal's `status` and/or `progress_score`. **Request — `GoalUpdate`:**
+`{ "status": string?, "progress_score": float? }`. `progress_score` is clamped to `[0,1]`; an
+invalid `status` (not a `GoalStatus`) is `422`.
+
+### `DELETE /goals/{goal_id}` → `204` (`404` if absent)
+Permanently removes the goal row (user-scoped).
+
 **`GoalOut`**
 | field | type |
 |---|---|

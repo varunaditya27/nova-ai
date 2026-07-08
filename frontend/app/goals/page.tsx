@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { PageShell } from "@/components/primitives/PageShell";
-import { Surface } from "@/components/primitives/Surface";
-import { Meter } from "@/components/primitives/Meter";
 import { CarvedButton } from "@/components/primitives/CarvedButton";
+import { GoalCard } from "@/components/goals/GoalCard";
 import { useCreateGoal, useGoals } from "@/lib/hooks/useNovaState";
 
 /** Goals — some the user named, some Nova extracted from chat. Brass marks a finished one. */
@@ -44,21 +43,9 @@ export default function Goals() {
       )}
 
       <div className="flex flex-col gap-3">
-        {data?.map((g) => {
-          const done = g.progress_score >= 1 || /complete|achiev|done/i.test(g.status);
-          return (
-            <Surface key={g.goal_id} className="p-5">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="font-display text-lg text-ink">{g.title}</p>
-                <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-ink-faint">
-                  {g.status.replace(/_/g, " ")}
-                </span>
-              </div>
-              {g.description && <p className="mt-1 text-sm text-ink-soft">{g.description}</p>}
-              <Meter value={g.progress_score} brass={done} className="mt-3" />
-            </Surface>
-          );
-        })}
+        {data?.map((g) => (
+          <GoalCard key={g.goal_id} goal={g} />
+        ))}
       </div>
     </PageShell>
   );
