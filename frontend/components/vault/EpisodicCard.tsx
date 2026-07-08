@@ -4,13 +4,21 @@ import { useState } from "react";
 import { Surface } from "@/components/primitives/Surface";
 import { Meter } from "@/components/primitives/Meter";
 import { useDeleteMemory } from "@/lib/hooks/useVault";
+import { useToast } from "@/lib/hooks/useToast";
 import { relativeTime } from "@/lib/time";
 import type { MemoryOut } from "@/lib/api/types";
 
 /** One episodic memory, with a deliberate two-step "forget" (Layer-12 selective deletion). */
 export function EpisodicCard({ memory }: { memory: MemoryOut }) {
   const del = useDeleteMemory();
+  const { toast } = useToast();
   const [confirming, setConfirming] = useState(false);
+
+  const forget = () =>
+    del.mutate(memory.memory_id, {
+      onSuccess: (res) =>
+        toast("Forgotten — a certificate was issued.", `cert ${res.certificate.slice(0, 24)}…`),
+    });
 
   return (
     <Surface className="p-5">
@@ -38,7 +46,7 @@ export function EpisodicCard({ memory }: { memory: MemoryOut }) {
           <span className="inline-flex items-center gap-3 text-sm text-ink-soft">
             Forget this — permanently?
             <button
-              onClick={() => del.mutate(memory.memory_id)}
+              onClick={forget}
               disabled={del.isPending}
               className="font-medium text-brass hover:underline"
             >

@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Volume2, VolumeX } from "lucide-react";
 import { useMessages } from "@/lib/hooks/useMessages";
 import { useChatStream } from "@/lib/hooks/useChatStream";
+import { useVoice } from "@/lib/hooks/useVoice";
 import { MessageStream } from "@/components/chat/MessageStream";
 import { Composer } from "@/components/chat/Composer";
 import { ChatSearch } from "@/components/chat/ChatSearch";
+import { cn } from "@/lib/cn";
 
 /**
  * The Conversation — the sacred space. One permanent thread loaded from history, new turns streamed
@@ -17,9 +20,26 @@ export default function Chat() {
   const { messages, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessages();
   const stream = useChatStream();
 
+  const voice = useVoice();
   const [value, setValue] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [autoSpeak, setAutoSpeak] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only preference read
+    setAutoSpeak(localStorage.getItem("nova-autospeak") === "true");
+  }, []);
+  const toggleAutoSpeak = () =>
+    setAutoSpeak((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("nova-autospeak", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
 
   const streaming = stream.state.phase === "streaming";
 
@@ -34,12 +54,40 @@ export default function Chat() {
 
     if (result.phase === "error") return; // leave the turn + error visible for a retry
 
+    if (autoSpeak && result.text) {
+      voice.speak(result.text, result.meta?.conversation_mode ?? "casual");
+    }
+
     // The streamed reply carries no echoes; refetch so the persisted turn (with its echoes) lands,
     // then drop the optimistic overlays.
     await qc.invalidateQueries({ queryKey: ["messages"] });
     setPending(null);
     stream.reset();
   };
+
+  // Page back until the target message is loaded, then scroll to it and flash a brass wash.
+  const jumpToMessage = useCallback(
+    async (messageId: string) => {
+      for (let i = 0; i < 30; i++) {
+        const el = document.getElementById(`msg-${messageId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.animate(
+            [
+              { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0.07)" },
+              { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0)" },
+            ],
+            { duration: 1400, easing: "ease-out" }
+          );
+          return;
+        }
+        if (!hasNextPage) return;
+        await fetchNextPage();
+        await new Promise((r) => setTimeout(r, 60)); // let the render commit
+      }
+    },
+    [hasNextPage, fetchNextPage]
+  );
 
   const empty =
     !isLoading && messages.length === 0 && !pending && stream.state.phase === "idle";
@@ -74,11 +122,23 @@ export default function Chat() {
       {/* The composer floats above the dock, centered on the same column as the thread. */}
       <div className="fixed inset-x-0 bottom-24 z-30">
         <div className="mx-auto max-w-2xl px-6 sm:px-10">
+          <div className="mb-1.5 flex justify-end">
+            <button
+              onClick={toggleAutoSpeak}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors",
+                autoSpeak ? "text-brass" : "text-ink-faint hover:text-ink-soft"
+              )}
+            >
+              {autoSpeak ? <Volume2 size={12} /> : <VolumeX size={12} />}
+              auto-speak
+            </button>
+          </div>
           <Composer value={value} onChange={setValue} onSend={onSend} disabled={streaming} />
         </div>
       </div>
 
-      <ChatSearch />
+      <ChatSearch onJump={jumpToMessage} />
     </main>
   );
 }

@@ -2,14 +2,16 @@
 
 import { PageShell } from "@/components/primitives/PageShell";
 import { Meter } from "@/components/primitives/Meter";
-import { useRelationship } from "@/lib/hooks/useNovaState";
+import { useRelationship, useSessions } from "@/lib/hooks/useNovaState";
 
 const STAGES = ["new", "acquaintance", "developing", "established", "close"];
 
 /** You & Nova — stage progression and the communication style Nova has quietly learned. */
 export default function Relationship() {
   const { data, isLoading } = useRelationship();
+  const { data: sessions } = useSessions();
   const stageIndex = data ? STAGES.indexOf(data.stage) : -1;
+  const maxTurns = Math.max(1, ...(sessions ?? []).map((s) => s.turn_count));
 
   return (
     <PageShell
@@ -55,6 +57,24 @@ export default function Relationship() {
               />
             </div>
           </div>
+
+          {sessions && sessions.length > 0 && (
+            <div>
+              <p className="mb-4 font-mono text-[11px] uppercase tracking-widest text-ink-faint">
+                session rhythm · {sessions.length}
+              </p>
+              <div className="flex h-16 items-end gap-1">
+                {sessions.slice(-48).map((s) => (
+                  <span
+                    key={s.session_key}
+                    title={`${s.session_key}: ${s.turn_count} turns`}
+                    className="min-w-[3px] flex-1 rounded-sm bg-ink-soft/70"
+                    style={{ height: `${Math.max(8, (s.turn_count / maxTurns) * 100)}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </PageShell>

@@ -7,6 +7,7 @@ import "./globals.css";
 import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";
 import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
 import { QueryProvider } from "@/components/QueryProvider";
+import { ToastProvider } from "@/lib/hooks/useToast";
 import { Dock } from "@/components/primitives/Dock";
 
 export const metadata: Metadata = {
@@ -30,8 +31,10 @@ export default function RootLayout({
         <ThemeProvider>
           <QueryProvider>
             <AcousticsProvider>
-              {children}
-              <Dock />
+              <ToastProvider>
+                {children}
+                <Dock />
+              </ToastProvider>
             </AcousticsProvider>
           </QueryProvider>
         </ThemeProvider>

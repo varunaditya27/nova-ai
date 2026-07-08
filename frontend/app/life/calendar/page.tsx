@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PageShell } from "@/components/primitives/PageShell";
 import { LifeNav } from "@/components/life/LifeNav";
 import { useCalendar } from "@/lib/hooks/useLife";
@@ -31,16 +33,49 @@ function shade(count: number, max: number): string {
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
-/** The Calendar — a warm activity heatmap. */
+function monthStart(offset = 0): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+}
+
+/** The Calendar — a warm activity heatmap, navigable month by month. */
 export default function Calendar() {
-  const { data, isLoading } = useCalendar();
+  const [month, setMonth] = useState(() => monthStart(0));
+  const start = month.toISOString();
+  const end = new Date(
+    Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0, 23, 59, 59)
+  ).toISOString();
+  const { data, isLoading } = useCalendar(start, end);
+
   const days = data ? buildDays(data.start, data.end, data.days) : [];
   const max = Math.max(1, ...days.map((d) => d.count));
   const lead = days.length ? days[0].dow : 0;
+  const label = month.toLocaleDateString("en", { month: "long", year: "numeric", timeZone: "UTC" });
+  const isCurrentMonth = month.getTime() >= monthStart(0).getTime();
 
   return (
     <PageShell title="The calendar" description="Every day you and Nova spent together.">
       <LifeNav />
+      <div className="mb-5 flex items-center gap-3">
+        <button
+          onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() - 1, 1)))}
+          aria-label="Previous month"
+          className="rounded-md p-1 text-ink-soft transition-colors hover:text-ink"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className="min-w-[9rem] font-mono text-[12px] uppercase tracking-widest text-ink-soft">
+          {label}
+        </span>
+        <button
+          onClick={() => setMonth(new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 1)))}
+          disabled={isCurrentMonth}
+          aria-label="Next month"
+          className="rounded-md p-1 text-ink-soft transition-colors hover:text-ink disabled:opacity-30"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
       {isLoading && <div className="h-40 max-w-xs rounded-md bg-hairline/30" />}
       {data && (
         <div>

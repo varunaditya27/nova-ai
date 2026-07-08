@@ -16,8 +16,10 @@ import {
   type MemoryOut,
   type MessageOut,
   type MuseumOut,
+  type OnboardingOut,
   type ProactiveItem,
   type RelationshipOut,
+  type SessionOut,
   type SyncStatus,
 } from "./types";
 
@@ -108,6 +110,22 @@ export function createGoal(title: string, description?: string): Promise<Goal> {
   return requestJson<Goal>("/goals", jsonPost({ title, description }));
 }
 
+export function updateGoal(
+  goalId: string,
+  patch: { status?: string; progress_score?: number }
+): Promise<Goal> {
+  return requestJson<Goal>(`/goals/${encodeURIComponent(goalId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteGoal(goalId: string): Promise<void> {
+  const res = await fetch(`${BASE}/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
+  if (!res.ok) throw new ApiError(res.status, `goal delete failed (${res.status})`);
+}
+
 export function getRelationship(): Promise<RelationshipOut> {
   return requestJson<RelationshipOut>("/relationship");
 }
@@ -135,6 +153,14 @@ export function getSyncStatus(): Promise<SyncStatus> {
 
 export function runJob(name: string): Promise<JobRunOut> {
   return requestJson<JobRunOut>(`/admin/jobs/${encodeURIComponent(name)}`, { method: "POST" });
+}
+
+export function getOnboarding(): Promise<OnboardingOut> {
+  return requestJson<OnboardingOut>("/onboarding");
+}
+
+export function getSessions(): Promise<SessionOut[]> {
+  return requestJson<SessionOut[]>("/sessions");
 }
 
 export function getBookmarks(category?: string): Promise<MessageOut[]> {
