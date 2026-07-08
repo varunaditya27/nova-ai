@@ -6,6 +6,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";
 import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
+import { QueryProvider } from "@/components/QueryProvider";
 import { Dock } from "@/components/primitives/Dock";
 
 export const metadata: Metadata = {
@@ -27,10 +28,12 @@ export default function RootLayout({
       </head>
       <body className="relative min-h-full">
         <ThemeProvider>
-          <AcousticsProvider>
-            {children}
-            <Dock />
-          </AcousticsProvider>
+          <QueryProvider>
+            <AcousticsProvider>
+              {children}
+              <Dock />
+            </AcousticsProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>
