@@ -44,6 +44,16 @@ class PostgresGoalStore(GoalStore):
                 goal_id=str(goal_id), user_id=self._user_id).one_or_none()
             return from_jsonable(Goal, row.payload) if row else None
 
+    def delete(self, goal_id: str) -> bool:
+        # Scoped to this user — a goal_id belonging to another user is never touched.
+        with session_scope(self._sf) as s:
+            row = s.query(m.Goal).filter_by(
+                goal_id=str(goal_id), user_id=self._user_id).one_or_none()
+            if row is None:
+                return False
+            s.delete(row)
+            return True
+
     def load_by_status(self, statuses):
         with session_scope(self._sf) as s:
             rows = (s.query(m.Goal)
