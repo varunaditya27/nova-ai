@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { Belief } from "@/components/marketing/Belief";
 import { HumanVerbs } from "@/components/marketing/HumanVerbs";
 import { BeginCTA } from "@/components/marketing/BeginCTA";
+import { NovaMark } from "@/components/primitives/NovaMark";
 import { useReducedMotionSafe } from "@/lib/motion";
 
 /**
@@ -33,9 +34,11 @@ export default function Threshold() {
         {/* The one brass moment on the threshold — the wordmark. */}
         <motion.div
           variants={{ hidden: { opacity: 0 }, show: { opacity: 1 } }}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2.5"
         >
-          <span className="h-2 w-2 rounded-full bg-brass" aria-hidden />
+          <span className="text-brass">
+            <NovaMark size={20} title="Nova" />
+          </span>
           <span className="font-display text-sm tracking-wide text-ink">Nova</span>
         </motion.div>
 
