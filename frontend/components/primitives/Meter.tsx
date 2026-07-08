@@ -23,9 +23,18 @@ export function Meter({
 }) {
   const { t } = useReducedMotionSafe();
   const pct = Math.max(0, Math.min(1, value)) * 100;
+  const ariaLabel =
+    leftLabel && rightLabel ? `${leftLabel} to ${rightLabel}` : "progress";
   return (
     <div className={className}>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-hairline">
+      <div
+        role="meter"
+        aria-label={ariaLabel}
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-hairline"
+      >
         <motion.div
           className="h-full rounded-full"
           style={{ background: brass ? "var(--brass)" : "var(--ink-soft)" }}

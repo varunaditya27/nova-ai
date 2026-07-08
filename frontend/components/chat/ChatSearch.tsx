@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CommandSurface,
@@ -15,8 +14,15 @@ import { relativeTime } from "@/lib/time";
  * (which pages back until the message is loaded, then scrolls to it); a semantic hit opens the
  * matching memory in the vault. Results never render inside the thread itself.
  */
-export function ChatSearch({ onJump }: { onJump: (messageId: string) => void }) {
-  const [open, setOpen] = useState(false);
+export function ChatSearch({
+  open,
+  onOpenChange,
+  onJump,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onJump: (messageId: string) => void;
+}) {
   const router = useRouter();
 
   const runSearch = async (kind: SearchKind, q: string): Promise<CommandResult[]> => {
@@ -44,7 +50,7 @@ export function ChatSearch({ onJump }: { onJump: (messageId: string) => void }) 
   return (
     <CommandSurface
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
       runSearch={runSearch}
       onSelect={onSelect}
     />
