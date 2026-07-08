@@ -19,6 +19,7 @@ import {
   type OnboardingOut,
   type ProactiveItem,
   type RelationshipOut,
+  type SafetyEvent,
   type SessionOut,
   type SyncStatus,
   type ToolAction,
@@ -184,6 +185,10 @@ export function denyTool(requestId: string): Promise<{ denied: string }> {
 
 export function getToolHistory(): Promise<ToolAction[]> {
   return requestJson<ToolAction[]>("/tools/history");
+}
+
+export function getSafetyEvents(limit = 20): Promise<SafetyEvent[]> {
+  return requestJson<SafetyEvent[]>(`/safety/events?limit=${limit}`);
 }
 
 export function getBookmarks(category?: string): Promise<MessageOut[]> {

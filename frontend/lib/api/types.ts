@@ -213,6 +213,14 @@ export type ToolAction = {
   undone: boolean;
 };
 
+/** GET /safety/events (Layer 11) — a logged moment of concern. */
+export type SafetyEvent = {
+  tier: string;
+  confidence: number;
+  detected_at: string | null;
+  signal_types: string[];
+};
+
 /** GET /onboarding (Layer 13). */
 export type OnboardingOut = { cold_start_active: boolean; session_index: number };
 

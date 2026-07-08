@@ -40,7 +40,7 @@ distinctive free type (Fraunces display + neutral sans body); keep audio (Kokoro
 | `/privacy` | Both hash chains + zero-knowledge sync status | `GET /memory/integrity`, `GET /sync/status` | ✅ **built** |
 | `/media` | Images / voice notes / files gallery | — | 🔵 attachments subsystem |
 | `/people` | Social graph of people the user mentions | — | ⛔ deferred |
-| `/admin` | Machine room — run background jobs | `POST /admin/jobs/{name}` | ✅ **built** |
+| | `/admin` | Machine room — run background jobs | `POST /admin/jobs/{name}` | ✅ **built** |
 
 **Echoes** (`gpt-chat-reference` Principle 7 — the highest wow-to-effort idea): every `/chat` reply and
 every message in history now carries the memories Nova recalled while writing it — the backend already
