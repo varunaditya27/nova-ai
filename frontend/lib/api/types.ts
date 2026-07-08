@@ -101,6 +101,87 @@ export type ChatDone = {
   echoes?: Echo[];
 };
 
+/** GET /longitudinal/summaries, /longitudinal/latest — a week's chapter (Layer 10). */
+export type LongitudinalSummary = {
+  summary_id: string;
+  week_start_date: string | null;
+  week_end_date: string | null;
+  session_count: number;
+  dominant_theme: string;
+  week_narrative: string;
+};
+
+/** GET /calendar — per-day message counts for a heatmap. */
+export type CalendarOut = {
+  start: string;
+  end: string;
+  days: Record<string, number>;
+};
+
+/** GET /museum — "firsts" derived from the log + milestones + goals. */
+export type MuseumEntry = { label: string; content: string; when: string | null };
+export type MuseumOut = { entries: MuseumEntry[] };
+
+/** GET/POST /goals (Layer 7). */
+export type Goal = {
+  goal_id: string;
+  title: string;
+  status: string;
+  progress_score: number;
+  description: string;
+};
+
+/** GET /relationship (Layer 4/5) — stage + learned communication-style calibration. */
+export type RelationshipOut = {
+  stage: string;
+  total_sessions: number;
+  total_messages_exchanged: number;
+  tie_strength: number;
+  trust_score: number;
+  formality_preference: number;
+  response_length_preference: number;
+  question_tolerance: number;
+  unsolicited_advice_tolerance: number;
+};
+
+/** GET /proactive (Layer 6) — a thought Nova is holding. */
+export type ProactiveItem = {
+  item_id: string;
+  item_type: string;
+  status: string;
+  content_basis: string;
+  current_priority: number;
+};
+
+/** GET /memory/audit (Layer 2). */
+export type SemanticMemory = { memory_id: string; statement: string; confidence: number };
+export type MemoryAuditOut = { episodic: MemoryOut[]; semantic: SemanticMemory[] };
+
+/** GET /memory/integrity — both tamper-evident hash chains. */
+export type IntegrityOut = {
+  status: "INTACT" | "TAMPER_DETECTED";
+  audit_chain_ok: boolean;
+  privacy_chain_ok: boolean;
+};
+
+/** DELETE /memory/{id} — a signed "forget". */
+export type MemoryDeletion = {
+  deleted: number;
+  memory_id: string;
+  certificate: string;
+  cascade: string;
+};
+
+/** GET /sync/status (Layer 12 zero-knowledge relay). */
+export type SyncStatus = {
+  total_deltas: number;
+  by_device: Record<string, number>;
+  latest_cursor: number;
+};
+
+/** POST /admin/jobs/{name} — run a background job on demand. */
+export type JobRunOut = { job: string; result: Record<string, unknown> };
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(

@@ -27,20 +27,20 @@ distinctive free type (Fraunces display + neutral sans body); keep audio (Kokoro
 | `/chat` | The one permanent conversation (history, streaming, echoes, voice) | `GET /messages`, `POST /chat/stream` (direct) + `POST /chat` fallback | ✅ **built** |
 | `/chat` (search) | ⌘K keyword + date search | `GET /messages/search` | ✅ **built** |
 | `/chat` (AI search) | ⌘K "the time I was scared" semantic search | `GET /memory/search` | ✅ **built** |
-| `/life` | Life timeline / weekly narrative / "6 months passed" | `GET /longitudinal/summaries` + `/latest` | ✅ |
-| `/life/calendar` | Memory heatmap (per-day activity/emotion) | `GET /calendar` | 🟡 |
-| `/life/museum` | "Firsts" — first conversation, first milestone… | `GET /museum` | 🟡 |
-| `/memories` | Episodic + semantic memory, integrity, forget | `GET /memory/audit`, `/memory/integrity`, `DELETE /memory/{id}` | ✅ |
-| `/bookmarks` | Saved messages (by category) | `GET /bookmarks`, `POST/DELETE /messages/{id}/bookmark` | 🟡 |
-| `/milestones` | Life moments promoted from messages | `GET /milestones`, `POST/DELETE /messages/{id}/milestone` | 🟡 |
-| `/goals` | Goals + progress | `GET /goals`, `/goals/{id}`, `POST /goals` | ✅ |
-| `/relationship` | You ↔ Nova depth, learned style, "weather" | `GET /relationship` (+ `last_interaction_at`), `GET /home` | ✅/🟡 |
-| `/proactive` | Thoughts Nova is holding | `GET /proactive` | ✅ |
+| `/life` | Life timeline — weekly chapters as a vertical thread | `GET /longitudinal/summaries` + `/latest` | ✅ **built** |
+| `/life/calendar` | Activity heatmap (per-day, color-mix intensity) | `GET /calendar` | ✅ **built** |
+| `/life/museum` | "Firsts" — brass-labelled earned moments | `GET /museum` | ✅ **built** |
+| `/memories` | Episodic + semantic vault, integrity badge, two-step forget | `GET /memory/audit`, `/memory/integrity`, `DELETE /memory/{id}` | ✅ **built** |
+| `/bookmarks` | Saved messages; toggled from chat hover | `GET /bookmarks`, `POST/DELETE /messages/{id}/bookmark` | ✅ **built** |
+| `/milestones` | Life-moment album; toggled from chat hover | `GET /milestones`, `POST/DELETE /messages/{id}/milestone` | ✅ **built** |
+| `/goals` | Goals + progress meters, add-a-goal | `GET /goals`, `POST /goals` | ✅ **built** |
+| `/relationship` | Stage progression + learned communication-style meters | `GET /relationship` | ✅ **built** |
+| `/proactive` | Threads Nova is holding | `GET /proactive` | ✅ **built** |
 | `/voice` | Speak a reply (Nova's voice) | `POST /voice` | ✅ |
-| `/privacy` | Integrity, deletion certificates, sync, exports | `GET /memory/integrity`, `DELETE /memory/{id}`, `/sync/*` | ✅ |
+| `/privacy` | Both hash chains + zero-knowledge sync status | `GET /memory/integrity`, `GET /sync/status` | ✅ **built** |
 | `/media` | Images / voice notes / files gallery | — | 🔵 attachments subsystem |
 | `/people` | Social graph of people the user mentions | — | ⛔ deferred |
-| `/admin` | Ops: run jobs | `POST /admin/jobs/{name}` | ✅ |
+| `/admin` | Machine room — run background jobs | `POST /admin/jobs/{name}` | ✅ **built** |
 
 **Echoes** (`gpt-chat-reference` Principle 7 — the highest wow-to-effort idea): every `/chat` reply and
 every message in history now carries the memories Nova recalled while writing it — the backend already

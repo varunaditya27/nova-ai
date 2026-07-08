@@ -4,10 +4,21 @@
  */
 import {
   ApiError,
+  type CalendarOut,
   type ChatResponse,
+  type Goal,
   type HomeOut,
+  type IntegrityOut,
+  type JobRunOut,
+  type LongitudinalSummary,
+  type MemoryAuditOut,
+  type MemoryDeletion,
   type MemoryOut,
   type MessageOut,
+  type MuseumOut,
+  type ProactiveItem,
+  type RelationshipOut,
+  type SyncStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -61,6 +72,95 @@ export function searchMessages(
 export function searchMemory(query: string, limit = 5): Promise<MemoryOut[]> {
   const q = new URLSearchParams({ q: query, limit: String(limit) });
   return requestJson<MemoryOut[]>(`/memory/search?${q.toString()}`);
+}
+
+export function getSummaries(limit = 10): Promise<LongitudinalSummary[]> {
+  return requestJson<LongitudinalSummary[]>(`/longitudinal/summaries?limit=${limit}`);
+}
+
+/** Latest weekly chapter. Resolves to null on 404 (none generated yet). */
+export async function getLatestSummary(): Promise<LongitudinalSummary | null> {
+  try {
+    return await requestJson<LongitudinalSummary>("/longitudinal/latest");
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+export function getCalendar(start?: string, end?: string): Promise<CalendarOut> {
+  const q = new URLSearchParams();
+  if (start) q.set("start", start);
+  if (end) q.set("end", end);
+  const qs = q.toString();
+  return requestJson<CalendarOut>(`/calendar${qs ? `?${qs}` : ""}`);
+}
+
+export function getMuseum(): Promise<MuseumOut> {
+  return requestJson<MuseumOut>("/museum");
+}
+
+export function getGoals(status?: string): Promise<Goal[]> {
+  return requestJson<Goal[]>(`/goals${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+}
+
+export function createGoal(title: string, description?: string): Promise<Goal> {
+  return requestJson<Goal>("/goals", jsonPost({ title, description }));
+}
+
+export function getRelationship(): Promise<RelationshipOut> {
+  return requestJson<RelationshipOut>("/relationship");
+}
+
+export function getProactive(limit = 5): Promise<ProactiveItem[]> {
+  return requestJson<ProactiveItem[]>(`/proactive?limit=${limit}`);
+}
+
+export function getMemoryAudit(): Promise<MemoryAuditOut> {
+  return requestJson<MemoryAuditOut>("/memory/audit");
+}
+
+export function getIntegrity(): Promise<IntegrityOut> {
+  return requestJson<IntegrityOut>("/memory/integrity");
+}
+
+/** Layer-12 selective "forget" — content/embedding zeroed, row kept for proof. */
+export function deleteMemory(memoryId: string): Promise<MemoryDeletion> {
+  return requestJson<MemoryDeletion>(`/memory/${encodeURIComponent(memoryId)}`, { method: "DELETE" });
+}
+
+export function getSyncStatus(): Promise<SyncStatus> {
+  return requestJson<SyncStatus>("/sync/status");
+}
+
+export function runJob(name: string): Promise<JobRunOut> {
+  return requestJson<JobRunOut>(`/admin/jobs/${encodeURIComponent(name)}`, { method: "POST" });
+}
+
+export function getBookmarks(category?: string): Promise<MessageOut[]> {
+  return requestJson<MessageOut[]>(
+    `/bookmarks${category ? `?category=${encodeURIComponent(category)}` : ""}`
+  );
+}
+
+export function getMilestones(): Promise<MessageOut[]> {
+  return requestJson<MessageOut[]>("/milestones");
+}
+
+export function setBookmark(messageId: string, category?: string): Promise<MessageOut> {
+  return requestJson<MessageOut>(`/messages/${messageId}/bookmark`, jsonPost({ category }));
+}
+
+export function removeBookmark(messageId: string): Promise<MessageOut> {
+  return requestJson<MessageOut>(`/messages/${messageId}/bookmark`, { method: "DELETE" });
+}
+
+export function setMilestone(messageId: string, label?: string): Promise<MessageOut> {
+  return requestJson<MessageOut>(`/messages/${messageId}/milestone`, jsonPost({ label }));
+}
+
+export function removeMilestone(messageId: string): Promise<MessageOut> {
+  return requestJson<MessageOut>(`/messages/${messageId}/milestone`, { method: "DELETE" });
 }
 
 /** Non-streamed full turn — also the fallback when the SSE stream fails. */

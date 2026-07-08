@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { ThreadLine } from "@/components/primitives/ThreadLine";
 import { EchoRail } from "@/components/primitives/EchoRail";
 import { VoiceButton } from "./VoiceButton";
+import { MessageActions } from "./MessageActions";
 import { relativeTime } from "@/lib/time";
 import { springs, useReducedMotionSafe } from "@/lib/motion";
 import type { MessageOut } from "@/lib/api/types";
@@ -72,14 +73,13 @@ export function MessageStream({
         <div key={m.message_id} id={`msg-${m.message_id}`} className="scroll-mt-24">
           <ThreadLine role={m.role} timestamp={relativeTime(m.created_at)}>
             <Body content={m.content} />
-            {m.role === "nova" && (
-              <>
-                <div className="mt-1 flex items-center">
-                  <VoiceButton text={m.content} mode={m.conversation_mode ?? "casual"} />
-                </div>
-                {m.echoes.length > 0 && <EchoRail echoes={m.echoes} />}
-              </>
-            )}
+            <div className="mt-1 flex items-center gap-0.5">
+              {m.role === "nova" && (
+                <VoiceButton text={m.content} mode={m.conversation_mode ?? "casual"} />
+              )}
+              <MessageActions message={m} />
+            </div>
+            {m.role === "nova" && m.echoes.length > 0 && <EchoRail echoes={m.echoes} />}
           </ThreadLine>
         </div>
       ))}
