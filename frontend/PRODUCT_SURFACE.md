@@ -22,11 +22,11 @@ distinctive free type (Fraunces display + neutral sans body); keep audio (Kokoro
 
 | Route | Screen | Feeds from | Status |
 |---|---|---|---|
-| `/` | Marketing home + start/login | (static) | ✅ |
-| `/desk` | **Digital Desk** — "good evening, current chapter, thoughts waiting, continue" | `GET /home` | 🟡 |
-| `/chat` | The one permanent conversation (history, streaming, echoes) | `GET /messages`, `POST /chat` + `POST /chat/stream` | 🟡 (history new) |
-| `/chat` (search) | Keyword + date search | `GET /messages/search` | 🟡 |
-| `/chat` (AI search) | "the time I was scared" semantic search | `GET /memory/search` | 🟡 |
+| `/` | Marketing home (The Threshold) | (static) | ✅ **built** |
+| `/desk` | **Digital Desk** — greeting, current chapter, held thought, weather, continue | `GET /home` | ✅ **built** |
+| `/chat` | The one permanent conversation (history, streaming, echoes, voice) | `GET /messages`, `POST /chat/stream` (direct) + `POST /chat` fallback | ✅ **built** |
+| `/chat` (search) | ⌘K keyword + date search | `GET /messages/search` | ✅ **built** |
+| `/chat` (AI search) | ⌘K "the time I was scared" semantic search | `GET /memory/search` | ✅ **built** |
 | `/life` | Life timeline / weekly narrative / "6 months passed" | `GET /longitudinal/summaries` + `/latest` | ✅ |
 | `/life/calendar` | Memory heatmap (per-day activity/emotion) | `GET /calendar` | 🟡 |
 | `/life/museum` | "Firsts" — first conversation, first milestone… | `GET /museum` | 🟡 |

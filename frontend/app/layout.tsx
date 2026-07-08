@@ -1,0 +1,41 @@
+import type { Metadata } from "next";
+// Self-hosted variable fonts — bundled in node_modules, so the build never reaches a font CDN.
+import "@fontsource-variable/fraunces/index.css";
+import "@fontsource-variable/instrument-sans/index.css";
+import { GeistMono } from "geist/font/mono";
+import "./globals.css";
+import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";
+import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
+import { QueryProvider } from "@/components/QueryProvider";
+import { Dock } from "@/components/primitives/Dock";
+
+export const metadata: Metadata = {
+  title: "Nova",
+  description: "Intelligence that remembers.",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${GeistMono.variable} h-full`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeNoFlashScript }} />
+      </head>
+      <body className="relative min-h-full">
+        <ThemeProvider>
+          <QueryProvider>
+            <AcousticsProvider>
+              {children}
+              <Dock />
+            </AcousticsProvider>
+          </QueryProvider>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
