@@ -45,7 +45,7 @@ export default function Chat() {
     !isLoading && messages.length === 0 && !pending && stream.state.phase === "idle";
 
   return (
-    <main className="relative z-10 mx-auto flex min-h-dvh max-w-2xl flex-col px-6 pb-40 pt-16 sm:px-10">
+    <main className="relative z-10 mx-auto flex min-h-dvh max-w-2xl flex-col px-6 pb-48 pt-16 sm:px-10">
       <div className="flex-1">
         {empty ? (
           <div className="flex min-h-[55vh] flex-col justify-center">
@@ -67,6 +67,9 @@ export default function Chat() {
           />
         )}
       </div>
+
+      {/* A paper fade so the thread dissolves into the page under the composer, never hard-cut. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 h-52 bg-gradient-to-t from-paper from-40% to-transparent" />
 
       {/* The composer floats above the dock, centered on the same column as the thread. */}
       <div className="fixed inset-x-0 bottom-24 z-30">

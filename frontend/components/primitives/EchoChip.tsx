@@ -21,7 +21,7 @@ export function EchoChip({ echo, onDismiss }: { echo: Echo; onDismiss: () => voi
       title={echo.created_at ?? undefined}
     >
       <span className="text-ink-soft">{echo.summary}</span>
-      <span className="text-ink-faint">· {echo.when}</span>
+      {echo.when && <span className="text-ink-faint">· {echo.when}</span>}
       <button
         onClick={onDismiss}
         aria-label="Dismiss echo"
