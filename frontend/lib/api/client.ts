@@ -9,6 +9,7 @@ import {
   type Goal,
   type HomeOut,
   type IntegrityOut,
+  type JobRunOut,
   type LongitudinalSummary,
   type MemoryAuditOut,
   type MemoryDeletion,
@@ -130,6 +131,10 @@ export function deleteMemory(memoryId: string): Promise<MemoryDeletion> {
 
 export function getSyncStatus(): Promise<SyncStatus> {
   return requestJson<SyncStatus>("/sync/status");
+}
+
+export function runJob(name: string): Promise<JobRunOut> {
+  return requestJson<JobRunOut>(`/admin/jobs/${encodeURIComponent(name)}`, { method: "POST" });
 }
 
 export function getBookmarks(category?: string): Promise<MessageOut[]> {

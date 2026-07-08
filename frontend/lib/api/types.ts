@@ -179,6 +179,9 @@ export type SyncStatus = {
   latest_cursor: number;
 };
 
+/** POST /admin/jobs/{name} — run a background job on demand. */
+export type JobRunOut = { job: string; result: Record<string, unknown> };
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(

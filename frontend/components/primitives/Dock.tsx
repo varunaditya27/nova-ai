@@ -26,7 +26,7 @@ const LENSES: { href: string; label: string; enabled: boolean }[] = [
   { href: "/bookmarks", label: "Bookmarks", enabled: true },
   { href: "/milestones", label: "Milestones", enabled: true },
   { href: "/privacy", label: "Privacy", enabled: true },
-  { href: "/admin", label: "Admin", enabled: false },
+  { href: "/admin", label: "Admin", enabled: true },
 ];
 
 /** A floating Arc-style dock — Desk / Chat inline, every lens behind a Lenses popover. */
