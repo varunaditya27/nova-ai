@@ -122,6 +122,37 @@ export type CalendarOut = {
 export type MuseumEntry = { label: string; content: string; when: string | null };
 export type MuseumOut = { entries: MuseumEntry[] };
 
+/** GET/POST /goals (Layer 7). */
+export type Goal = {
+  goal_id: string;
+  title: string;
+  status: string;
+  progress_score: number;
+  description: string;
+};
+
+/** GET /relationship (Layer 4/5) — stage + learned communication-style calibration. */
+export type RelationshipOut = {
+  stage: string;
+  total_sessions: number;
+  total_messages_exchanged: number;
+  tie_strength: number;
+  trust_score: number;
+  formality_preference: number;
+  response_length_preference: number;
+  question_tolerance: number;
+  unsolicited_advice_tolerance: number;
+};
+
+/** GET /proactive (Layer 6) — a thought Nova is holding. */
+export type ProactiveItem = {
+  item_id: string;
+  item_type: string;
+  status: string;
+  content_basis: string;
+  current_priority: number;
+};
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(

@@ -6,11 +6,14 @@ import {
   ApiError,
   type CalendarOut,
   type ChatResponse,
+  type Goal,
   type HomeOut,
   type LongitudinalSummary,
   type MemoryOut,
   type MessageOut,
   type MuseumOut,
+  type ProactiveItem,
+  type RelationshipOut,
 } from "./types";
 
 const BASE = "/api";
@@ -90,6 +93,22 @@ export function getCalendar(start?: string, end?: string): Promise<CalendarOut> 
 
 export function getMuseum(): Promise<MuseumOut> {
   return requestJson<MuseumOut>("/museum");
+}
+
+export function getGoals(status?: string): Promise<Goal[]> {
+  return requestJson<Goal[]>(`/goals${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+}
+
+export function createGoal(title: string, description?: string): Promise<Goal> {
+  return requestJson<Goal>("/goals", jsonPost({ title, description }));
+}
+
+export function getRelationship(): Promise<RelationshipOut> {
+  return requestJson<RelationshipOut>("/relationship");
+}
+
+export function getProactive(limit = 5): Promise<ProactiveItem[]> {
+  return requestJson<ProactiveItem[]>(`/proactive?limit=${limit}`);
 }
 
 /** Non-streamed full turn — also the fallback when the SSE stream fails. */
