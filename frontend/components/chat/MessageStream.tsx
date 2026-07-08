@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion } from "motion/react";
+import { Wrench } from "lucide-react";
 import { ThreadLine } from "@/components/primitives/ThreadLine";
 import { EchoRail } from "@/components/primitives/EchoRail";
 import { VoiceButton } from "./VoiceButton";
@@ -74,6 +75,14 @@ export function MessageStream({
           <ThreadLine role={m.role} timestamp={relativeTime(m.created_at)}>
             <Body content={m.content} />
             <div className="mt-1 flex items-center gap-0.5">
+              {m.role === "nova" && m.tool_invoked && (
+                <span
+                  title="Nova used a tool"
+                  className="mr-1 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest text-ink-faint"
+                >
+                  <Wrench size={11} /> tool
+                </span>
+              )}
               {m.role === "nova" && (
                 <VoiceButton text={m.content} mode={m.conversation_mode ?? "casual"} />
               )}
