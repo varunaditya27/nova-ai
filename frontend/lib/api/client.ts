@@ -21,6 +21,9 @@ import {
   type RelationshipOut,
   type SessionOut,
   type SyncStatus,
+  type ToolAction,
+  type ToolConfirmation,
+  type ToolResult,
 } from "./types";
 
 const BASE = "/api";
@@ -161,6 +164,26 @@ export function getOnboarding(): Promise<OnboardingOut> {
 
 export function getSessions(): Promise<SessionOut[]> {
   return requestJson<SessionOut[]>("/sessions");
+}
+
+export function getPendingTools(): Promise<ToolConfirmation[]> {
+  return requestJson<ToolConfirmation[]>("/tools/pending");
+}
+
+export function confirmTool(requestId: string): Promise<ToolResult> {
+  return requestJson<ToolResult>(`/tools/confirm/${encodeURIComponent(requestId)}`, {
+    method: "POST",
+  });
+}
+
+export function denyTool(requestId: string): Promise<{ denied: string }> {
+  return requestJson<{ denied: string }>(`/tools/deny/${encodeURIComponent(requestId)}`, {
+    method: "POST",
+  });
+}
+
+export function getToolHistory(): Promise<ToolAction[]> {
+  return requestJson<ToolAction[]>("/tools/history");
 }
 
 export function getBookmarks(category?: string): Promise<MessageOut[]> {

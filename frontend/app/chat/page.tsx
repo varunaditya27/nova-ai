@@ -9,6 +9,7 @@ import { useVoice } from "@/lib/hooks/useVoice";
 import { MessageStream } from "@/components/chat/MessageStream";
 import { Composer } from "@/components/chat/Composer";
 import { ChatSearch } from "@/components/chat/ChatSearch";
+import { PendingActions } from "@/components/chat/PendingActions";
 import { cn } from "@/lib/cn";
 
 /**
@@ -60,8 +61,9 @@ export default function Chat() {
     }
 
     // The streamed reply carries no echoes; refetch so the persisted turn (with its echoes) lands,
-    // then drop the optimistic overlays.
+    // then drop the optimistic overlays. Also refresh pending tools — a turn may have registered one.
     await qc.invalidateQueries({ queryKey: ["messages"] });
+    qc.invalidateQueries({ queryKey: ["tools"] });
     setPending(null);
     stream.reset();
   };
@@ -123,6 +125,7 @@ export default function Chat() {
       {/* The composer floats above the dock, centered on the same column as the thread. */}
       <div className="fixed inset-x-0 bottom-24 z-30">
         <div className="mx-auto max-w-2xl px-6 sm:px-10">
+          <PendingActions />
           <div className="mb-1.5 flex items-center justify-between">
             <button
               onClick={() => setSearchOpen(true)}

@@ -182,6 +182,37 @@ export type SyncStatus = {
 /** POST /admin/jobs/{name} — run a background job on demand. */
 export type JobRunOut = { job: string; result: Record<string, unknown> };
 
+/** GET /tools/pending (Layer 8) — a SOFT/HARD action awaiting confirmation. */
+export type ToolConfirmation = {
+  request_id: string;
+  tool_name: string;
+  action_type: string;
+  action_description: string;
+  tier: string;
+  reversible: boolean;
+};
+
+/** POST /tools/confirm/{id} — the executed action's outcome. */
+export type ToolResult = {
+  ok: boolean;
+  tool_name: string;
+  operation: string;
+  outcome: string;
+  result_summary: string;
+  error_message: string | null;
+};
+
+/** GET /tools/history — durable audit of executed actions. */
+export type ToolAction = {
+  action_id: string;
+  tool_name: string;
+  operation: string;
+  action_type: string;
+  outcome: string;
+  result_summary: string;
+  undone: boolean;
+};
+
 /** GET /onboarding (Layer 13). */
 export type OnboardingOut = { cold_start_active: boolean; session_index: number };
 
