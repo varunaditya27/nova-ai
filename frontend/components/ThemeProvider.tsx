@@ -25,7 +25,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const current = document.documentElement.getAttribute("data-theme");
-    if (current === "dark" || current === "light") setTheme(current);
+    if (current === "dark" || current === "light") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client sync to the theme the no-flash script already applied
+      setTheme(current);
+    }
   }, []);
 
   const toggle = useCallback(() => {

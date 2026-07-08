@@ -45,6 +45,7 @@ export function AcousticsProvider({ children }: { children: ReactNode }) {
   // Resolve the real initial value after mount (SSR-safe), then arm the first-gesture chime.
   useEffect(() => {
     const start = initialMuted();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only preference read (SSR-safe default avoids a hydration mismatch)
     setMutedState(start);
 
     const onFirstGesture = () => {

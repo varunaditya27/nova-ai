@@ -51,12 +51,16 @@ export function CommandSurface({
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 10);
-    else {
-      setQuery("");
-      setResults([]);
-      setActive(0);
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 10);
+      return;
     }
+    // Reset the palette on close — client-only UI state, reacting to the controlled `open` prop.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setQuery("");
+    setResults([]);
+    setActive(0);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [open]);
 
   // Debounced search whenever the query or kind changes.
@@ -64,6 +68,7 @@ export function CommandSurface({
     if (!open) return;
     const q = query.trim();
     if (!q) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results as the debounced query empties
       setResults([]);
       return;
     }
