@@ -128,6 +128,9 @@ export function CommandSurface({
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={t(springs.settle)}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Search the conversation"
             className="w-full max-w-xl overflow-hidden rounded-lg border border-hairline bg-raised"
           >
             <div className="flex items-center gap-2 border-b border-hairline px-4">

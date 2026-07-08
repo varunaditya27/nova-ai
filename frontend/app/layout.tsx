@@ -11,8 +11,24 @@ import { ToastProvider } from "@/lib/hooks/useToast";
 import { Dock } from "@/components/primitives/Dock";
 
 export const metadata: Metadata = {
-  title: "Nova",
-  description: "Intelligence that remembers.",
+  metadataBase: new URL("http://localhost:3000"),
+  title: { default: "Nova", template: "%s · Nova" },
+  description:
+    "Intelligence should feel like a relationship, not a tool. Nova remembers, notices, and continues — across years, not sessions.",
+  applicationName: "Nova",
+  openGraph: {
+    title: "Nova",
+    description: "Intelligence that remembers. A private study for thinking.",
+    type: "website",
+  },
+  twitter: { card: "summary_large_image" },
+};
+
+export const viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F4F1EA" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0B0D" },
+  ],
 };
 
 export default function RootLayout({

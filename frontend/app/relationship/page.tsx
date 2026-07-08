@@ -26,7 +26,7 @@ export default function Relationship() {
             <p className="mt-1 font-mono text-[11px] uppercase tracking-widest text-ink-faint">
               {data.total_sessions} sessions · {data.total_messages_exchanged} messages
             </p>
-            <div className="mt-4 flex gap-1">
+            <div className="mt-4 flex gap-1" aria-hidden>
               {STAGES.map((s, i) => (
                 <span
                   key={s}
@@ -63,7 +63,11 @@ export default function Relationship() {
               <p className="mb-4 font-mono text-[11px] uppercase tracking-widest text-ink-faint">
                 session rhythm · {sessions.length}
               </p>
-              <div className="flex h-16 items-end gap-1">
+              <div
+                role="img"
+                aria-label={`Turn counts across ${sessions.length} sessions`}
+                className="flex h-16 items-end gap-1"
+              >
                 {sessions.slice(-48).map((s) => (
                   <span
                     key={s.session_key}

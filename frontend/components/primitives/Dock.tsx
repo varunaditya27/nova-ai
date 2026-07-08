@@ -71,6 +71,9 @@ export function Dock() {
         {/* Lenses popover */}
         <button
           onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Lenses"
           className={cn(
             "relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
             activeLens ? "text-ink" : "text-ink-soft hover:text-ink"

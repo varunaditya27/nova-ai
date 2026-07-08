@@ -5,31 +5,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PageShell } from "@/components/primitives/PageShell";
 import { LifeNav } from "@/components/life/LifeNav";
 import { useCalendar } from "@/lib/hooks/useLife";
-
-type Day = { date: string; count: number; dow: number };
-
-/** Iterate the range in UTC so day keys line up with the backend's date strings. */
-function buildDays(start: string, end: string, counts: Record<string, number>): Day[] {
-  const days: Day[] = [];
-  const s = new Date(start);
-  const e = new Date(end);
-  let cur = Date.UTC(s.getUTCFullYear(), s.getUTCMonth(), s.getUTCDate());
-  const last = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate());
-  let guard = 0;
-  while (cur <= last && guard++ < 400) {
-    const dt = new Date(cur);
-    const key = dt.toISOString().slice(0, 10);
-    days.push({ date: key, count: counts[key] ?? 0, dow: dt.getUTCDay() });
-    cur += 86_400_000;
-  }
-  return days;
-}
-
-function shade(count: number, max: number): string {
-  if (count <= 0) return "var(--hairline)";
-  const ratio = Math.min(1, count / max);
-  return `color-mix(in srgb, var(--ink) ${Math.round(25 + ratio * 65)}%, var(--surface))`;
-}
+import { buildDays, shade } from "@/lib/calendar";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -79,7 +55,11 @@ export default function Calendar() {
       {isLoading && <div className="h-40 max-w-xs rounded-md bg-hairline/30" />}
       {data && (
         <div>
-          <div className="grid max-w-[320px] grid-cols-7 gap-1.5">
+          <div
+            role="img"
+            aria-label={`Activity heatmap for ${label}`}
+            className="grid max-w-[320px] grid-cols-7 gap-1.5"
+          >
             {WEEKDAYS.map((w, i) => (
               <span key={i} className="text-center font-mono text-[10px] text-ink-faint">
                 {w}

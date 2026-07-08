@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Volume2, VolumeX } from "lucide-react";
+import { Search, Volume2, VolumeX } from "lucide-react";
 import { useMessages } from "@/lib/hooks/useMessages";
 import { useChatStream } from "@/lib/hooks/useChatStream";
 import { useVoice } from "@/lib/hooks/useVoice";
@@ -25,6 +25,7 @@ export default function Chat() {
   const [pending, setPending] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [autoSpeak, setAutoSpeak] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only preference read
@@ -122,7 +123,14 @@ export default function Chat() {
       {/* The composer floats above the dock, centered on the same column as the thread. */}
       <div className="fixed inset-x-0 bottom-24 z-30">
         <div className="mx-auto max-w-2xl px-6 sm:px-10">
-          <div className="mb-1.5 flex justify-end">
+          <div className="mb-1.5 flex items-center justify-between">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-ink-faint transition-colors hover:text-ink-soft"
+            >
+              <Search size={12} />
+              search <span className="hidden sm:inline">· ⌘K</span>
+            </button>
             <button
               onClick={toggleAutoSpeak}
               className={cn(
@@ -138,7 +146,7 @@ export default function Chat() {
         </div>
       </div>
 
-      <ChatSearch onJump={jumpToMessage} />
+      <ChatSearch open={searchOpen} onOpenChange={setSearchOpen} onJump={jumpToMessage} />
     </main>
   );
 }
