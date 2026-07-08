@@ -155,8 +155,15 @@ Feeds a single `GET /home` → `HomeOut`:
   `/milestones` lens pages); the read fields (`bookmarked`, `is_milestone`) are still rendered.
 - **`useChatStream`** — a reducer over SSE frames: `idle → meta → streaming(text) → done(echoes)`;
   exposes live text, mode/system, and final echoes; optimistic-appends the user turn immediately.
-- **CORS:** add the dev origin to `config.api.cors_origins`, but browser traffic goes through Next
-  rewrites so it's same-origin regardless.
+- **CORS:** the dev origin is already in `config.api.cors_origins`.
+
+> **As-built deviation (streaming):** Next's dev rewrite **buffers SSE** (holds the whole response
+> until the backend closes), which kills token-by-token typing — confirmed empirically (0 bytes in
+> 150s through the proxy vs. 2ms first-byte direct). So `useChatStream` streams **directly** from the
+> backend (`${NEXT_PUBLIC_API_BASE}/chat/stream`), relying on the backend's existing CORS. All
+> **JSON** endpoints still go through the same-origin `/api/*` rewrite. In production, point
+> `NEXT_PUBLIC_API_BASE` at the backend's browser-reachable origin (or terminate SSE at a
+> non-buffering reverse proxy).
 
 ## 7 · Error handling, a11y, performance
 
