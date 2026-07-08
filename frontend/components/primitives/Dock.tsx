@@ -16,7 +16,7 @@ type Item = { href: string; label: string; enabled: boolean };
 const ITEMS: Item[] = [
   { href: "/desk", label: "Desk", enabled: true },
   { href: "/chat", label: "Chat", enabled: true },
-  { href: "/life", label: "Life", enabled: false },
+  { href: "/life", label: "Life", enabled: true },
   { href: "/memories", label: "Memories", enabled: false },
 ];
 

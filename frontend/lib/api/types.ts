@@ -101,6 +101,27 @@ export type ChatDone = {
   echoes?: Echo[];
 };
 
+/** GET /longitudinal/summaries, /longitudinal/latest — a week's chapter (Layer 10). */
+export type LongitudinalSummary = {
+  summary_id: string;
+  week_start_date: string | null;
+  week_end_date: string | null;
+  session_count: number;
+  dominant_theme: string;
+  week_narrative: string;
+};
+
+/** GET /calendar — per-day message counts for a heatmap. */
+export type CalendarOut = {
+  start: string;
+  end: string;
+  days: Record<string, number>;
+};
+
+/** GET /museum — "firsts" derived from the log + milestones + goals. */
+export type MuseumEntry = { label: string; content: string; when: string | null };
+export type MuseumOut = { entries: MuseumEntry[] };
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(

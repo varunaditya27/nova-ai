@@ -4,10 +4,13 @@
  */
 import {
   ApiError,
+  type CalendarOut,
   type ChatResponse,
   type HomeOut,
+  type LongitudinalSummary,
   type MemoryOut,
   type MessageOut,
+  type MuseumOut,
 } from "./types";
 
 const BASE = "/api";
@@ -61,6 +64,32 @@ export function searchMessages(
 export function searchMemory(query: string, limit = 5): Promise<MemoryOut[]> {
   const q = new URLSearchParams({ q: query, limit: String(limit) });
   return requestJson<MemoryOut[]>(`/memory/search?${q.toString()}`);
+}
+
+export function getSummaries(limit = 10): Promise<LongitudinalSummary[]> {
+  return requestJson<LongitudinalSummary[]>(`/longitudinal/summaries?limit=${limit}`);
+}
+
+/** Latest weekly chapter. Resolves to null on 404 (none generated yet). */
+export async function getLatestSummary(): Promise<LongitudinalSummary | null> {
+  try {
+    return await requestJson<LongitudinalSummary>("/longitudinal/latest");
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+export function getCalendar(start?: string, end?: string): Promise<CalendarOut> {
+  const q = new URLSearchParams();
+  if (start) q.set("start", start);
+  if (end) q.set("end", end);
+  const qs = q.toString();
+  return requestJson<CalendarOut>(`/calendar${qs ? `?${qs}` : ""}`);
+}
+
+export function getMuseum(): Promise<MuseumOut> {
+  return requestJson<MuseumOut>("/museum");
 }
 
 /** Non-streamed full turn — also the fallback when the SSE stream fails. */
