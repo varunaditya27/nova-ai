@@ -153,6 +153,32 @@ export type ProactiveItem = {
   current_priority: number;
 };
 
+/** GET /memory/audit (Layer 2). */
+export type SemanticMemory = { memory_id: string; statement: string; confidence: number };
+export type MemoryAuditOut = { episodic: MemoryOut[]; semantic: SemanticMemory[] };
+
+/** GET /memory/integrity — both tamper-evident hash chains. */
+export type IntegrityOut = {
+  status: "INTACT" | "TAMPER_DETECTED";
+  audit_chain_ok: boolean;
+  privacy_chain_ok: boolean;
+};
+
+/** DELETE /memory/{id} — a signed "forget". */
+export type MemoryDeletion = {
+  deleted: number;
+  memory_id: string;
+  certificate: string;
+  cascade: string;
+};
+
+/** GET /sync/status (Layer 12 zero-knowledge relay). */
+export type SyncStatus = {
+  total_deltas: number;
+  by_device: Record<string, number>;
+  latest_cursor: number;
+};
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(

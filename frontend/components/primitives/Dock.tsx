@@ -22,10 +22,10 @@ const LENSES: { href: string; label: string; enabled: boolean }[] = [
   { href: "/goals", label: "Goals", enabled: true },
   { href: "/relationship", label: "Relationship", enabled: true },
   { href: "/proactive", label: "Proactive", enabled: true },
-  { href: "/memories", label: "Memories", enabled: false },
-  { href: "/bookmarks", label: "Bookmarks", enabled: false },
-  { href: "/milestones", label: "Milestones", enabled: false },
-  { href: "/privacy", label: "Privacy", enabled: false },
+  { href: "/memories", label: "Memories", enabled: true },
+  { href: "/bookmarks", label: "Bookmarks", enabled: true },
+  { href: "/milestones", label: "Milestones", enabled: true },
+  { href: "/privacy", label: "Privacy", enabled: true },
   { href: "/admin", label: "Admin", enabled: false },
 ];
 
