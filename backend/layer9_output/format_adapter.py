@@ -146,10 +146,6 @@ def enforce_format_spec(text: str, format_spec: FormatSpec) -> str:
     return _tidy_whitespace(text)
 
 
-def count_emoji(text: str) -> int:
-    return sum(len(m.group(0)) for m in _EMOJI_RE.finditer(text))
-
-
 def _reduce_emoji_to_limit(text: str, limit: int) -> str:
     if limit <= 0:
         return _EMOJI_RE.sub("", text)
