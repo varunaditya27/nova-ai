@@ -43,6 +43,26 @@ def test_consolidation_job_decays_and_persists():
     assert ep.last_decay_computed_at is not None
 
 
+def test_consolidation_job_runs_semantic_extraction_when_triggered():
+    st = _state()
+    now = datetime.now(timezone.utc)
+    # 55 (>= EPISODE_COUNT_TRIGGER=50) near-identical, fresh (undecayed as of "now") episodes
+    # so a cluster forms and none of them get swept away by the decay pass first.
+    store = PostgresMemoryStore(st.session_factory)
+    for i in range(55):
+        store.save_episodic(EpisodicMemory(
+            user_id="u1", summary=f"felt anxious about work #{i}",
+            embedding=[1.0, 0.0, 0.0], S_current=1.0, importance_score=0.8,
+            created_at=now, last_decay_computed_at=now))
+
+    from background.memory_consolidation_job import run
+    result = run(st)
+
+    assert result["clusters_detected"] >= 1
+    assert result["semantic_memories_created"] >= 1
+    assert len(store.active_semantic("u1")) >= 1
+
+
 def test_proactive_job_maintains_queue_when_graduated():
     st = _state()
     # graduate so proactivity is not suppressed
