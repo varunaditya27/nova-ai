@@ -42,7 +42,7 @@ def make_initial_state(user_id: str) -> InitialState:
     return InitialState(user_id=user_id, initialized_at=datetime.now(timezone.utc))
 
 
-def generate_first_message(time_of_day: Optional[str] = None, persona=None) -> str:
+def generate_first_message(time_of_day: Optional[str] = None) -> str:
     """Persona-shaped opener. Core content fixed by the template; on any failure → fallback (§9)."""
     try:
         if time_of_day == "late_night":
