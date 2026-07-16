@@ -103,5 +103,27 @@ def test_start_scheduler_noop_when_disabled():
     assert scheduler.start_scheduler(st) is None
 
 
-def test_job_registry_has_five_jobs():
-    assert len(scheduler.JOBS) == 5
+def test_dependency_monitor_job_computes_score_from_episodic_keywords():
+    st = _state()
+    _add_episode(st.session_factory, "u1",
+                summary="I told Nova she's the only one who really understands me, "
+                        "better than my friends")
+
+    from background.dependency_monitor_job import run
+    result = run(st)
+
+    assert "tier" in result
+    assert "score" in result
+    assert 0.0 <= result["score"] <= 1.0
+
+
+def test_dependency_monitor_job_zero_score_with_no_signals():
+    st = _state()
+    _add_episode(st.session_factory, "u1", summary="had a great day at the park with friends")
+    result = scheduler.run_job(st, "dependency_monitor")
+    assert result["score"] == 0.0
+    assert result["tier"] == "healthy"
+
+
+def test_job_registry_has_six_jobs():
+    assert len(scheduler.JOBS) == 6

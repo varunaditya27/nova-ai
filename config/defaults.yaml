@@ -57,6 +57,7 @@ scheduler:
   pattern_detection_days: 7
   integrity_check_hours: 24
   longitudinal_summary_days: 7
+  dependency_monitor_days: 7
 
 timing:
   system1_timeout_ms: 2000

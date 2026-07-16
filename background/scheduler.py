@@ -1,6 +1,6 @@
 """In-process background scheduler (APScheduler), opt-in via ``config['scheduler']['enabled']``.
 
-The five jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
+The six jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
 needed). ``start_scheduler`` lazily imports APScheduler so importing this module never requires it
 (the offline test gate runs on a bare interpreter); if APScheduler is missing or the config flag is
 off, it is a logged no-op. ``run_job`` executes one job by name (used by the manual-trigger route).
@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from background import (
+    dependency_monitor_job,
     integrity_check_job,
     longitudinal_summary_job,
     memory_consolidation_job,
@@ -25,6 +26,7 @@ JOBS = {
     "pattern_detection": pattern_detection_job.run,
     "integrity_check": integrity_check_job.run,
     "longitudinal_summary": longitudinal_summary_job.run,
+    "dependency_monitor": dependency_monitor_job.run,
 }
 
 
@@ -67,6 +69,8 @@ def start_scheduler(app_state):
                   days=cfg.get("pattern_detection_days", 7), id="pattern_detection")
     sched.add_job(_wrap("longitudinal_summary"), "interval",
                   days=cfg.get("longitudinal_summary_days", 7), id="longitudinal_summary")
+    sched.add_job(_wrap("dependency_monitor"), "interval",
+                  days=cfg.get("dependency_monitor_days", 7), id="dependency_monitor")
     sched.start()
     logger.info("scheduler started with %d jobs", len(JOBS))
     return sched
