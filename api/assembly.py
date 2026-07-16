@@ -132,7 +132,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         packet = _run(memory_arbiter(
             user_id, query,
             EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral"),
-            ConversationMode.CASUAL, datetime.now(timezone.utc),
+            ConversationMode(default_mode), datetime.now(timezone.utc),
             store=recall_store, embedder=embedder))
         return list(getattr(packet, "recalled_memories", []) or [])
 
