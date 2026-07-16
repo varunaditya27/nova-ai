@@ -199,6 +199,24 @@ def test_due_threads_surface_with_overdue_count():
     assert packet.overdue_thread_count == 1
 
 
+def test_safe_due_threads_delegates_slicing_to_get_due_threads(monkeypatch):
+    """service.py should call thread_tracker.get_due_threads, not re-slice candidates inline."""
+    calls = []
+    real_get_due_threads = tt.get_due_threads
+
+    def spy(store, now, max_threads=tt.MAX_SURFACED_THREADS):
+        calls.append((store, now))
+        return real_get_due_threads(store, now, max_threads)
+
+    monkeypatch.setattr(svc.thread_tracker, "get_due_threads", spy)
+
+    store = tt.InMemoryThreadStore()
+    surfaced, overdue = svc._safe_due_threads(store, NOW)
+    assert calls, "service._safe_due_threads should call thread_tracker.get_due_threads"
+    assert surfaced == []
+    assert overdue == 0
+
+
 # ── §11 hard rule: always emit ───────────────────────────────────────────────
 def test_packet_emitted_even_when_profile_store_fails():
     class ExplodingProfileStore:
