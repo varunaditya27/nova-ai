@@ -79,6 +79,36 @@ def test_backing_episodes_are_grounded():
     assert "e1" in p.backing_episode_ids
 
 
+def test_then_vs_now_fills_emotional_state_and_key_change():
+    then_summary = WeeklySummary(
+        user_id="u1", week_start_date=date(2024, 1, 5), week_end_date=date(2024, 1, 11),
+        emotional_summary=WeeklyEmotionalSummary(dominant_emotion="anxious"))
+    current_progress = ProgressSnapshot(user_id="u1", as_of_date=TODAY, avg_valence_4w=0.3)
+    then_goals = [SimpleNamespace(title="Learn guitar")]
+    current_goals = [SimpleNamespace(title="Learn guitar"), SimpleNamespace(title="Run 5k")]
+
+    result = retro.build_then_vs_now([], then_summary, then_goals, current_progress, current_goals)
+
+    assert result.then_emotional_state == "anxious"
+    assert result.now_emotional_state == "positive"
+    assert result.key_change == "1 new active goal(s) since then."
+
+
+def test_generate_retrospective_derives_then_summary_from_weekly_summaries():
+    ref = date(2024, 1, 8)
+    near = WeeklySummary(user_id="u1", week_start_date=date(2024, 1, 5),
+                         week_end_date=date(2024, 1, 11),
+                         emotional_summary=WeeklyEmotionalSummary(dominant_emotion="hopeful"))
+    far = WeeklySummary(user_id="u1", week_start_date=date(2023, 1, 5),
+                        week_end_date=date(2023, 1, 11),
+                        emotional_summary=WeeklyEmotionalSummary(dominant_emotion="tired"))
+    p = retro.generate_retrospective(
+        retrospective_type=RetrospectiveType.ONE_WEEK_AGO.value, reference_date=ref,
+        current_date=TODAY, narrative_arc=_arc(), weekly_summaries=[far, near],
+        progress_record=_snapshot(), goals=[], episodic_memories=[])
+    assert p.then_vs_now.then_emotional_state == "hopeful"
+
+
 # ── Surfacing priority (§6.3) ────────────────────────────────────────────────
 def test_priority_in_unit_interval():
     p = retro.compute_surfacing_priority(
