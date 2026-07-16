@@ -60,6 +60,7 @@ def test_extract_new_goal_via_llm():
     assert res.is_update is False
     assert res.new_goal_data["inferred_title"] == "Run a marathon"
     assert res.confidence == 0.9
+    assert res.signal_strength == "explicit_stated"
 
 
 def test_extract_update_to_existing_goal():

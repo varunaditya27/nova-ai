@@ -44,6 +44,16 @@ def test_completion_celebrated_and_score_full():
     assert store.get("g1").progress_score == 1.0
 
 
+def test_progress_signal_updates_momentum_score():
+    store = GoalStore([_goal(score=0.5)])
+    out = _run(store, "I made progress and stuck to it this week")
+    updated = store.get("g1")
+    assert isinstance(out, Layer7Output)
+    assert len(updated.signal_events) == 1
+    assert updated.signal_events[0].event_type == "progress_positive"
+    assert updated.signal_events[0].timestamp == NOW
+
+
 def test_no_goals_no_reference():
     out = _run(GoalStore([]), "I made progress this week")
     assert out.goal_context_packet.should_reference_goal is False

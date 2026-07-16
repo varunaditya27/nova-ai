@@ -224,6 +224,7 @@ class Goal:
     progress_trend: str = "unknown"          # improving | stable | declining | unknown
     momentum_score: float = 0.0
     confidence_at_creation: float = 0.0
+    signal_strength: str = GoalSignalStrength.EXPLICIT_STATED.value
 
     has_metric: bool = False
     metric_description: Optional[str] = None
@@ -237,7 +238,7 @@ class Goal:
 
     milestones: list = field(default_factory=list)   # list[Milestone]
     habits: list = field(default_factory=list)        # list[Habit]
-    signal_events: list = field(default_factory=list) # list[GoalSignalEvent]
+    signal_events: list[GoalSignalEvent] = field(default_factory=list)
 
     proactive_items_created: list = field(default_factory=list)
     last_proactive_sent_at: Optional[datetime] = None
@@ -257,6 +258,7 @@ class GoalExtractionResult:
     update_description: Optional[str] = None
     new_goal_data: Optional[dict] = None
     confidence: float = 0.0
+    signal_strength: str = ""
     was_duplicate: bool = False
     matched_goal_id: Optional[str] = None
     processing_time_ms: int = 0

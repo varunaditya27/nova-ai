@@ -20,6 +20,8 @@ from backend.layer7_goals.goal_store import GoalStore
 from backend.layer7_goals.schemas import (
     Goal,
     GoalContextPacket,
+    GoalSignalEvent,
+    GoalSignalStrength,
     GoalStatus,
     Layer7Output,
 )
@@ -64,6 +66,11 @@ def run_goal_pipeline(
         )
         if progress_signal is not None:
             progress_monitor.update_progress_score(top, progress_signal)
+            top.signal_events.append(GoalSignalEvent(
+                goal_id=top.goal_id, event_type=progress_signal.signal_type,
+                timestamp=now, evidence_text=message,
+                confidence=progress_signal.confidence))
+            top.momentum_score = progress_monitor.compute_momentum(top.signal_events, now=now)
             top.last_mentioned_at = now
             goal_store.update_goal(top)  # persist progress through the store (store-agnostic)
             out.goals_updated.append(top.goal_id)
@@ -101,6 +108,7 @@ def run_goal_pipeline(
                     direction=data.get("inferred_direction", "achieve_outcome"),
                     status=GoalStatus.ACTIVE.value,
                     confidence_at_creation=extraction.confidence,
+                    signal_strength=extraction.signal_strength or GoalSignalStrength.EXPLICIT_STATED.value,
                     emotional_weight=float(data.get("emotional_weight", 0.0)),
                     created_at=now,
                     last_mentioned_at=now,
