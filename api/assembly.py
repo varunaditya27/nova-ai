@@ -289,9 +289,18 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
         directive = " ".join(d for d in (_goal_directive(ctx), _elicitation_directive(ctx)) if d)
-        draft = generate_semantic_draft(ctx.message, persona_packet=ctx.persona_packet,
-                                        response_instruction=directive,
-                                        llm_fn=lambda p: client.complete(p))
+        ei = ctx.emotion_intent
+        # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
+        # ctx — previously dropped, so the planner never actually grounded responses in
+        # recalled memories despite Layer 2 computing them every turn. See POLISH_BACKLOG.md.
+        draft = generate_semantic_draft(
+            ctx.message, persona_packet=ctx.persona_packet,
+            advice_gate=getattr(ei, "advice_gate", "open"),
+            prefers_no_advice=getattr(ei, "prefers_no_advice", False),
+            response_instruction=directive,
+            recalled_memories=ctx.recalled_memories,
+            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+            llm_fn=lambda p: client.complete(p))
         return draft.text
 
     def refine(ctx, draft):

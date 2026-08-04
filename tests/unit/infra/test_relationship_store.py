@@ -27,11 +27,15 @@ def test_record_turn_increments_messages_and_counts_sessions():
 
 
 def test_stage_advances_with_sessions():
+    # Thresholds are the inclusive upper bound of each stage (relationship_manager.py,
+    # now the single source of truth this store imports from -- a prior local duplicate
+    # here treated 100 as the *floor* of "close" instead of the ceiling of "established").
     assert stage_for_sessions(0) == "new"
     assert stage_for_sessions(4) == "acquaintance"
     assert stage_for_sessions(16) == "developing"
     assert stage_for_sessions(41) == "established"
-    assert stage_for_sessions(100) == "close"
+    assert stage_for_sessions(100) == "established"
+    assert stage_for_sessions(101) == "close"
 
 
 def test_stage_persisted_after_enough_sessions():

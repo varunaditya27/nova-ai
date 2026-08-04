@@ -217,6 +217,42 @@ def test_real_layer3_wiring_routes_emotional_turn_to_system2():
     assert out.refined is True
 
 
+def test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt():
+    """Layer 2's recalled memories reach ctx.recalled_memories every turn, but plan() in
+    api/assembly.py never threaded them into generate_semantic_draft -- the planner LLM
+    saw "(no specific memories recalled)" on every single turn regardless of what Layer 2
+    actually found. This exercises the real orchestrator + assembly wiring end-to-end and
+    also guards against semantic_planner._format_memories falling back to a raw dataclass
+    repr (EpisodicMemory's content field is `summary`, not `content`) -- that fallback would
+    leak embedding floats and recall scores into the LLM prompt."""
+    from datetime import datetime, timezone
+    from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector, ScoredMemory
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    mem = EpisodicMemory(summary="the user mentioned starting a new job",
+                         embedding=[1.0, 1.0, 1.0], S_current=1.0, importance_score=0.5,
+                         decay_rate=0.05, created_at=now, user_id="u1",
+                         emotion_vector=EmotionVector(valence=0.5, arousal=0.4))
+    store.save_episodic(mem)
+
+    captured_prompts = []
+
+    class CapturingLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            captured_prompts.append(prompt)
+            return self._reply
+
+    llm = CapturingLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store)
+    ConversationOrchestrator(steps).run_turn("u1", "hey, how's it going")
+
+    planner_prompts = [p for p in captured_prompts if "Semantic Planner" in p]
+    assert planner_prompts, "planner was never invoked"
+    assert any("the user mentioned starting a new job" in p for p in planner_prompts)
+    assert not any("ScoredMemory" in p or "recall_score" in p for p in planner_prompts)
+
+
 def test_real_layer3_wiring_crisis_flag_reaches_orchestrator_veto():
     """Layer 3's own heuristic crisis detection (no SC-2/Layer-11 involvement) must veto
     generation -- proves the crisis_flag/crisis_active fix without relying on Layer 11 at all."""

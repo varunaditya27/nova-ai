@@ -1249,6 +1249,67 @@ This keeps the resolver runnable against the real UWM without inventing schema f
 
 *This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation. No behavior of Layer 4 requires assumptions or inferences from other documents.*
 
+## 16. Live wiring status (Phase 4 polish pass, 2026-08-04)
+
+`backend/layer4_persona/` itself is clean — all 81 tests pass, every sub-component has a real
+implementation matching §15's reconciliation notes, no dead code inside the module. The finding
+this phase is structural: **the real orchestrator (`packet_builder.build_final_response_packet`,
+which runs SC-1 through SC-6) has zero production callers.** `api/assembly.py` runs a separate,
+much thinner path instead — grep confirms `build_final_response_packet`, `refine_emotion`,
+`detect_drift`, `calibrate_voice`, and `resolve_persona_state` are called only from tests.
+
+### 16.1 What actually runs live
+
+`api/assembly.py`'s `build_persona()` hand-assembles a `PersonaPacket()` with only
+`relationship_state` (the raw persisted state, ungated) and a hand-written `persona_instruction`
+sentence (stage + learned style directive). `plan()` calls `semantic_planner.generate_semantic_draft`
+directly (real SC-5 code). `refine()` does **not** call `emotion_refiner.refine_emotion` — it sends
+a fixed prompt, `"Rephrase this warmly without changing any facts:\n\n" + draft`, straight to the
+System 2 LLM.
+
+Net effect: SC-1 (Persona State Resolver — identity anchors, warmth/humor/directness levels),
+SC-3 (Tone & Style Calibrator — the mode × circadian × BES-drift voice-parameter chain), and SC-4
+(Persona Drift Detector — all four §11 identity-under-pressure rules) never run in production. This
+is an identity-consistency gap, not a safety hole: Layer 11's SC-1 Ethical Guardrails still runs
+post-generation on every response (harmful output has a net), but role-abandonment requests,
+sycophantic capitulation, and fabricated-emotion phrasing are not caught pre-generation the way §11
+specifies.
+
+### 16.2 Fixed this phase (small, provable, same shape as prior wiring fixes)
+
+- **Recalled memories never reached the planner prompt.** `ConversationOrchestrator` populates
+  `ctx.recalled_memories` from the real Layer 2 recall every turn, but `plan()` never passed it to
+  `generate_semantic_draft` — the planner prompt always read "(no specific memories recalled)"
+  regardless of what Layer 2 actually found. Fixed: `plan()` now forwards `ctx.recalled_memories`.
+- **`advice_gate` / `prefers_no_advice` never reached the planner.** Same shape — Layer 3 computes
+  both every turn; `plan()` silently dropped them, so the advice gate was always the function
+  default (`"open"`) live, even in `crisis`/`emotional_support` modes. Fixed: forwarded from
+  `ctx.emotion_intent`.
+- **`circadian_band` never reached the planner.** Minor relative to the above two, forwarded for
+  consistency with `classify()`'s Phase-3 fix.
+- **`semantic_planner._format_memories` read the wrong field and could leak raw scores.**
+  `EpisodicMemory`'s content field is `summary`, not `content`; the old code's `getattr(..., "content",
+  "") or str(m)` fallback meant *any* recalled memory would have rendered as a raw `ScoredMemory`
+  dataclass repr — embedding floats and `recall_score` — directly in the LLM prompt, violating the
+  "no raw scores to the LLM" invariant. This was latent (unreachable) before the fix above, since
+  memories never reached the planner at all; fixing the field name was required before wiring
+  memories through, not optional. Verified via a new end-to-end test
+  (`test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt`) that asserts the recalled
+  summary text appears in the prompt and `"ScoredMemory"`/`"recall_score"` do not.
+- **Duplicate, boundary-inconsistent `stage_for_sessions`.** `infra/db/relationship_store.py` had its
+  own copy of the stage-threshold table instead of importing `relationship_manager.stage_for_sessions`
+  (the tested, doc-matching implementation). The duplicate disagreed at the `total_sessions == 100`
+  boundary (treated 100 as the floor of `close`; the canonical version treats 100 as the ceiling of
+  `established`, matching `_STAGE_THRESHOLDS`'s "inclusive upper bound" comment). Deduped by importing
+  from `relationship_manager`; updated the one test that encoded the old duplicate's boundary.
+
+### 16.3 Not fixed, tracked in `docs/POLISH_BACKLOG.md`
+
+Wiring `refine()` → the real `emotion_refiner.refine_emotion`, wiring `build_final_response_packet`
+wholesale, and wiring SC-1/SC-3/SC-4 (persona_resolver, tone_calibrator, drift_detector) are real
+features, not small adapters — see the backlog for why each is bigger than a drop-in forward and
+what it's blocked on.
+
 ### Live integration update (2026-07-07) — per-user persona-param learning
 
 The four communication-style calibration params (`formality_preference`,

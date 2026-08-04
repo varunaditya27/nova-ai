@@ -105,9 +105,13 @@ def _format_memories(recalled_memories) -> str:
     lines = []
     for m in recalled_memories:
         label = getattr(m, "fuzzy_temporal_label", "") or "previously"
-        text = getattr(getattr(m, "memory", None), "content", "") or str(m)
-        lines.append(f"- ({label}) {text}")
-    return "\n".join(lines)
+        # EpisodicMemory's content field is ``summary``, not ``content`` — falling back to
+        # str(m) here would dump the raw ScoredMemory repr (embedding floats, recall_score)
+        # into the LLM prompt, violating the "no raw scores to LLM" invariant.
+        text = getattr(getattr(m, "memory", None), "summary", "")
+        if text:
+            lines.append(f"- ({label}) {text}")
+    return "\n".join(lines) or "(no specific memories recalled — do not invent or imply any)"
 
 
 def build_planner_prompt(

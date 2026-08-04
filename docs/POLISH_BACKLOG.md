@@ -122,4 +122,48 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
 
 ---
 
-<!-- Next phase (Layer 4 — Persona) appends its section below this line. -->
+## Layer 4 — Persona, Personality & Response Generation (audited 2026-08-04)
+
+The module itself (`backend/layer4_persona/`) is clean — 81 tests, no dead code, every
+sub-component matches its architecture-doc reconciliation notes. The finding is structural: the
+real orchestrator (`packet_builder.build_final_response_packet`, SC-1 through SC-6) has **zero
+production callers** — `api/assembly.py` runs a separate, much thinner hand-built path. Four small
+signal-forwarding gaps in that path were fixed this phase (recalled memories, advice gate,
+circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
+`docs/layer-4-architecture.md` §16 for full detail. What's left is real feature work, not wiring:
+
+- **`refine()` doesn't call the real `emotion_refiner.refine_emotion`.** `api/assembly.py`'s
+  `refine()` sends a fixed ad hoc prompt to the LLM instead of the tested SC-6 implementation —
+  no five-condition skip policy, no factual-preservation validation/reinsertion, no voice
+  parameters or empathy hypothesis threaded in. Not a drop-in fix: the orchestrator
+  (`conversation_orchestrator.py`) sets `ctx.refined = True` unconditionally whenever `refine()`
+  runs at all, so wiring the real skip policy would make that field a lie without also touching
+  the orchestrator's contract — and the Phase-3 regression test asserts `out.refined is True`.
+  Needs a coordinated change across `conversation_orchestrator.py` and `api/assembly.py`, not a
+  same-shape adapter fix.
+- **SC-1 (persona_resolver), SC-3 (tone_calibrator), SC-4 (drift_detector) never run live.**
+  `build_persona()` hand-assembles a `PersonaPacket()` missing `persona_state`,
+  `voice_parameters`, and `drift_check_result` entirely. This is an identity-consistency gap, not
+  a safety hole (Layer 11 SC-1 Ethical Guardrails still runs post-generation on every response),
+  but the four §11 "identity under pressure" rules — no capitulation to social pressure, no
+  claimed qualia, no validating harmful beliefs, no abandoning character on request — do not fire
+  pre-generation as designed. SC-3 wiring is coupled to this: voice parameters are inert until
+  SC-5/SC-6 are updated to consume them, so this and the `refine()` item above should land
+  together.
+- **`build_final_response_packet` wiring collides with System 1/2 routing.** The orchestrator's
+  `_run_system1`/`_run_system2` hooks decide whether the Emotion Refiner runs at all (System 1
+  skips it structurally); `build_final_response_packet` makes that same decision internally via
+  the five-condition skip policy. Wiring the real orchestrator wholesale means deciding which of
+  the two owns that decision — a design question to resolve before implementing, not a wiring fix.
+- **`RelationshipState.compute_relationship_state`'s style-calibration overwrite is a latent
+  trap.** `_apply_style_calibration` unconditionally overwrites the four EMA-learned
+  communication-style params (`response_length_preference`, etc.) from a coarse one-shot
+  `communication_model` derivation whenever a `communication_model` is passed in. Currently inert
+  live because Layer 2's UWM is never populated (`communication_model` is always `None` — see the
+  Layer 2 entry above), but whoever eventually wires SC-2 into the live path needs to either drop
+  this overwrite or make it additive, or it will silently discard the learned EMA values from
+  `style_learning.py` every turn.
+
+---
+
+<!-- Next phase (Layer 5 — Relationship) appends its section below this line. -->

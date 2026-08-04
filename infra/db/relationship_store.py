@@ -7,20 +7,11 @@ for relationship deepening — the headline long-term-companionship behaviour. B
 """
 from __future__ import annotations
 
+from backend.layer4_persona.relationship_manager import stage_for_sessions
 from backend.layer4_persona.schemas import RelationshipState
 import infra.db.models as m
 from infra.db.engine import session_scope
 from infra.db.memory_serde import from_jsonable, to_jsonable
-
-# Architecture doc §4.2 session thresholds.
-_STAGE_THRESHOLDS = [(100, "close"), (41, "established"), (16, "developing"), (4, "acquaintance")]
-
-
-def stage_for_sessions(total_sessions: int) -> str:
-    for floor, stage in _STAGE_THRESHOLDS:
-        if total_sessions >= floor:
-            return stage
-    return "new"
 
 
 class PostgresRelationshipStore:
