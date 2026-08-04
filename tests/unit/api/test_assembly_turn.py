@@ -308,6 +308,40 @@ def test_real_layer7_goal_directive_blocked_in_emotional_support_and_shown_in_go
     assert not any("Run a 5K" in p for p in captured4), "goal referenced for a brand-new relationship"
 
 
+def test_real_layer9_wiring_strips_markdown_on_high_intensity_turn():
+    """api/assembly.py's deliver() only forwarded conversation_mode + crisis_mode_active to the
+    real Layer 9 deliver() -- emotional_intensity and relationship_stage (which drive format_spec's
+    structure="pure_prose" branch, §6.3) were dropped, so Layer 9's markdown-stripping backstop was
+    unreachable for a real emotional turn no matter how markdown-heavy the LLM's output was. This
+    runs the REAL orchestrator end-to-end and asserts on DELIVERED text (not a prompt), since
+    Layer 9's effect is on output, not input."""
+    import json
+
+    class MarkdownLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "despair", "valence": -0.9, "arousal": 0.9,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "venting"})
+            if "Semantic Planner" in prompt or "Rephrase" in prompt:
+                return "## Heading\n- a bullet point\n**bold text** and plain words"
+            return self._reply
+
+    llm = MarkdownLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore())
+    out = ConversationOrchestrator(steps).run_turn(
+        "local-user",
+        "I have been feeling really overwhelmed and quite sad lately, and honestly "
+        "nothing feels right anymore!")
+
+    assert out.conversation_mode == "emotional_support"   # sanity: high-intensity turn resolved
+    assert "##" not in out.response_text
+    assert "- a bullet point" not in out.response_text
+    assert "**" not in out.response_text
+    assert "bold text" in out.response_text  # content preserved, only markup stripped
+
+
 def test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt():
     """Layer 2's recalled memories reach ctx.recalled_memories every turn, but plan() in
     api/assembly.py never threaded them into generate_semantic_draft -- the planner LLM

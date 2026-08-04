@@ -272,6 +272,14 @@ class ConversationOrchestrator:
         try:
             out = self.steps.deliver(ctx, ctx.response_text, ctx.crisis_active)
             ctx.layers_run.append("layer9_output")
+            # The real adapter (api/assembly.py) returns Layer 9's final_message_text as a plain
+            # string -- Layer 9's format enforcement (markdown stripping, emoji limits, closing
+            # signals) was previously computed and then discarded here, never reaching
+            # ctx.response_text (and therefore never reaching the user via ChatResponse.response).
+            # Only accept a str so fakes returning a richer/opaque delivery object (e.g. a dict of
+            # {text, crisis_mode} in tests/integration/conftest.py) aren't misassigned.
+            if isinstance(out, str) and out:
+                ctx.response_text = out
             return out
         except Exception:
             logger.exception("delivery failed")

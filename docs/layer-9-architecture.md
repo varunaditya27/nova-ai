@@ -1271,3 +1271,58 @@ Voice synthesis is exposed over HTTP: `POST /voice` (`api/routes/voice.py`) buil
 SSML for the given conversation mode and dispatches it to the **Kokoro** backend
 (`build_voice_backend` on `AppState`, httpx transport), returning `audio/mpeg` — or `503` so the
 client falls back to text (Layer-9 degrade-to-text contract). See `docs/API_REFERENCE.md`.
+
+### Live wiring status (Phase 9 polish pass, 2026-08-04)
+
+`backend/layer9_output/` itself is clean — 99/99 tests pass, matches spec closely. Two real bugs
+were found this phase: one in the orchestrator (bigger, silently discarding Layer 9's entire
+output on the primary API response) and one wiring gap in `api/assembly.py` (smaller, fixed
+alongside it since the orchestrator bug made it unobservable until now).
+
+**Fixed — `ConversationOrchestrator._safe_deliver` never wrote Layer 9's output back to
+`ctx.response_text`.** `deliver()` was called and its return value stored on `ctx.delivered`, but
+`ctx.response_text` — the field `OrchestratedOutput.response_text` (and therefore
+`POST /chat`'s `ChatResponse.response`) actually returns — was never updated from it. This meant
+Layer 9's markdown-stripping backstop (§6.4), emoji limiting, closing signals, and transition
+phrases were computed every single turn and then thrown away for the primary chat response.
+`/chat/stream` and the persisted message log were unaffected — both already read `ctx.delivered`
+in preference to `ctx.response_text` (`api/streaming.py`, `api/state.py::make_message_writer`) —
+so this was specifically a `POST /chat` (non-streaming) bug. Fixed by writing `ctx.response_text`
+from `deliver()`'s return value when it's a string (the real adapter's contract); left richer
+delivery objects — e.g. a test fake returning a dict — untouched, since the orchestrator's
+`deliver` hook contract doesn't guarantee a string return in general.
+
+**Fixed — `api/assembly.py`'s `deliver()` adapter forwarded only `conversation_mode` and
+`crisis_mode_active`, dropping `emotional_intensity` and `relationship_stage`.** Of Layer 9's ~20
+context parameters, these two are the ones with a *visible* effect on delivered text through this
+adapter (`emotional_intensity > 0.65` drives `compute_format_spec`'s `structure="pure_prose"`
+branch; `relationship_stage` drives register/emoji policy) — everything else (`circadian_band`,
+`semantic_draft` for self-edit, `complexity_score`, `turn_type`, `urgency_level`, `voice_mode`)
+only affects the `OrchestratedOutput.events` list, which nothing downstream of `deliver()` consumes
+today (see below), so forwarding them now would be inert. Not forwarded this phase for that reason.
+
+**Discovered and reconciled while wiring `relationship_stage`: a real vocabulary mismatch between
+Layer 4 and Layer 9.** Layer 4's `RelationshipState.stage` uses `new/acquaintance/developing/
+established/close`; every branch across `format_adapter.py`, `thinking_pause.py`,
+`length_calibrator.py`, and `micro_interaction_engine.py` uses the doc's `stranger/acquaintance/
+friend/close_friend`. Only `acquaintance` overlaps — forwarding Layer 4's stage unmapped would
+have put every non-`acquaintance` stage (including `new`, a brand-new user) into the `else` branch
+of `compute_format_spec`'s register logic, producing `register="intimate"` for a stranger. Added
+an explicit mapping (`new→stranger`, `developing/established→friend`, `close→close_friend`) at the
+`api/assembly.py` adapter boundary rather than forwarding raw.
+
+**Verified NOT a bug**: the architecture doc's own `enforce_format_spec` pseudocode (§6.4) has a
+latent no-op — its `lambda m: m.group(1) if m.lastindex else m.group(0)` returns the match
+unchanged for every pattern without a capture group (headers, bullets, numbered lists, horizontal
+rules). The as-built `format_adapter.py` does **not** have this bug — it uses direct
+`pattern.sub("", text)` calls for those patterns and only the bold pattern needs the capture-group
+substitution, which it gets right (`_BOLD_RE.sub(r"\1", text)`). Confirmed by the new regression
+test, which exercises header/bullet/bold stripping together on real delivered text.
+
+**Not fixed, tracked in `docs/POLISH_BACKLOG.md`**: the `OrchestratedOutput` event sequence
+(thinking pauses, backchannels, self-edit show/delete events) and `format_spec_applied` are
+computed by `deliver()` every turn and never consumed by any client — `/chat/stream` builds its
+own, separate `StreamTypingOverlay` rather than replaying Layer 9's events. `UserFormatProfile`
+(the learned per-user length/emoji/markdown preferences, §6.5–6.6) has zero references anywhere in
+`api/` or `infra/` — no persistence, never read, never written; the entire "the system learns from
+how the user responds" design principle (§11.4) is inert live.

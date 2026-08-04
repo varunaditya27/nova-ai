@@ -33,6 +33,17 @@ from backend.pipeline import PipelineSteps
 
 logger = logging.getLogger("nova.api")
 
+# Layer 4's RelationshipState.stage vocabulary (new/acquaintance/developing/established/close)
+# differs from Layer 9's doc vocabulary (stranger/acquaintance/friend/close_friend) -- confirmed
+# by grepping every literal Layer 9 branches on (format_adapter/thinking_pause/length_calibrator/
+# micro_interaction_engine all use the doc's four stages). Forwarding Layer 4's stage unmapped
+# would silently mis-register brand-new users as "close_friend"-adjacent (falls through to the
+# `else` branch -> intimate register, contractions, fragments) -- the opposite of the doc's intent.
+_LAYER9_STAGE_MAP = {
+    "new": "stranger", "acquaintance": "acquaintance",
+    "developing": "friend", "established": "friend", "close": "close_friend",
+}
+
 _NS = uuid.NAMESPACE_URL  # stable per-user UUIDs derived from string user_ids
 _CRISIS_TEXT = ("I'm really glad you told me. If you might be in danger right now, please contact your "
                 "local emergency number or a crisis line — you deserve support from someone who can "
@@ -364,7 +375,18 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             flags=[v.check_name for v in getattr(result, "violations", []) or []])
 
     def deliver(ctx, response, crisis_mode_active):
-        result = l9_deliver(response, ctx.conversation_mode, crisis_mode_active=crisis_mode_active)
+        # Forward the two signals that actually change delivered text through this adapter
+        # (deliver() only returns final_message_text -- format_spec/micro-interactions/events are
+        # not yet consumed here, see POLISH_BACKLOG.md, so there's no point threading signals that
+        # only affect the discarded parts of Layer9Output).
+        emotional_intensity = getattr(
+            getattr(ctx.emotion_intent, "primary_emotion", None), "intensity", 0.0)
+        stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
+        relationship_stage = _LAYER9_STAGE_MAP.get(stage, "friend")
+        result = l9_deliver(response, ctx.conversation_mode,
+                            crisis_mode_active=crisis_mode_active,
+                            emotional_intensity=emotional_intensity,
+                            relationship_stage=relationship_stage)
         return getattr(result, "final_message_text", None) or response
 
     def state_update(ctx):

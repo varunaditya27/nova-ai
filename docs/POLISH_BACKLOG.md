@@ -291,4 +291,43 @@ Full detail: `docs/layer-8-architecture.md`'s "Live wiring status" note.
 
 ---
 
-<!-- Next phase (Layer 9 — Output) appends its section below this line. -->
+## Layer 9 — Output Delivery & Interaction Orchestration (audited 2026-08-04)
+
+Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
+`docs/layer-9-architecture.md`'s Live wiring status note for full detail:
+
+- **Fixed:** `ConversationOrchestrator._safe_deliver` computed Layer 9's output every turn but
+  never wrote it back to `ctx.response_text`, so `POST /chat`'s `ChatResponse.response` — the
+  primary API response — never reflected Layer 9's markdown-stripping, emoji-limiting, closing-
+  signal, or transition-phrase logic. `/chat/stream` and the persisted message log were already
+  unaffected (both read `ctx.delivered` directly). This was the highest-impact bug found in the
+  audit pass so far in terms of "runs every turn, silently wrong on the primary endpoint."
+- **Fixed:** `api/assembly.py`'s `deliver()` adapter forwarded only 2 of Layer 9's ~20 context
+  parameters. Forwarded the two with a visible effect on delivered text (`emotional_intensity`,
+  `relationship_stage`, with an explicit stage-vocabulary mapping — see the architecture doc for
+  why raw forwarding would have been wrong). Deliberately did not forward `circadian_band`,
+  `semantic_draft`, `complexity_score`, `turn_type`, `urgency_level`, `voice_mode` — see below,
+  their effects are currently inert.
+- **`OrchestratedOutput`'s event sequence and `UserFormatProfile` are both unconsumed/unwired.**
+  The typed event list (thinking pauses, backchannels, self-edit show/delete) that `deliver()`
+  assembles every turn has no consumer — `/chat/stream` builds its own separate
+  `StreamTypingOverlay` rather than replaying Layer 9's events, so `circadian_band` and
+  `semantic_draft` (which only affect that event list) would be dead weight to forward today.
+  `UserFormatProfile` — the learned per-user length/emoji/markdown-preference record central to
+  §6.5–6.6's "the system learns from how the user responds" principle — has no persistence store
+  and is never read or written anywhere in `api/`/`infra/`. Wiring either is real feature work:
+  the event-consumption gap needs a decision about whether `/chat/stream`'s bespoke overlay should
+  be replaced by Layer 9's own event sequence (they currently duplicate the same idea two ways),
+  and the format-profile gap needs a new DB table plus a post-turn writer, the same shape as
+  Layer 6/7's persistence gaps.
+- **`turn_type`, `urgency_level`, `complexity_score`, `voice_mode` have no live source at all**,
+  independent of the forwarding gap: `turn_type` (question/venting/request_advice/etc.) isn't
+  computed anywhere in Layers 3-4 today; `urgency_level` doesn't exist on `EmotionIntentPacket`;
+  `complexity_score` is computed by Layer 4's `SemanticDraft` but discarded before reaching `ctx`
+  (`plan()` in `api/assembly.py` returns only `draft.text`, not the full draft object — same shape
+  as the Layer 7 `Layer7Output`-discarding finding); `voice_mode` has no signal in `ChatRequest`
+  (consistent with Layer 1's audited `ChatRequest` schema gap).
+
+---
+
+<!-- Next phase (Layer 10 — Longitudinal) appends its section below this line. -->
