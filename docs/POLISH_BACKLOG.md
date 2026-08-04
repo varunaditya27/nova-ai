@@ -201,4 +201,36 @@ job. Each step is independently shippable and testable against the existing, alr
 
 ---
 
-<!-- Next phase (Layer 6 — Proactivity) appends its section below this line. -->
+## Layer 6 — Proactive Engagement Engine (audited 2026-08-04)
+
+Another clean module audit — `backend/layer6_proactivity/` has zero bugs found, 76/76 tests pass,
+and matches its architecture doc precisely. Unlike Layer 5, Layer 6 is *partially* live: SC-1's
+scoring/expiry runs every 30 minutes via `background/proactive_check_job.py`, and the Layer 7 →
+Layer 6 goal-check-in intake (`api/proactive_gen.py`) creates real candidates each turn. Full
+detail: `docs/layer-6-architecture.md` §15.
+
+- **No delivery pipeline exists.** SC-2 (Initiative Classifier), SC-3 (Timing & Delivery Gate),
+  SC-4 (Message Generator), and SC-5 (Response Tracker) have zero production callers because
+  there is nothing to deliver *to* — `GET /proactive` is a read-only poll endpoint, not a push
+  channel, per its own docstring. Building this needs a real delivery surface (push notification,
+  in-app message, or equivalent) before the send-side pipeline has anywhere to plug in — genuine
+  infra work, not a wiring gap.
+- **`GET /proactive` returns ungated `content_basis`, bypassing SC-3 entirely.** Today this is
+  inert — `content_basis` is a plain-language fragment (e.g. `"Goal: X | Milestone: Y"`), never a
+  message SC-4 produced — but if a future frontend renders it directly as a chat bubble from Nova,
+  none of the timing gate's five block groups (crisis aftermath, relationship-too-new, user
+  preference opt-outs, the 1/day cap, the 48h min-gap) would apply. Whoever builds the frontend
+  consumer of this endpoint needs to either (a) run candidates through `evaluate_timing_gate`
+  server-side before returning them, or (b) treat `content_basis` as internal-only debug data and
+  never render it as if Nova said it. Flag this explicitly in whatever spec covers the eventual
+  proactive-delivery frontend work.
+- **Three of four intake contracts are unwired**, each blocked on a different upstream layer, not
+  on Layer 6 itself: `on_thread_due` needs Layer 1's narrative-thread detector (Layer 1's own
+  audited gap); `on_post_distress_gap` needs a Layer 2 state-updater hook that doesn't exist yet;
+  `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, unreachable until Layer 5
+  itself gets wired (Phase 5 finding). These close automatically as their source layers do —
+  nothing to do in Layer 6 itself.
+
+---
+
+<!-- Next phase (Layer 7 — Goals) appends its section below this line. -->

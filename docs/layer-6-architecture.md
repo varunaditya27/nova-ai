@@ -1137,3 +1137,42 @@ deterministic `GOAL_CHECK_IN` `ProactiveItem`; the post-turn `make_proactive_wri
 into `PostgresProactiveQueue` (idempotent by goal-derived id, suppressed while cold-starting), so
 `GET /proactive` accumulates real candidates. The `proactive_check` scheduler job continues to own
 re-prioritization/expiry. See `docs/API_REFERENCE.md`.
+
+## 15. Live wiring status (Phase 6 polish pass, 2026-08-04)
+
+`backend/layer6_proactivity/` itself is clean: all 76 tests pass, `engine.py`, `queue_manager.py`,
+`timing_gate.py`, and `message_generator.py` all match the spec precisely (including the
+documented §14.4 deviations), no bugs found this pass.
+
+**What's actually live** (confirmed by direct read, more than the July note above covers): SC-1's
+pure scoring functions (`recompute_priority`/`expire`/`top_candidates`) run for real via
+`background/proactive_check_job.py` every ~30 minutes, and one intake contract — `on_
+goal_milestone_approaching` (§9.4), via `api/proactive_gen.py` — creates real `GOAL_CHECK_IN`
+candidates each turn. That's the entire live surface.
+
+**What never runs live**, confirmed by grepping `api/`, `background/`, and `infra/` for every
+Layer 6 entry point beyond the two above (`run_proactive_cycle`, `evaluate_timing_gate`,
+`classify_initiative`, `generate_proactive_message`, `classify_response`,
+`update_queue_from_response`): all matches are in tests.
+
+- **SC-2 (Initiative Classifier), SC-3 (Timing & Delivery Gate), SC-4 (Message Generator), and
+  SC-5 (Response Tracker) never run.** There is no delivery channel (`api/routes/proactive.py`'s
+  own docstring: "No push channel without a frontend") — `GET /proactive` is a client-polled read
+  of the raw queue, not a delivery mechanism, so there was never anywhere to wire the send-side
+  pipeline into.
+- **`GET /proactive` exposes raw, ungated `content_basis` text, not a generated message.** Worth
+  stating plainly since it's a live behavior, not a missing one: the endpoint returns items
+  filtered only by `status in (pending, deferred)` — it does not run `evaluate_timing_gate`, so
+  none of §5.2's five block groups apply to what it returns. A candidate that would be hard-blocked
+  by the gate (crisis aftermath, relationship stage too new, user has disabled that item type, the
+  1/day cap, the 48-hour min gap) is returned exactly the same as a candidate that would clear
+  every gate. This is not a live safety hole today — `content_basis` is a plain-language fragment
+  like `"Goal: X | Milestone: Y"`, not a message SC-4 would ever have produced or validated, so
+  nothing resembling an actual proactive message reaches a client. But it means a future frontend
+  that renders `content_basis` directly as a "message from Nova" would bypass every one of Layer
+  6's designed safeguards. Flagged in `docs/POLISH_BACKLOG.md`.
+- **Three of four intake contracts (§9.1, §9.2, §9.3) are unwired**, consistent with their source
+  layers: `on_thread_due` needs Layer 1's narrative-thread detector (still unbuilt per the Layer 1
+  audit); `on_post_distress_gap` needs Layer 2 state-updater hooks not yet present;
+  `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, which cannot exist until
+  Layer 5 itself is wired (Phase 5 finding — zero production callers).
