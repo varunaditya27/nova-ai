@@ -218,7 +218,17 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 needs_advice=False)
 
     def classify(message, input_packet, recalled):
-        return build_emotion_intent_packet(message, llm_fn=_json_classifier)
+        # Forward the Layer 1 signals that are real in production (Phase 1/2 audits). NOT
+        # implicit_intensity: Layer 1 pins it at exactly 0.10 live (no client behavioral data
+        # yet), and the neutral-skip heuristic's gate is `< 0.1` — forwarding it would disable
+        # that gate on every single turn. See docs/POLISH_BACKLOG.md.
+        return build_emotion_intent_packet(
+            message,
+            circadian_band=getattr(input_packet, "circadian_band", "afternoon"),
+            composite_prior=getattr(input_packet, "composite_emotional_prior", 0.0) or 0.0,
+            prior_confidence=getattr(input_packet, "prior_confidence", 0.0) or 0.0,
+            signal_mismatch_flag=getattr(input_packet, "signal_mismatch", False),
+            llm_fn=_json_classifier)
 
     def safety_scan(user_id, message, input_packet):
         signal = evaluate(message)

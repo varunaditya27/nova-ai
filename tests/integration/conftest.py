@@ -32,7 +32,7 @@ def make_recording_steps(**overrides):
 
     def classify(message, input_packet, recalled):
         rec.order.append("L3_classify")
-        return SimpleNamespace(crisis_flag=False, mode="casual", complexity="simple")
+        return SimpleNamespace(crisis_active=False, conversation_mode="casual", complexity="simple")
 
     def safety_scan(user_id, message, input_packet):
         rec.order.append("L11_safety")

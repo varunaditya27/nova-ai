@@ -88,4 +88,38 @@ needs a new detector, table, or LLM step rather than a small adapter. Full detai
 
 ---
 
-<!-- Next phase (Layer 3 — Reasoning) appends its section below this line. -->
+## Layer 3 — Emotion, Intent & Reasoning (audited 2026-08-04)
+
+Two critical safety/routing bugs found and **fixed** this phase (attribute-name mismatches
+invisible to the test suite because every orchestrator test mocks `classify`) — see
+`docs/layer-3-architecture.md` §17 for full detail. This layer had far less "complete but
+unwired" scaffolding than Layers 1-2; most of what's left is smaller connection gaps.
+
+- **`alert_fn` (async CrisisAlert push to Layer 11) is never wired.** Not a safety gap — the
+  orchestrator reads `crisis_active` directly off the returned packet and ORs it with Layer 11's
+  independent scan — but the specific "immediate, before-the-packet-completes" notification
+  behavior the doc describes doesn't happen. Would need `api/assembly.py` to pass a real
+  `alert_fn` that forwards into whatever Layer 11 uses to receive early signals (check whether
+  Layer 11's `evaluate()` even has a push-receiving counterpart, or whether this is redundant
+  with SC-2's own scan and not worth wiring at all).
+- **SC-1 and SC-3 each call `llm_fn` separately** — two LLM calls per turn, not the single shared
+  small-model call §14.2 describes. Not a correctness bug (both calls work), but a latency/cost
+  gap relative to the documented design. Would need `packet_builder.py` restructured so one LLM
+  response feeds both classifiers.
+- **BES (Background Emotional State) inputs are never forwarded.** `episodic_memories`,
+  `active_stressors`, `psychological_model` all default to empty/`None` in
+  `api/assembly.py::classify` — consistent with Layer 2's finding that the User World Model and
+  real episodic-memory querying are inert live, so there's nothing real to forward yet. Closes
+  automatically once Layer 2's UWM gap does.
+- **`relationship_depth` and `advice_frustration_count` are never forwarded**, despite
+  `PostgresRelationshipStore` (Layer 4/5) having real session/message counts that could derive a
+  `relationship_depth` proxy today (`relationship_provider` already exists — this is a small
+  adapter, similar in shape to Layer 1's temporal-profile fix).
+- **`composite_prior`'s prior-adjustment branch is forwarded but still unreachable.** Verified
+  directly: with Layer 1's `implicit_intensity` pinned at 0.10, `composite_prior` cannot exceed
+  ~0.39, below `integrate_prior`'s `> 0.6` gate. Reopens once Layer 1's implicit-signal gap
+  (`ChatRequest` client-behavioral-data gap, above) closes — no Layer 3 code change needed then.
+
+---
+
+<!-- Next phase (Layer 4 — Persona) appends its section below this line. -->

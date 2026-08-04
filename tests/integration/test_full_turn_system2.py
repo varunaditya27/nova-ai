@@ -12,7 +12,7 @@ from tests.integration.conftest import make_recording_steps
 
 def _classify(mode="emotional_support", complexity="complex", crisis=False):
     return lambda message, input_packet, recalled: SimpleNamespace(
-        crisis_flag=crisis, mode=mode, complexity=complexity)
+        crisis_active=crisis, conversation_mode=mode, complexity=complexity)
 
 
 def test_emotional_message_routes_to_system2():

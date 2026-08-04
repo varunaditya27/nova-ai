@@ -180,3 +180,49 @@ def test_perceive_without_profile_provider_is_unchanged():
     from datetime import datetime, timezone
     packet = steps.perceive("local-user", "hey", datetime.now(timezone.utc), "session-1")
     assert packet.cold_start_profile is True
+
+
+def test_real_layer3_wiring_routes_emotional_turn_to_system2():
+    """End-to-end through the REAL orchestrator + assembly.py (not a mocked classify step) --
+    the two bugs this phase fixed (mode/conversation_mode, crisis_flag/crisis_active attribute
+    mismatches) were invisible to every other test because they all mock `classify`. This is the
+    one test that runs Layer 3's actual output through route_system and the crisis veto."""
+    import json
+
+    class ClassifyingLLM(FakeLLM):
+        def __init__(self):
+            super().__init__(reply="a warm reply")
+            self.classify_calls = 0
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                self.classify_calls += 1
+                return json.dumps({"primary_label": "sadness", "valence": -0.7, "arousal": 0.6,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "venting"})
+            return self._reply
+
+    llm = ClassifyingLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore())
+    # "!" and 15+ words keep the message past heuristic_prefilter's neutral-skip gate regardless
+    # of circadian band or the day's exact word count -- isolates the mode/routing wiring itself.
+    out = ConversationOrchestrator(steps).run_turn(
+        "local-user",
+        "I have been feeling really overwhelmed and quite sad lately, and honestly "
+        "nothing feels right anymore!")
+
+    assert llm.classify_calls >= 1           # the neutral-skip heuristic didn't swallow the LLM call
+    assert out.conversation_mode == "emotional_support"
+    assert out.cognitive_system == "system2"
+    assert out.refined is True
+
+
+def test_real_layer3_wiring_crisis_flag_reaches_orchestrator_veto():
+    """Layer 3's own heuristic crisis detection (no SC-2/Layer-11 involvement) must veto
+    generation -- proves the crisis_flag/crisis_active fix without relying on Layer 11 at all."""
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore())
+    out = ConversationOrchestrator(steps).run_turn("local-user", "I just can't go on anymore")
+    assert out.crisis_active is True
+    assert out.conversation_mode == "crisis"
