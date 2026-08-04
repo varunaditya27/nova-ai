@@ -40,6 +40,9 @@ def test_delete_memory_forgets_and_certifies():
     assert resp.status_code == 200
     body = resp.json()
     assert body["deleted"] == 1 and body["certificate"]
+    # No semantic/personality/longitudinal store was wired for the cascade check, so the
+    # response must say so plainly rather than implying an empty (fully-computed) cascade.
+    assert "not computed" in body["cascade"]
 
     # Genuinely forgotten: gone from the active set and unrecallable (embedding cleared).
     assert store.active_episodic("local-user") == []
@@ -51,6 +54,20 @@ def test_delete_memory_forgets_and_certifies():
     audit = PostgresPrivacyAudit(factory, "local-user")
     assert audit.verify() is True
     assert any(e["action"] == "delete_memory" for e in audit.entries())
+
+
+def test_deleted_memory_unrecallable_via_keyword_search():
+    """The keyword-scan fallback in GET /memory/search is the one path that would leak a
+    deleted memory's original text if the summary field weren't actually zeroed on delete."""
+    client, factory = _client()
+    store = PostgresMemoryStore(factory)
+    mem = EpisodicMemory(user_id="local-user", summary="a very particular secret phrase",
+                         embedding=[0.1, 0.2])
+    store.save_episodic(mem)
+
+    assert client.get("/memory/search?q=particular+secret").json() != []
+    assert client.delete(f"/memory/{mem.memory_id}").status_code == 200
+    assert client.get("/memory/search?q=particular+secret").json() == []
 
 
 def test_delete_missing_memory_is_404():

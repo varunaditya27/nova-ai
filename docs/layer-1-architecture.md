@@ -928,12 +928,68 @@ in by dependency injection. Layer 1 only reads — the Layer 2 State Updater own
 - Conflict resolution (§7.2) feeds the composite-prior formula (§7.4) via an *effective*
   circadian prior; the two are one ordered computation, not two competing priors.
 
-**Test coverage.** 137 unit tests in `tests/unit/` (`test_temporal_resolver.py`,
+**Test coverage.** 138 unit tests in `tests/unit/` (`test_temporal_resolver.py`,
 `test_thread_tracker.py`, `test_implicit_signals.py`, `test_multimodal_normalizer.py`,
 `test_prosody_extractor.py`, `test_assembler.py`, `test_layer1_service.py`) cover the §12.3
 requirements: full 24-hour band mapping, all seven gap boundaries, every anomaly condition,
 thread-priority ordering, fuzzy-label buckets, the intensity formula, multimodal/prosody
 success **and** degraded paths, full-assembly completeness, and the §11 always-emit guarantee.
+Live-wiring coverage (below) lives in `tests/unit/api/test_assembly_turn.py` and
+`tests/unit/api/test_state.py`, not this package — it tests how `api/assembly.py`/`api/state.py`
+drive `process_input_event`, not Layer 1 itself.
+
+## 16. Live wiring status (Phase 1 polish pass, 2026-08-04)
+
+Layer 1's module code (`backend/layer1_input/`) is complete, tested in isolation, and contains
+no dead code — every schema field, function, and backend Protocol has a real caller. Auditing
+the *live* `/chat` path (`api/assembly.py::perceive`), however, found that most of Layer 1's
+signal was inert in production: `process_input_event` was called with `attachments=[]` hardcoded
+and a throwaway `ClientMetadata()`, and no `profile_store`/`thread_store` were injected. Every
+turn therefore looked cold-start, with a fixed `implicit_emotional_intensity_score` and no due
+threads, regardless of actual conversation history.
+
+**Fixed in this pass:**
+- **Temporal profile.** `api/state.py::make_temporal_profile_provider` derives a
+  `UserTemporalProfile`/`UserBehaviorBaseline` from state Layers 4/5 and the message log already
+  persist (`PostgresRelationshipStore.total_sessions`, `PostgresMessageStore.first()` /
+  `.last_interaction_at()` / bounded `.history()`) — no new table. `api/assembly.py::perceive`
+  wires it via a `_SingleProfileStore` adapter. Real session count, `last_session_end` (so
+  `gap_category`/`is_new_session`/anomaly detection reflect actual timing), a rolling circadian
+  `typical_bands` histogram, and `message_length_median_chars` now flow into every turn;
+  `cold_start_profile` is `False` once a user has any history instead of always `True`.
+  `average_session_frequency_days` is the mean gap *between* session-start timestamps, not
+  `relationship_age_days / total_sessions` (a materially different, and wrong, quantity — the
+  latter silently defeats `detect_temporal_anomaly`'s cadence check by making its threshold far
+  tighter than the user's real cadence). `typical_bands` is only populated once the bounded
+  recent-history sample has 10+ banded messages, otherwise a low-confidence histogram would flag
+  every not-yet-seen band as "atypical" the moment `total_sessions` crosses the anomaly-detection
+  floor (5). Both derivations are bounded to `message_store.history`'s 200-row cap — an
+  approximation of recent behavior, not a precise lifetime statistic.
+  **Caveat:** the histogram buckets by the *stored* (UTC) hour, matching `timezone_offset_hours`
+  defaulting to `0.0` (never populated) — the moment something starts setting a real timezone
+  offset, this derivation needs the same offset applied or the live band and the historical
+  histogram will silently diverge.
+- **`session_id`.** The orchestrator already carries `ctx.session_id`; `perceive`'s contract
+  (`PipelineSteps.perceive`) now receives it as a fourth argument instead of Layer 1 minting a
+  fresh random UUID every single message.
+
+**Still not wired (documented, not fixed, this pass — see CLAUDE.md's follow-up list):**
+- **Narrative threads (§3.5).** Nothing in the codebase ever constructs a `NarrativeThread` —
+  `due_threads` is always `[]` and `backend/layer6_proactivity/intake.py::on_thread_due` is an
+  orphaned consumer. This needs a detector (likely LLM-based, spotting "future_event" /
+  "intention_commitment" open loops in conversation) plus a persisted store — a real follow-up
+  feature, not a wiring gap.
+- **Implicit signals (SC-2) and multimodal/voice (SC-3/SC-4).** `ClientMetadata`'s behavioral
+  fields (typing-start time, deletion count, burst) and any `AttachmentPayload`s are only ever
+  their defaults/`[]` in the live path, because `ChatRequest` (`api/schemas.py`) carries neither —
+  the client doesn't send them. SC-2 therefore always scores a fixed low intensity, and SC-3/SC-4
+  never fire. Fixing this is a frontend-contract change (new optional `ChatRequest` fields +
+  client instrumentation), out of scope for a backend-only pass.
+- **`config/layer1.yaml`.** Now loaded into the merged config dict (`api/state.py::build_app_state`
+  reads all thirteen `layerN.yaml` files), but no function in this package reads `config['layer1']`
+  yet — every threshold in `temporal_resolver.py`/`implicit_signals.py`/etc. is still a hardcoded
+  module constant. The YAML's stated purpose ("re-tuned without a code change") isn't realized
+  until those constants become config-driven parameters.
 
 ---
 

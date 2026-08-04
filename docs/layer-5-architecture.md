@@ -1124,6 +1124,32 @@ The two LLM uses are injected as plain callables: SC-2 event extraction (`llm_fn
 63 unit tests across six files exercise every sub-component and the orchestrator:
 `test_social_graph.py` (12), `test_event_tracker.py` (12), `test_pattern_recognizer.py` (9), `test_coaching_detector.py` (16), `test_coaching_modifier.py` (7), `test_layer5_packet_builder.py` (7). Coverage includes entity resolution across all match kinds + confidence decay; rule-based and LLM-fallback event extraction; intra/cross/temporal pattern detection with longitudinal spans; all three coaching gates (incl. crisis/distress/stage hard blocks and the negative-drift soft block); inline vs as-question injection with the headroom guard; provisional pattern framing; and the §11 hard rule (any internal failure passes the Layer 4 response through unchanged).
 
+## 15. Live wiring status (Phase 5 polish pass, 2026-08-04)
+
+`backend/layer5_relationship/` itself is clean: all 63 tests pass, every sub-component matches
+its spec (including the deliberate deviations §14.4 already documents), no dead code, no bugs
+found in this pass. There is nothing to fix inline this phase — the finding is that **the layer
+has zero production callers of any kind**, confirmed by grepping `api/`, `backend/pipeline/`,
+`background/`, and `infra/` for every public entry point
+(`build_social_intelligence_packet`, `detect_coaching_opportunity`, `inject_observation`,
+`detect_patterns`, `detect_events_rule_based`, `resolve_entity`): all matches are in tests.
+
+Unlike Layer 4 (a real orchestrator with no caller, but small adapter-shaped gaps fixable
+inline), Layer 5 has **no integration point to wire into at all**:
+
+- `backend.pipeline.PipelineSteps` (the orchestrator's 12-hook adapter surface, per
+  `api/assembly.py`'s module docstring) has no Layer 5 hook — `TurnContext` carries no social
+  graph, event history, or active patterns.
+- `infra/db/models.py` has no `SocialGraph`/`SocialNode`/`SocialEdge`/`SocialEvent`/
+  `SocialPattern` tables — there is nowhere to persist what SC-1/SC-2/SC-3 would produce.
+- SC-3's pattern detection is specified as a background batch job "every 5 sessions" (§5.4);
+  `background/scheduler.py`'s six registered jobs have no seventh entry for it.
+
+This is real, substantial feature work — a new DB schema, an orchestrator hook, per-turn entity
+resolution + event detection calls, and a new background job — not a wiring bug. Logged in
+`docs/POLISH_BACKLOG.md` rather than fixed inline, per the "fix what's small and safe, log
+everything bigger" rule.
+
 ---
 
 *This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 5 requires assumptions or inferences from other documents.*

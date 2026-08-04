@@ -1303,4 +1303,44 @@ LAYER10_DATA_POLICY = {
 
 ---
 
+## 15. Live wiring status (Phase 10 polish pass, 2026-08-04)
+
+`backend/layer10_longitudinal/` itself is clean (65 tests pass, matches spec). Live wiring is
+partial — 2 of 5 sub-components run as background jobs; SC-1, SC-4, SC-5, and the entire
+`Layer10ContextPacket` read path into Layer 4/6 are unwired.
+
+### 15.1 What runs live
+
+- **SC-2 (Weekly Summary)**: `background/longitudinal_summary_job.py` runs weekly, persists via
+  `PostgresLongitudinalStore`, readable through `GET /longitudinal/summaries` and `/latest`.
+- **SC-3 (pattern detection only)**: `background/pattern_detection_job.py` runs
+  `detect_behavioral_patterns` weekly, but **the detected patterns are discarded** — the job logs
+  a count and returns it; nothing persists them or feeds them to Layer 6, despite the job's own
+  docstring flagging this as a known follow-up.
+
+### 15.2 Fixed this phase
+
+- **`background/_adapters.py::episodic_records` read a field that doesn't exist.**
+  `emotional_intensity=abs(getattr(ep, "content_basis_valence", 0.0))` — `content_basis_valence`
+  is a Layer 6 `ProactiveItem` field name, not anything on Layer 2's `EpisodicMemory` (whose real
+  emotion field is `emotion_vector.valence`/`.arousal`). Every episode's `emotional_intensity` was
+  silently always `0.0`. Fixed to read the real field.
+- **`generate_weekly_summary` and `detect_behavioral_patterns` always received
+  `emotional_records=[]`, hardcoded**, so `WeeklySummary.emotional_summary` was always empty and
+  pattern detection's day-of-week emotional-cycle check (§5.3 Pattern 1) could never fire. Added
+  `background/_adapters.py::emotional_records`, deriving `EmotionalRecord`s from the same
+  per-episode `emotion_vector` data `episodic_records` already reads (Layer 10 has no dedicated
+  per-turn emotional history log yet — this is the nearest real signal available), and wired it
+  into both jobs in place of the hardcoded empty list.
+
+### 15.3 Not fixed, tracked in `docs/POLISH_BACKLOG.md`
+
+SC-1 (Life Narrative Engine — chapters/moments), SC-4 (Retrospective Engine), SC-5 (Life
+Calendar), the pattern-detection → Layer 6 handoff, and the entire `Layer10ContextPacket` →
+Layer 4 read path (the doc's primary reason for Layer 10 to exist — "long-term narrative
+grounding" in every response) have zero production callers. This is real feature work: a
+persisted calendar/chapter schema, a scheduler loop, and an orchestrator hook, not a wiring gap.
+
+---
+
 *This document specifies Layer 10 completely. All five sub-components — the Life Narrative Engine (chapter schema, narrative moment taxonomy, LifeEvent schema defined in Section 3.2, synthesis algorithm, chapter boundary detection), the Weekly Summary Engine (full schema, generation algorithm, delivery policy), the Progress & Pattern Tracker (all tracked dimensions with complete schemas, pattern detection algorithm), the Retrospective Engine (all retrospective types, RetrospectivePacket schema, generation logic, Year in Review special case, surfacing window table), and the Life Calendar (CalendarEntry schema, CalendarEntryType taxonomy, Layer6Action contract, scheduler logic, new-user registration, life-event anniversary registration) — are fully specified. Goal objects are referenced as `Goal` (the canonical class name from layer-7-architecture.md); the `goal_objects` table in `goals.db` (Layer 12) stores instances of this class. The Layer 10 output contract (Layer10ContextPacket), pipeline integration write and read paths, privacy and retention policy, error handling for all failure cases, and performance targets are all explicitly defined. No behavior of Layer 10 requires assumptions or inferences from other documents.*

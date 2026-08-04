@@ -1192,11 +1192,22 @@ No downstream agent calls a memory sub-component directly.
 
 ### 11.2 Arbiter Execution Sequence
 
+**As-built note (Polish Phase 2):** the pseudocode below takes `emotion_classification` "from
+Layer 3" and a resolved `conversation_mode`, but `docs/NOVA_AI_MASTER_ARCHITECTURE.md` §3 and the
+actual orchestrator (`backend/pipeline/conversation_orchestrator.py`) both run Layer 2 recall at
+step 3, *before* Layer 3 classification at step 5 — by design, not oversight (recall needs to
+inform the same turn's generation, and classification depends on more than recall does). Neither
+signal exists yet when `memory_arbiter` runs. In production: `conversation_mode` falls back to
+the configured `default_mode` (there is genuinely no earlier mode signal — this is an honest
+gap, not fixed); `emotional_state` is derived from Layer 1's `composite_emotional_prior` /
+`prior_confidence` (a `[0,1]` pre-linguistic vulnerability signal, not Layer 3's richer
+valence/arousal output) via `api/assembly.py::_emotion_from_input_packet`. See §19.
+
 ```python
 async def memory_arbiter(
     user_id: UUID,
     layer1_packet: InputPerceptionPacket,
-    emotion_classification: EmotionClassification,  # from Layer 3
+    emotion_classification: EmotionClassification,  # spec intent; as-built uses Layer 1's prior — see note above
     conversation_mode: str
 ) -> MemoryPacket:
 
@@ -1476,7 +1487,7 @@ runs and is tested offline; real backends drop in without touching engine code.
 | Module | Sub-component(s) | Notes |
 |---|---|---|
 | `schemas.py` | all contract types | stdlib `@dataclass` + `str`-`Enum` |
-| `embedding.py` | vector infra | `cosine_similarity`; `Embedder`/`VectorIndex` protocols + deterministic/brute-force defaults (hnswlib + all-MiniLM in prod) |
+| `embedding.py` | vector infra | `cosine_similarity`; `Embedder`/`VectorIndex` protocols + deterministic/brute-force defaults (nomic-embed-text + ChromaDB in prod, not hnswlib/all-MiniLM — see below) |
 | `memory_strength.py` | §8.3 | S0, decay, reinforcement, delete/archive |
 | `recall_scorer.py` | SC-6 (§8.2) | four-component score; `RecallWeights` α=.40 β=.30 γ=.20 δ=.10 |
 | `context_gate.py` | SC-6 (§8.5) | gate table on canonical modes |
@@ -1499,7 +1510,7 @@ as-built note.)
 
 **Reconciliations applied during implementation** (the doc above reflects these):
 - Recall weights corrected to α=.40 β=.30 γ=.20 δ=.10 and τ default 0.7 (config was stale).
-- Storage reconciled from pgvector/PostgreSQL/Chroma to **on-device SQLite + hnswlib** (§4.4, §13, §17.1) to match CLAUDE.md and Layer 12.
+- Storage: an intermediate revision of this doc reconciled to on-device SQLite + hnswlib; superseded again by **PostgreSQL + ChromaDB** (`infra/db/`, `infra/vector_store/`) — the current, live backend. Don't re-reconcile to SQLite/hnswlib; check `infra/` for what's actually running.
 - Context-gate modes reconciled to Layer 3's canonical taxonomy; `celebration` row added (§8.5).
 - `required_contradictions` inline comment fixed (0.3 → 4, not 3) — the `ceil` formula is authoritative (§5.3).
 - Immutable-policy enforcement reference corrected from "Safety Layer (Layer 9)" to Layer 11 (Safety Agent, which owns crisis) (§6.5).
@@ -1513,6 +1524,36 @@ recall formula + components, softmax temperature behavior, decay correctness, th
 table, consolidation (3 similar episodes → semantic memory), hash-chain integrity + tamper
 detection, cross-session link detection, the confabulation guard, and contradiction-driven
 belief/semantic updates.
+
+## 20. Live wiring status (Phase 2 polish pass, 2026-08-04)
+
+Every module in `backend/layer2_memory/` is used somewhere — either by production wiring or by
+the module's own public API surface (`__init__.py`'s exports) — with no unreachable code. But
+five of the eight sub-components have **no live production caller at all**; they're complete,
+independently tested, but never invoked outside tests. Full detail (why, and what's needed to
+close each gap): `docs/POLISH_BACKLOG.md`.
+
+**Fixed in this pass:**
+- **Recall's emotional component used a hardcoded neutral vector on every turn** (`api/assembly.py`
+  passed `EmotionVector(0,0,"neutral")` regardless of the actual user's state), which — given
+  `emotional_component`'s distance formula — systematically favored neutral-toned memories,
+  backwards from the mood-congruent-recall design intent (§18.3). Recall runs before Layer 3
+  classification by design (see §11.2's as-built note), so there's no `EmotionClassification` to
+  use; `_emotion_from_input_packet` now derives a proxy from Layer 1's `composite_emotional_prior`
+  instead. Verified by constructing two identical-embedding memories differing only in
+  `emotion_vector` and confirming recall ordering flips between a high- and low-vulnerability
+  input packet (`tests/unit/api/test_assembly_turn.py`).
+- Three stale docstrings/doc passages describing production storage as SQLite+hnswlib or
+  all-MiniLM (superseded by PostgreSQL/ChromaDB/nomic-embed-text) fixed in `embedding.py`,
+  `memory_store.py`, and §19 above.
+
+**Not fixed, tracked in `docs/POLISH_BACKLOG.md`:** User World Model is never created for any
+real user (`state_updater`'s UWM step and `arbiter._attach_uwm` both no-op); Identity Memory is
+never seeded or updated (Nova has no live self-model); narrative-chain linking has zero callers
+and no persisted store; episodic memory extraction is a raw `message[:2000]` truncation, not the
+LLM summarization the type alias documents; the Short-Term Memory buffer (`stm.add_turn`,
+`should_promote`) is never fed real per-session turns — `state_updater` constructs a fresh empty
+buffer every turn instead of accumulating one across the session.
 
 ---
 

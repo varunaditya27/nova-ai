@@ -33,6 +33,17 @@ from backend.pipeline import PipelineSteps
 
 logger = logging.getLogger("nova.api")
 
+# Layer 4's RelationshipState.stage vocabulary (new/acquaintance/developing/established/close)
+# differs from Layer 9's doc vocabulary (stranger/acquaintance/friend/close_friend) -- confirmed
+# by grepping every literal Layer 9 branches on (format_adapter/thinking_pause/length_calibrator/
+# micro_interaction_engine all use the doc's four stages). Forwarding Layer 4's stage unmapped
+# would silently mis-register brand-new users as "close_friend"-adjacent (falls through to the
+# `else` branch -> intimate register, contractions, fragments) -- the opposite of the doc's intent.
+_LAYER9_STAGE_MAP = {
+    "new": "stranger", "acquaintance": "acquaintance",
+    "developing": "friend", "established": "friend", "close": "close_friend",
+}
+
 _NS = uuid.NAMESPACE_URL  # stable per-user UUIDs derived from string user_ids
 _CRISIS_TEXT = ("I'm really glad you told me. If you might be in danger right now, please contact your "
                 "local emergency number or a crisis line — you deserve support from someone who can "
@@ -85,15 +96,33 @@ class _ToolTurnOutcome:
     response_text: str = ""
 
 
+class _SingleProfileStore:
+    """Wraps one pre-fetched ``UserTemporalProfile`` as a Layer-1 ``ProfileStore``.
+
+    Layer 1's own store protocol is keyed by the uuid5 ``process_input_event`` derives from the
+    raw user_id; the Postgres-backed lookup in ``profile_provider`` runs against the raw id
+    upstream of that derivation (same reasoning as the ANN-recall raw-id note above), so this
+    wrapper just ignores whatever key ``.get()`` is called with and returns the profile already
+    resolved for this turn.
+    """
+    def __init__(self, profile) -> None:
+        self._profile = profile
+
+    def get(self, _user_id):
+        return self._profile
+
+
 def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_writer: Optional[Callable] = None,
                          cold_start: Optional[Callable] = None,
                          tool_manager=None,
                          goal_provider: Optional[Callable] = None,
                          relationship_provider: Optional[Callable] = None,
+                         profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
+    from backend.layer1_input.schemas import UserTemporalProfile, UserBehaviorBaseline
     from backend.layer2_memory import memory_arbiter
     from backend.layer2_memory.schemas import ConversationMode, EmotionVector
     from backend.layer3_reasoning import build_emotion_intent_packet
@@ -107,10 +136,50 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     embedder = _EmbedderAdapter(embed)
     veto_tiers = {CrisisTier.TIER_1.value, CrisisTier.TIER_2.value}
 
-    def perceive(user_id, message, now):
+    # Recall runs before Layer 3 classification by design (docs/NOVA_AI_MASTER_ARCHITECTURE.md §3
+    # step 3 vs step 5), so recall_scorer's mood-congruent emotional_component has no Layer-3
+    # EmotionClassification to use. Layer 1's composite_emotional_prior — a single [0,1]
+    # pre-linguistic vulnerability signal — is the only "current emotion" proxy available this
+    # early, so we map it onto valence/arousal rather than passing a hardcoded neutral vector
+    # (which would make the β=0.30 component favor neutral-toned memories on every single turn,
+    # backwards from the mood-congruent-recall design intent). Below the confidence floor, or
+    # if Layer 1 didn't run, fall back to neutral rather than trusting a low-signal prior.
+    _EMOTION_PRIOR_CONFIDENCE_FLOOR = 0.3
+
+    def _emotion_from_input_packet(input_packet) -> EmotionVector:
+        prior = getattr(input_packet, "composite_emotional_prior", None)
+        confidence = getattr(input_packet, "prior_confidence", 0.0) or 0.0
+        if prior is None or confidence < _EMOTION_PRIOR_CONFIDENCE_FLOOR:
+            return EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral")
+        prior = max(0.0, min(1.0, prior))
+        return EmotionVector(valence=-prior, arousal=prior,
+                             dominant_label="neutral" if prior < 0.3 else "vulnerable")
+
+    def perceive(user_id, message, now, session_id=""):
+        profile_store = None
+        behavior_baseline = None
+        if profile_provider is not None:
+            try:
+                d = profile_provider(user_id)
+                profile_store = _SingleProfileStore(UserTemporalProfile(
+                    user_id=_uuid_for(user_id),
+                    total_sessions=d["total_sessions"],
+                    relationship_age_days=d["relationship_age_days"],
+                    average_session_frequency_days=d["average_session_frequency_days"],
+                    typical_bands=d["typical_bands"],
+                    last_session_end=d["last_session_end"]))
+                behavior_baseline = UserBehaviorBaseline(
+                    message_length_median_chars=d["message_length_median_chars"])
+            except Exception:
+                logger.exception("temporal profile provider failed; Layer 1 falls back to cold start")
+        # NOTE: attachments are always [] and ClientMetadata carries no real behavioral timestamps
+        # (latency/deletion/burst) — the client doesn't send them yet (ChatRequest has no fields
+        # for them). SC-2's implicit-signal scoring and SC-3/SC-4 (multimodal/voice) are therefore
+        # always neutral/inactive in the live pipeline; see docs/layer-1-architecture.md §16.
         packet = _run(process_input_event(
             _uuid_for(user_id), message, now, [],
-            ClientMetadata(session_id=str(uuid.uuid4()))))
+            ClientMetadata(session_id=session_id or str(uuid.uuid4())),
+            profile_store=profile_store, behavior_baseline=behavior_baseline))
         setattr(packet, "raw_message", message)   # carry the text forward for recall
         return packet
 
@@ -131,7 +200,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 recall_store = memory_store
         packet = _run(memory_arbiter(
             user_id, query,
-            EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral"),
+            _emotion_from_input_packet(input_packet),
             ConversationMode(default_mode), datetime.now(timezone.utc),
             store=recall_store, embedder=embedder))
         return list(getattr(packet, "recalled_memories", []) or [])
@@ -160,7 +229,17 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 needs_advice=False)
 
     def classify(message, input_packet, recalled):
-        return build_emotion_intent_packet(message, llm_fn=_json_classifier)
+        # Forward the Layer 1 signals that are real in production (Phase 1/2 audits). NOT
+        # implicit_intensity: Layer 1 pins it at exactly 0.10 live (no client behavioral data
+        # yet), and the neutral-skip heuristic's gate is `< 0.1` — forwarding it would disable
+        # that gate on every single turn. See docs/POLISH_BACKLOG.md.
+        return build_emotion_intent_packet(
+            message,
+            circadian_band=getattr(input_packet, "circadian_band", "afternoon"),
+            composite_prior=getattr(input_packet, "composite_emotional_prior", 0.0) or 0.0,
+            prior_confidence=getattr(input_packet, "prior_confidence", 0.0) or 0.0,
+            signal_mismatch_flag=getattr(input_packet, "signal_mismatch", False),
+            llm_fn=_json_classifier)
 
     def safety_scan(user_id, message, input_packet):
         signal = evaluate(message)
@@ -195,8 +274,20 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 logger.exception("relationship provider failed; using default persona")
         return packet
 
+    # Layer 7 §6.3 hard blocks: never reference goals in these modes, or before the
+    # relationship has moved past first contact. This directive predates SC-4
+    # (decide_goal_reference) reaching the live path (its real output is computed
+    # post-turn — see POLISH_BACKLOG.md), so the blocks are duplicated here rather than
+    # left unenforced.
+    _GOAL_BLOCKED_MODES = {"crisis", "emotional_support", "casual"}
+
     def _goal_directive(ctx) -> str:
         if goal_provider is None:
+            return ""
+        if getattr(ctx, "conversation_mode", "casual") in _GOAL_BLOCKED_MODES:
+            return ""
+        stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
+        if stage == "new":
             return ""
         try:
             titles = [t for t in (goal_provider(ctx.user_id, ctx.message) or []) if t]
@@ -205,9 +296,9 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             return ""
         if not titles:
             return ""
-        joined = "; ".join(f"'{t}'" for t in titles[:3])
-        return (f"The user has active goal(s): {joined}. If it fits naturally, reference their "
-                f"progress or gently encourage them — never force it or lecture.")
+        # §6.4 anti-pattern: never reference more than one goal per response.
+        return (f"The user has an active goal: '{titles[0]}'. If it fits naturally, reference "
+                f"their progress or gently encourage them — never force it or lecture.")
 
     def _elicitation_directive(ctx) -> str:
         """Layer-13: weave a surfaced onboarding question in naturally (never front-loaded)."""
@@ -221,9 +312,18 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
         directive = " ".join(d for d in (_goal_directive(ctx), _elicitation_directive(ctx)) if d)
-        draft = generate_semantic_draft(ctx.message, persona_packet=ctx.persona_packet,
-                                        response_instruction=directive,
-                                        llm_fn=lambda p: client.complete(p))
+        ei = ctx.emotion_intent
+        # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
+        # ctx — previously dropped, so the planner never actually grounded responses in
+        # recalled memories despite Layer 2 computing them every turn. See POLISH_BACKLOG.md.
+        draft = generate_semantic_draft(
+            ctx.message, persona_packet=ctx.persona_packet,
+            advice_gate=getattr(ei, "advice_gate", "open"),
+            prefers_no_advice=getattr(ei, "prefers_no_advice", False),
+            response_instruction=directive,
+            recalled_memories=ctx.recalled_memories,
+            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+            llm_fn=lambda p: client.complete(p))
         return draft.text
 
     def refine(ctx, draft):
@@ -275,7 +375,18 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             flags=[v.check_name for v in getattr(result, "violations", []) or []])
 
     def deliver(ctx, response, crisis_mode_active):
-        result = l9_deliver(response, ctx.conversation_mode, crisis_mode_active=crisis_mode_active)
+        # Forward the two signals that actually change delivered text through this adapter
+        # (deliver() only returns final_message_text -- format_spec/micro-interactions/events are
+        # not yet consumed here, see POLISH_BACKLOG.md, so there's no point threading signals that
+        # only affect the discarded parts of Layer9Output).
+        emotional_intensity = getattr(
+            getattr(ctx.emotion_intent, "primary_emotion", None), "intensity", 0.0)
+        stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
+        relationship_stage = _LAYER9_STAGE_MAP.get(stage, "friend")
+        result = l9_deliver(response, ctx.conversation_mode,
+                            crisis_mode_active=crisis_mode_active,
+                            emotional_intensity=emotional_intensity,
+                            relationship_stage=relationship_stage)
         return getattr(result, "final_message_text", None) or response
 
     def state_update(ctx):

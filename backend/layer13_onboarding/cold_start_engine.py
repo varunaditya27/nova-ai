@@ -5,7 +5,8 @@ graduation. Coordinates SC-1 (passive engine + active queue + surfacing policy),
 builder + graduation evaluator) and SC-3 (feature pacing controller), then self-terminates and
 hands full control to the Conversation Orchestrator. Safety (Layer 11) is never gated by this
 overlay; the `personality_drift_gate`/`set_*`/`activate_*` callbacks model the graduation handoff
-into the live system (wired by the orchestrator in production).
+into the live system. This class has no production caller today — see
+`docs/layer-13-architecture.md` §13 "Live wiring status".
 """
 
 from __future__ import annotations

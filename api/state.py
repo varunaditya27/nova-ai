@@ -301,6 +301,86 @@ def make_relationship_provider(session_factory) -> Callable:
     return _provider
 
 
+def make_temporal_profile_provider(session_factory) -> Callable:
+    """Layer 1 profile source: derive per-user temporal-history signals from state that is
+    already persisted for Layer 4/5 (session counters) and the message log, instead of a
+    dedicated Layer-1 store — see docs/layer-1-architecture.md §16 "Live wiring status". Without
+    this, Layer 1 has no way to know a user's session history and every turn looks cold-start.
+
+    Returns a plain dict (not a Layer-1 schema type — ``api/assembly.py`` owns building the
+    ``UserTemporalProfile``/``UserBehaviorBaseline`` objects, matching ``make_goal_provider``
+    returning titles rather than a Layer-4 packet).
+    """
+    from infra.db.message_store import PostgresMessageStore
+    from backend.layer1_input.temporal_resolver import map_circadian_band
+
+    def _as_utc(dt):
+        if dt is None:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+    def _provider(user_id) -> dict:
+        rel = PostgresRelationshipStore(session_factory, user_id).load()
+        msgs = PostgresMessageStore(session_factory, user_id)
+        first = msgs.first()
+        last_session_end = _as_utc(msgs.last_interaction_at())
+
+        age_days = 0
+        first_created_at = _as_utc(first["created_at"]) if first is not None else None
+        if first_created_at is not None:
+            age_days = max(0, (datetime.now(timezone.utc) - first_created_at).days)
+
+        # Bounded recent sample (message_store.history caps at 200) — an approximation of recent
+        # cadence/circadian pattern, not a precise lifetime histogram.
+        recent = msgs.history(limit=200)
+        recent_user = [r for r in recent if r.get("role") == "user"]
+
+        # average_session_frequency_days is the mean GAP BETWEEN sessions, not age/total_sessions
+        # (age/total_sessions is days-per-session averaged over the relationship's whole lifetime,
+        # a different and mostly-smaller quantity — it silently defeats detect_temporal_anomaly's
+        # gap-vs-cadence check by making the threshold far tighter than the user's actual cadence).
+        # Derive it from each session's earliest message in the bounded window.
+        session_starts: dict[str, datetime] = {}
+        for r in recent:
+            key = r.get("session_key") or ""
+            ts = _as_utc(r["created_at"])
+            if key not in session_starts or ts < session_starts[key]:
+                session_starts[key] = ts
+        ordered_starts = sorted(session_starts.values())
+        if len(ordered_starts) >= 2:
+            gaps_days = [(b - a).total_seconds() / 86400
+                        for a, b in zip(ordered_starts, ordered_starts[1:])]
+            avg_frequency = sum(gaps_days) / len(gaps_days)
+        else:
+            avg_frequency = 0.0
+
+        band_counts: dict[str, int] = {}
+        for r in recent_user:
+            band = map_circadian_band(r["created_at"].hour).value
+            band_counts[band] = band_counts.get(band, 0) + 1
+        total_banded = sum(band_counts.values())
+        # Require a handful of samples before trusting the histogram — with too few, an unseen
+        # band reading 0.0 would flag every message in that band as "atypical" (detect_temporal_
+        # anomaly's own >= 5 total_sessions gate gets a user here quickly, but 5 sessions can still
+        # mean very few *banded* user messages in a slow-cadence relationship).
+        _MIN_BANDED_SAMPLES = 10
+        typical_bands = ({b: c / total_banded for b, c in band_counts.items()}
+                         if total_banded >= _MIN_BANDED_SAMPLES else {})
+
+        lengths = sorted(len(r["content"]) for r in recent_user if r.get("content"))
+        length_median = lengths[len(lengths) // 2] if lengths else None
+
+        return {
+            "total_sessions": rel.total_sessions,
+            "relationship_age_days": age_days,
+            "average_session_frequency_days": avg_frequency,
+            "typical_bands": typical_bands,
+            "last_session_end": last_session_end,
+            "message_length_median_chars": length_median,
+        }
+    return _provider
+
+
 def make_relationship_writer(session_factory) -> Callable:
     """Post-turn: advance the per-user relationship (message/session counters + stage)."""
     def _write(ctx) -> None:
@@ -353,7 +433,10 @@ def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callabl
 
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
-    config = config or load_config("local.yaml")   # local.yaml overlay is optional (skipped if absent)
+    # Each layerN.yaml overlay is optional (skipped if absent) and merges over defaults.yaml;
+    # local.yaml applies last so it can override any of them for local/dev runs.
+    _layer_files = [f"layer{n}.yaml" for n in range(1, 14)]
+    config = config or load_config(*_layer_files, "local.yaml")
     if llm_clients is None:
         from infra.llm import build_llm_clients
         llm_clients = build_llm_clients(config)
@@ -387,6 +470,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
         relationship_provider=make_relationship_provider(session_factory),
+        profile_provider=make_temporal_profile_provider(session_factory),
         vector_store=vector_store)
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,

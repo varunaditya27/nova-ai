@@ -340,3 +340,22 @@ capability declares (`backend/layer8_tools/llm_intent.py`, keyword-gated + `extr
 Natural-language requests ("email sam@… saying I'll be late") therefore form real SOFT/HARD
 confirmations instead of endless clarifications; any LLM/JSON failure degrades to keyword params.
 `GET /tools/pending` reports the real tier + reversibility. See `docs/API_REFERENCE.md`.
+
+### Live wiring status (Phase 8 polish pass, 2026-08-04)
+
+The best-audited layer yet: `backend/layer8_tools/` is fully wired end-to-end and no bugs were
+found. `ToolManager.process` runs live pre-generation via the orchestrator's `tool_use` hook
+(`api/assembly.py`), all five plugins are registered (`api/state.py::build_tool_manager`), the
+gemma2:2b parameter-extraction path is wired when an intent client is configured, and all four
+`/tools/*` routes (`pending`, `confirm`, `deny`, `undo`) + `history` operate on the real,
+Postgres-audited `ToolManager`. The security model (§5.1 — bound SHA-256 fingerprint tokens,
+fail-closed direct path, ownership-checked undo) was read line-by-line against the doc's claims
+and matches exactly; 92/92 tests pass.
+
+One limitation worth naming rather than fixing: pending confirmations (`ToolManager._pending`)
+live only in in-process memory, never persisted — a SOFT/HARD confirmation issued before a
+process restart is silently lost (the user would see `404` on `/tools/confirm/{id}`, not a
+security issue, just a UX rough edge). This is consistent with the codebase's current
+single-process, single-user deployment model (`api/routes/tools.py`'s own docstring already calls
+out the "process singleton" assumption) rather than an oversight, so it isn't blocking — but it's
+worth knowing if this ever moves to multi-worker or gets a real restart cadence.

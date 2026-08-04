@@ -1271,8 +1271,8 @@ The single public entry point is `packet_builder.build_emotion_intent_packet(...
 
 The non-deterministic/heavy dependencies are injected as plain callables so the entire layer runs and is unit-tested with zero external services:
 
-- `llm_fn(message) -> LLMClassificationOutput` — the shared SC-1+SC-3 small-model call (§14.2). When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
-- `alert_fn(CrisisAlert) -> None` — the crisis emitter to Layer 11 (Safety Agent) (§3.6). The production wiring is async (§14.1); Layer 3 only guarantees the callback fires **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5). The alert is fired from the heuristic pre-filter result, so it survives an LLM failure (verified by test).
+- `llm_fn(message) -> LLMClassificationOutput` — SC-1 and SC-3 each call this once with the same prompt shape via `api/assembly.py::_json_classifier` — two LLM calls per turn today, not the single shared call §14.2 describes (`docs/POLISH_BACKLOG.md`). When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
+- `alert_fn(CrisisAlert) -> None` — the crisis emitter to Layer 11 (Safety Agent) (§3.6), designed to fire **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5), surviving even an LLM failure (verified by test) since it's fired from the heuristic pre-filter result. **As-built (Polish Phase 3): not wired in production** — `api/assembly.py` never passes an `alert_fn`, so this push never fires live. Crisis safety is unaffected: the orchestrator reads `EmotionIntentPacket.crisis_active` directly off the returned packet (pull, not push) and ORs it with Layer 11's independent SC-2 scan — see §17.
 
 The default in-process behaviour (no `llm_fn`) is pure-stdlib — the spec's NumPy/SQLite mention in §14.1 is an aspirational backend; the BES arithmetic is implemented in plain Python and the metadata reads are abstracted behind the injected memory inputs.
 
@@ -1288,6 +1288,57 @@ The earlier (pre-implementation) scaffold placed `semantic_planner.py` (Agent 4a
 ### 16.6 Test Coverage
 
 96 unit tests across `tests/unit/test_emotion_classifier.py`, `test_background_state.py`, `test_intent_classifier.py`, `test_mismatch_detector.py`, `test_empathy_hypothesis.py`, `test_mode_resolver.py`, and `test_packet_builder.py` cover the §14.3 testing requirements: every crisis-keyword path, the neutral skip-LLM path, prior/prosody integration direction and magnitude, BES trend slope sign, the "I'm fine" + high-prior mismatch, the full posture-selection table, all eight conversation modes, the parallel crisis-alert emission (including under LLM failure), the refinement-skip conditions, and `EmotionIntentPacket` completeness on degraded inputs.
+
+## 17. Live wiring status (Phase 3 polish pass, 2026-08-04)
+
+Two critical bugs were found and fixed here — both attribute-name mismatches between
+`EmotionIntentPacket`'s real fields and what `backend/pipeline/conversation_orchestrator.py`
+read off it. Neither was caught by the existing 1360+ tests because every orchestrator-level
+test mocks the `classify` step with a hand-built object carrying whatever attribute name the
+orchestrator code happened to read — the mocks matched the bug, not the real schema.
+
+- **`route_system()` read `emotion_intent.mode`; the real field is `conversation_mode`.**
+  Since `EmotionIntentPacket` has no `mode` attribute, this always defaulted to `"casual"` —
+  **System 2 (Groq/llama-3.3-70b, Agent 4a + Agent 4b Emotion Refiner) was never selected in
+  production, for any message, regardless of emotional weight or content.** Every turn ran
+  System 1 only. Fixed by reading `conversation_mode`.
+- **`_is_crisis()` read `emotion_intent.crisis_flag`; the real field is `crisis_active`.**
+  The OR-semantics invariant ("if SC-2 detects a crisis **or** Layer 3 raised the crisis flag")
+  was silently one-sided: Layer 3's contribution never fired, regardless of how confidently it
+  detected a crisis. Verified concretely — the message "I just can't go on anymore" (a Layer-3
+  `SUICIDAL_KEYWORDS` hit, confidence 0.97) does **not** match any Layer-11 SC-2 lexical
+  pattern, so before this fix it produced a normal (non-crisis) response end-to-end. Fixed by
+  reading `crisis_active`. Layer 11's own independent SC-2 scan was never affected by this bug
+  and continued providing its half of the OR the whole time.
+
+Both are one-line fixes in `backend/pipeline/conversation_orchestrator.py`; the test mocks in
+`tests/integration/conftest.py`, `test_safety_override.py`, and `test_full_turn_system2.py`
+were updated to use the real field names, and two new tests
+(`tests/unit/api/test_assembly_turn.py::test_real_layer3_wiring_*`) exercise the actual
+`build_emotion_intent_packet` output through the real orchestrator specifically so this class
+of bug can't recur silently.
+
+**Also fixed:** `api/assembly.py::classify` was calling `build_emotion_intent_packet` with only
+`message` and `llm_fn` — every other input (`circadian_band`, `composite_prior`,
+`prior_confidence`, `signal_mismatch_flag`) defaulted to neutral/zero even though Layer 1
+computes real values for all four. Now forwarded from the real `InputPerceptionPacket`. **Not**
+forwarded: `implicit_intensity` — Layer 1 pins it at exactly `0.10` live (§16, Layer 1 doc), and
+`heuristic_prefilter`'s neutral-skip gate is `< 0.1`; forwarding it would disable that gate on
+every single turn. **Caveat verified, not assumed:** even with `composite_prior` now forwarded,
+`integrate_prior`'s prior-adjustment branch (`prior_confidence > 0.5 and composite_prior > 0.6`)
+still cannot fire in production — with `implicit_intensity` pinned at 0.10, the realistic
+ceiling for `composite_prior` is `0.39` (checked directly against
+`backend/layer1_input/assembler.py::compute_composite_prior`), never above the 0.6 threshold.
+This branch stays dormant until Layer 1's implicit-signal gap (`docs/POLISH_BACKLOG.md`) closes.
+
+**Not fixed, tracked in `docs/POLISH_BACKLOG.md`:** `alert_fn` (the async CrisisAlert push to
+Layer 11) is never wired — crisis safety is unaffected (see above) but the specific "immediate
+async notification" behavior §3.6 and §16.3 describe doesn't happen; `llm_fn` is called twice
+per turn (once each for SC-1 and SC-3) rather than the single shared call §14.2 describes;
+`episodic_memories`/`active_stressors`/`psychological_model` are never forwarded to the
+Background Emotional State tracker (consistent with Layer 2's finding that the User World Model
+and episodic-memory-based BES inputs are inert live); `relationship_depth` and
+`advice_frustration_count` are never forwarded either.
 
 ---
 

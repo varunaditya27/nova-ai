@@ -39,7 +39,7 @@ _CRISIS_FALLBACK = ("I'm here with you. If you're in immediate danger, please co
 @dataclass
 class PipelineSteps:
     """Injectable layer entry points. All optional; production wires real layer adapters."""
-    perceive: Optional[Callable] = None         # L1  (user_id, message, now) -> input_packet
+    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id) -> input_packet
     recall: Optional[Callable] = None           # L2  (user_id, input_packet) -> list[memory]
     cold_start: Optional[Callable] = None       # L13 (user_id, message) -> directives | None
     classify: Optional[Callable] = None         # L3  (message, input_packet, recalled) -> EI
@@ -108,8 +108,15 @@ class OrchestratedOutput:
 
 
 def route_system(emotion_intent) -> str:
-    """System 2 for emotionally/cognitively heavy turns; System 1 otherwise (§ dual-pipeline)."""
-    mode = getattr(emotion_intent, "mode", "casual")
+    """System 2 for emotionally/cognitively heavy turns; System 1 otherwise (§ dual-pipeline).
+
+    ``EmotionIntentPacket``'s real field is ``conversation_mode`` (there is no ``complexity``
+    field anywhere in Layer 3 — no complexity classifier exists yet, so that half of the OR is
+    always false in production; kept because the master doc specifies it as a routing input and
+    tests already cover it, see docs/POLISH_BACKLOG.md). A prior ``mode``/``conversation_mode``
+    mismatch here made this function always return "system1" live, regardless of message content.
+    """
+    mode = getattr(emotion_intent, "conversation_mode", "casual")
     complexity = getattr(emotion_intent, "complexity", "simple")
     if mode in _SYSTEM2_MODES or complexity == "complex":
         return "system2"
@@ -147,7 +154,7 @@ class ConversationOrchestrator:
 
         try:
             # ── Layer 1: input perception ───────────────────────────────────
-            ctx.input_packet = s.perceive(user_id, message, ctx.now)
+            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id)
             ctx.layers_run.append("layer1_input")
 
             # ── Layer 2: memory recall (read-only during inference) ─────────
@@ -160,7 +167,7 @@ class ConversationOrchestrator:
 
             # ── Layer 3: emotion + intent classification, mode resolution ───
             ctx.emotion_intent = s.classify(message, ctx.input_packet, ctx.recalled_memories)
-            ctx.conversation_mode = getattr(ctx.emotion_intent, "mode", "casual")
+            ctx.conversation_mode = getattr(ctx.emotion_intent, "conversation_mode", "casual")
             ctx.layers_run.append("layer3_reasoning")
 
             # ── Crisis veto (OR of SC-2 and Layer 3 crisis flag) ────────────
@@ -209,7 +216,10 @@ class ConversationOrchestrator:
 
     def _is_crisis(self, ctx: TurnContext) -> bool:
         sc2 = bool(getattr(ctx.crisis_assessment, "is_crisis", False))
-        l3 = bool(getattr(ctx.emotion_intent, "crisis_flag", False))
+        # EmotionIntentPacket's real field is crisis_active, not crisis_flag (see route_system's
+        # docstring for the sibling mode/conversation_mode bug fixed alongside this one) — this
+        # OR-branch was always False in production before the fix.
+        l3 = bool(getattr(ctx.emotion_intent, "crisis_active", False))
         return sc2 or l3
 
     def _handle_crisis(self, ctx: TurnContext) -> None:
@@ -262,6 +272,14 @@ class ConversationOrchestrator:
         try:
             out = self.steps.deliver(ctx, ctx.response_text, ctx.crisis_active)
             ctx.layers_run.append("layer9_output")
+            # The real adapter (api/assembly.py) returns Layer 9's final_message_text as a plain
+            # string -- Layer 9's format enforcement (markdown stripping, emoji limits, closing
+            # signals) was previously computed and then discarded here, never reaching
+            # ctx.response_text (and therefore never reaching the user via ChatResponse.response).
+            # Only accept a str so fakes returning a richer/opaque delivery object (e.g. a dict of
+            # {text, crisis_mode} in tests/integration/conftest.py) aren't misassigned.
+            if isinstance(out, str) and out:
+                ctx.response_text = out
             return out
         except Exception:
             logger.exception("delivery failed")

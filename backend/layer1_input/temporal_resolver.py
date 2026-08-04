@@ -15,6 +15,10 @@ from typing import Callable, Optional
 from .schemas import CircadianBand, GapCategory, UserTemporalProfile
 
 # ── Constants (mirror config/layer1.yaml; code is the source of truth) ───────
+# NOTE: config/layer1.yaml is loaded into the merged config dict (config/__init__.py) but no
+# module in this package reads config['layer1'] — these values are still hardcoded, not
+# config-driven. Re-tuning without a code change (the YAML's stated purpose) needs each
+# function below to accept the relevant threshold as a parameter; documented as a follow-up.
 
 # Population-level vulnerability priors per band (§3.2). Personalized per-user after
 # 20+ sessions via UserTemporalProfile.per_band_circadian_prior (§3.4).
