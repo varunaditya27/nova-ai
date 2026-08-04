@@ -31,11 +31,6 @@ def shift_preference_shorter(pref: str) -> str:
     return _ORDER[max(0, i - 1)]
 
 
-def shift_preference_longer(pref: str) -> str:
-    i = _ORDER.index(pref) if pref in _ORDER else 1
-    return _ORDER[min(len(_ORDER) - 1, i + 1)]
-
-
 def classify_format_feedback(text: str) -> Optional[str]:
     """Map an explicit format remark to a preference (architecture doc §6.6)."""
     low = (text or "").lower()
@@ -100,8 +95,3 @@ def normalize(profile: UserFormatProfile) -> UserFormatProfile:
     if profile.preferred_length not in _ORDER:
         profile.preferred_length = LengthPreference.MEDIUM.value
     return profile
-
-
-def get_learned_preference(profile: UserFormatProfile, dimension: str):
-    """Read one learned dimension, falling back to a default if absent."""
-    return getattr(profile, dimension, None)

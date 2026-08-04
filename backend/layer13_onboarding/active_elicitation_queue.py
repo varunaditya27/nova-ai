@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .schemas import ELICITATION_CATEGORIES, ElicitationItem
+from .schemas import ElicitationItem
 
 # Initial population of the elicitation queue (§4.3). Priority-sorted, NEVER asked in sequence.
 INITIAL_ELICITATION_ITEMS = [

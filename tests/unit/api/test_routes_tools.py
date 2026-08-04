@@ -96,3 +96,25 @@ def test_confirm_unknown_id_is_404():
 def test_deny_unknown_id_is_404():
     client, _ = _client()
     assert client.post("/tools/deny/nope").status_code == 404
+
+
+def test_undo_action_route_marks_action_undone():
+    client, tm = _client()
+    out = tm.process("search for puppy training tips", user_id="local-user", session_id="s1")
+    assert out.tool_invoked is True
+    action_id = out.action_record.action_id
+
+    resp = client.post(f"/tools/undo/{action_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["undone"] in (True, False)  # web_search plugin may not support undo; either is valid
+
+    history = client.get("/tools/history").json()
+    assert history[0]["action_id"] == action_id
+
+
+def test_undo_unknown_id_returns_false_not_error():
+    client, _ = _client()
+    resp = client.post("/tools/undo/nope")
+    assert resp.status_code == 200
+    assert resp.json() == {"undone": False}

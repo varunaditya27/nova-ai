@@ -40,3 +40,27 @@ def test_state_writer_is_invoked_after_turn():
     ConversationOrchestrator(_steps(session_writer=lambda ctx: seen.append(ctx.user_id))
                              ).run_turn("local-user", "hey")
     assert seen == ["local-user"]
+
+
+def test_recall_hook_uses_configured_default_mode(monkeypatch):
+    """default_mode should drive the recall-time ConversationMode, not a hardcoded CASUAL."""
+    from types import SimpleNamespace
+    import backend.layer2_memory as l2
+    from backend.layer2_memory.schemas import ConversationMode
+
+    seen_modes = []
+
+    async def fake_arbiter(user_id, query, emotion, mode, now, store, embedder):
+        seen_modes.append(mode)
+        return SimpleNamespace(recalled_memories=[])
+
+    # build_pipeline_steps does `from backend.layer2_memory import memory_arbiter` at call
+    # time, so patching the attribute on the package before calling it is what takes effect.
+    monkeypatch.setattr(l2, "memory_arbiter", fake_arbiter)
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 default_mode="goal_planning")
+    steps.recall("local-user", SimpleNamespace(raw_message="hi"))
+    assert seen_modes == [ConversationMode.GOAL_PLANNING]

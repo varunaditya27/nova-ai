@@ -131,6 +131,7 @@ def extract_goal(
 
     new_goal = raw.get("new_goal") or {}
     result.confidence = float(new_goal.get("confidence", raw.get("confidence", 0.0)))
+    result.signal_strength = str(new_goal.get("signal_strength", ""))
 
     title = new_goal.get("inferred_title", "")
     dup, matched = is_duplicate_goal(title, active_goals, similarity_fn)

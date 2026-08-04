@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **1171 tests passing offline** — `/usr/bin/python3.11 -m pytest tests/ -q`; ~1345 with the third-party-dep suites in the venv). The full HTTP surface (35 routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected so the whole suite runs offline with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
+**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **~1350 tests passing** with the third-party-dep suites (SQLAlchemy, FastAPI) installed — `pytest tests/ -q`; a bare-stdlib interpreter can still collect/run the layer-level suites, but the `tests/unit/api/` files that exercise `infra/db` need SQLAlchemy on the path, so use `.venv` or an environment with the project's deps installed rather than assuming zero third-party requirements). The full HTTP surface (40+ routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected at the layer level so the core pipeline runs with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
 
 ## Commands
 
@@ -164,11 +164,17 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   `GET /proactive` polls the Layer-6 outreach queue (top pending candidates; no push channel without
   a frontend), `GET /longitudinal/summaries` + `GET /longitudinal/latest` read Layer-10 weekly
   summaries, and `POST /admin/jobs/{name}` runs any background job on demand (single-user, no auth).
-  The five jobs (`background/*.py`, registry in `background/scheduler.py`) are plain
+  The six jobs (`background/*.py`, registry in `background/scheduler.py`) are plain
   `run(app_state) -> dict` callables operating on the persisted stores: `integrity_check` (verify
-  both hash chains), `memory_consolidation` (Layer-2 `decay_sweep` + persist), `proactive_check`
+  both hash chains), `memory_consolidation` (Layer-2 `decay_sweep`, **plus FCE cluster detection +
+  LLM semantic extraction** once enough active episodes accumulate — `save_semantic`/`save_identity`
+  are live, not dead code; `should_trigger_fce`'s sessions-/days-since triggers still need a
+  persisted "since last run" counter, so only the episode-count trigger fires today), `proactive_check`
   (queue recompute/expire, suppressed while cold-starting), `longitudinal_summary` (generate + persist
-  a `WeeklySummary`), `pattern_detection`. `start_scheduler` runs them in-process via APScheduler,
+  a `WeeklySummary`), `pattern_detection`, and `dependency_monitor` (Layer-11 SC-4, weekly: a
+  deterministic keyword-based `indicator_detector` over active episodic memories — no LLM; `previous_score`
+  isn't persisted across runs yet, so `trend` reads "stable" until a future task adds cross-run storage).
+  `start_scheduler` runs them in-process via APScheduler,
   **opt-in through `config.scheduler.enabled`** (lazy-imported so the offline gate never needs it;
   no-op if disabled/absent), started/stopped in the app lifespan.
 - **Sync (Layer 12, zero-knowledge)** (`api/routes/sync.py`): `POST /sync/push`, `GET /sync/pull`,
@@ -177,7 +183,9 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   each device the deltas from *other* devices past its cursor (the monotonic row `id`). It never
   holds the key and never decrypts; `push` is idempotent on `delta_id`.
 - **Tools (Layer 8)** (`api/routes/tools.py`): `GET /tools/pending`, `POST /tools/confirm/{id}`,
-  `POST /tools/deny/{id}`, `GET /tools/history`. A single `ToolManager` lives on `AppState`
+  `POST /tools/deny/{id}`, `GET /tools/history`, `POST /tools/undo/{action_id}` (exposes
+  `ToolManager.undo_action`, which was implemented and tested before it had an HTTP route). A single
+  `ToolManager` lives on `AppState`
   (`build_tool_manager`) with the five plugins registered against **local/offline backends** (no
   third-party creds) and a durable **`PostgresActionRecorder`** (`infra/db/action_recorder.py` →
   `tool_action` JSONB). The `/chat` pipeline runs Layer 8 **before generation** via the orchestrator's
@@ -223,7 +231,11 @@ write-back), bumps the UWM version if present, appends a durable SHA-256 audit c
 (**`PostgresAuditTrail`**, `infra/db/audit_trail.py`, continues across restarts), and upserts a
 `Session` turn row — so `/chat` both remembers and strengthens memories across restarts. The post-turn
 path also runs the **real Layer-7 goal pipeline** (`make_goal_writer` → `run_goal_pipeline` against
-`PostgresGoalStore`, `infra/db/goal_store.py`), extracting and persisting stated goals, and appends the
+`PostgresGoalStore`, `infra/db/goal_store.py`), extracting and persisting stated goals — the pipeline
+appends `GoalSignalEvent`s and calls `compute_momentum` on each turn, so `Goal.momentum_score` actually
+moves instead of staying pinned at its 0.0 default (previously silently zeroing `goal_store`'s ranking
+and disabling the momentum-floor gate in `accountability_modifier`), and `signal_strength` from the
+extraction LLM's JSON response is threaded onto the created `Goal` instead of being dropped — and appends the
 turn's crisis assessment to an append-only safety log (`make_safety_writer` → `PostgresSafetyLog`,
 `infra/db/safety_store.py`), and advances a self-graduating onboarding session counter
 (`make_onboarding_writer` → `PostgresOnboardingStore`, `infra/db/onboarding_store.py`) — all writers
@@ -253,7 +265,7 @@ full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 
 ### Infrastructure Stack
 
-- **API**: FastAPI (`api/main.py`) — 35 REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
+- **API**: FastAPI (`api/main.py`) — 40+ REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
 - **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used. The persistent schema is managed by **Alembic** (`alembic upgrade head`; baseline `migrations/versions/0001_baseline_schema.py` runs `create_all`); `init_db`/`create_all` remains the fast path for the offline SQLite test suite and ad-hoc bootstrap.
 - **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
 - **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
@@ -261,7 +273,7 @@ full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 - **Cloud LLM**: Groq API (llama-3.3-70b-versatile) for System 2
 - **Layer 3 classifier**: Phi-3 Mini / Gemma 2B (emotion+intent classification, fast path)
 - **TTS**: Kokoro (custom Docker image on port 8880, OpenAI-compatible API)
-- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS`, run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
+- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly), dependency monitor (weekly, Layer-11 SC-4). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS` (six entries), run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
 - **Session Cache**: `infra/session_cache.py` — ephemeral per-turn in-memory buffer holding intermediate layer outputs. Distinct from Layer 2's Short-Term Memory Buffer.
 
 ### Docker Services

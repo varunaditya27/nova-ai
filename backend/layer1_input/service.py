@@ -79,9 +79,9 @@ def _safe_due_threads(store: ThreadStore, now: datetime) -> tuple[list, int]:
     """Return (surfaced_threads, overdue_count); empty on failure (§11)."""
     try:
         candidates = thread_tracker.due_candidates(store, now)
+        surfaced = thread_tracker.get_due_threads(store, now)
     except Exception:  # noqa: BLE001
         return [], 0
-    surfaced = candidates[: thread_tracker.MAX_SURFACED_THREADS]
     return surfaced, len(candidates) - len(surfaced)
 
 

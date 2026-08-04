@@ -404,8 +404,8 @@ graph TB
 
     subgraph API ["⚡ Runtime"]
         A1["FastAPI"]
-        A2["WebSockets"]
-        A3["Async Orchestrator"]
+        A2["SSE Streaming"]
+        A3["Async/Sync Orchestrator Bridge"]
     end
 
     subgraph MEMORY ["💾 Memory"]
@@ -487,29 +487,32 @@ Nova is moving toward:
 ```bash
 nova-ai/
 │
-├── api/
+├── api/                    # FastAPI app: routes, streaming, assembly (layer hooks), state
 ├── backend/
-│   ├── layer1_input_perception/
+│   ├── layer1_input/
 │   ├── layer2_memory/
-│   ├── layer3_emotion_reasoning/
+│   ├── layer3_reasoning/
 │   ├── layer4_persona/
-│   ├── layer5_social_intelligence/
+│   ├── layer5_relationship/
 │   ├── layer6_proactivity/
 │   ├── layer7_goals/
-│   ├── layer8_crisis/
-│   ├── layer9_interaction/
+│   ├── layer8_tools/       # Tool Use & Actions (not crisis — see Layer 8 section above)
+│   ├── layer9_output/
 │   ├── layer10_longitudinal/
-│   ├── layer11_safety/
+│   ├── layer11_safety/     # Crisis detection + ethical guardrails live here
 │   ├── layer12_privacy/
 │   ├── layer13_onboarding/
-│   └── pipeline/
+│   └── pipeline/           # conversation_orchestrator.py + system1/system2 pipelines
 │
-├── infra/
+├── infra/                  # LLM clients, Postgres/Chroma adapters, session cache
+├── background/             # APScheduler jobs (memory consolidation, proactive check, etc.)
+├── migrations/              # Alembic schema migrations
+├── config/                 # defaults.yaml + per-layer + local.yaml
 ├── docs/
-├── background/
 ├── scripts/
 ├── tests/
-└── docker/
+├── frontend/
+└── docker/                 # docker-compose.yml + per-service Dockerfiles
 ```
 
 ---
@@ -526,7 +529,8 @@ cd nova-ai
 ## Configure Environment
 
 ```bash
-cp .env.example .env
+cp docker/.env.example docker/.env
+# fill in GROQ_API_KEY (System 2) and any credentials you're overriding for local dev
 ```
 
 ## Start Infrastructure
@@ -551,7 +555,7 @@ pytest
 
 # ✦ Documentation
 
-- **[`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)** — complete HTTP API reference (all 25 routes +
+- **[`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)** — complete HTTP API reference (40+ routes +
   schemas). Start here for frontend integration. Live schema at `GET /openapi.json`, explorer at `/docs`.
 - **[`docs/NOVA_AI_MASTER_ARCHITECTURE.md`](docs/NOVA_AI_MASTER_ARCHITECTURE.md)** — canonical top-level
   architecture (read first).

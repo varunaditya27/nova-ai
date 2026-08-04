@@ -70,6 +70,14 @@ def deny_action(request_id: str, tm=Depends(get_tool_manager)):
     return {"denied": request_id}
 
 
+@router.post("/undo/{action_id}")
+def undo_action(action_id: str, state=Depends(get_state), tm=Depends(get_tool_manager)):
+    if tm is None:
+        return {"undone": False}
+    undone = tm.undo_action(action_id, user_id=state.default_user_id)
+    return {"undone": undone}
+
+
 @router.get("/history", response_model=list[ToolActionOut])
 def action_history(state=Depends(get_state), tm=Depends(get_tool_manager)):
     if tm is None:
