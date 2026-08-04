@@ -17,6 +17,7 @@ from datetime import datetime, time
 from typing import Callable, Optional
 from uuid import UUID
 
+from .config import Layer1Config
 from .schemas import (
     InputPerceptionPacket,
     ModalityContext,
@@ -26,31 +27,30 @@ from .schemas import (
     ProsodyFeatures,
 )
 
-# Conflict rule 1 (§7.2): a band counts as low-vulnerability when its prior is below this.
-LOW_VULNERABILITY_PRIOR = 0.30
-# …and implicit intensity counts as "very high" at or above this.
-HIGH_IMPLICIT_INTENSITY = 0.60
-# Minimum prosody confidence for it to contribute to the composite prior (§7.4).
-PROSODY_MIN_CONFIDENCE = 0.40
-# Prosody valence at or below this signals distress for the mismatch flag (§7.2 rule 2).
-DISTRESS_VALENCE_THRESHOLD = -0.30
+# What each function below falls back to when no ``cfg`` is supplied (every existing unit test).
+_DEFAULT = Layer1Config()
 
 
-def resolve_effective_circadian(circadian_mood_prior: float, implicit_intensity: float) -> float:
+def resolve_effective_circadian(
+    circadian_mood_prior: float, implicit_intensity: float, cfg: Optional[Layer1Config] = None,
+) -> float:
     """Conflict rule 1 (§7.2): high implicit intensity overrides a low-vulnerability band.
 
     When the circadian prior says the user should be calm (morning/afternoon) but behavioral
     signals say otherwise, the implicit signal wins: ``max(circadian, implicit × 0.8)``.
     """
+    c = cfg or _DEFAULT
     if (
-        circadian_mood_prior < LOW_VULNERABILITY_PRIOR
-        and implicit_intensity >= HIGH_IMPLICIT_INTENSITY
+        circadian_mood_prior < c.low_vulnerability_prior
+        and implicit_intensity >= c.high_implicit_intensity
     ):
         return max(circadian_mood_prior, implicit_intensity * 0.8)
     return circadian_mood_prior
 
 
-def detect_signal_mismatch(prosody_estimate: Optional[ProsodyEmotionEstimate]) -> bool:
+def detect_signal_mismatch(
+    prosody_estimate: Optional[ProsodyEmotionEstimate], cfg: Optional[Layer1Config] = None,
+) -> bool:
     """Conflict rule 2 (§7.2): prosody signals distress.
 
     Layer 1 cannot judge text sentiment (that is Layer 3's job), so it raises the flag whenever
@@ -59,7 +59,7 @@ def detect_signal_mismatch(prosody_estimate: Optional[ProsodyEmotionEstimate]) -
     """
     if prosody_estimate is None:
         return False
-    if prosody_estimate.valence <= DISTRESS_VALENCE_THRESHOLD:
+    if prosody_estimate.valence <= (cfg or _DEFAULT).distress_valence_threshold:
         return True
     return prosody_estimate.dominant_signal in (
         ProsodyDominantSignal.ANXIOUS,
@@ -72,32 +72,34 @@ def compute_composite_prior(
     implicit_intensity: float,
     prosody_estimate: Optional[ProsodyEmotionEstimate],
     anomaly_detected: bool,
+    cfg: Optional[Layer1Config] = None,
 ) -> tuple[float, float]:
     """Synthesize all pre-linguistic signals into one Bayesian prior for Layer 3 (§7.4).
 
     Returns ``(prior, confidence)``. Implements the architecture doc §7.4 formula verbatim.
     Confidence rises with the number of contributing signals (1.0 once prosody participates).
     """
+    c = cfg or _DEFAULT
     signals: list[float] = []
     weights: list[float] = []
 
     # Circadian prior — lowest weight (population-level baseline).
     signals.append(circadian_mood_prior)
-    weights.append(0.15)
+    weights.append(c.composite_weights["circadian"])
 
     # Implicit signals — moderate weight (behavioral, user-specific).
     signals.append(implicit_intensity)
-    weights.append(0.35)
+    weights.append(c.composite_weights["implicit"])
 
     # Prosody — highest weight when a confident estimate is present (direct emotional channel).
-    if prosody_estimate and prosody_estimate.confidence > PROSODY_MIN_CONFIDENCE:
+    if prosody_estimate and prosody_estimate.confidence > c.prosody_min_confidence:
         prosody_neg = max(0.0, -prosody_estimate.valence)  # negative valence → vulnerability
         signals.append(prosody_neg)
-        weights.append(0.50)
+        weights.append(c.composite_weights["prosody"])
 
     # Anomaly bonus — atypical timing nudges every signal up slightly.
     if anomaly_detected:
-        signals = [s + 0.08 for s in signals]
+        signals = [s + c.anomaly_signal_bonus for s in signals]
 
     total_weight = sum(weights)
     prior = sum(s * w for s, w in zip(signals, weights)) / total_weight
@@ -147,16 +149,17 @@ def assemble(
     prosody_emotion_estimate: Optional[ProsodyEmotionEstimate],
     cold_start_profile: bool = False,
     timezone_confidence: str = "high",
+    cfg: Optional[Layer1Config] = None,
 ) -> InputPerceptionPacket:
     """Validate and compose every sub-component output into the final packet (§7.3)."""
 
     # Step 1 — conflict rule 1: effective circadian prior.
     effective_circadian = resolve_effective_circadian(
-        circadian_mood_prior, implicit_emotional_intensity_score
+        circadian_mood_prior, implicit_emotional_intensity_score, cfg
     )
 
     # Step 2 — conflict rule 2: prosody mismatch flag.
-    signal_mismatch = detect_signal_mismatch(prosody_emotion_estimate)
+    signal_mismatch = detect_signal_mismatch(prosody_emotion_estimate, cfg)
 
     # Step 3 — composite emotional prior (§7.4).
     composite_prior, prior_confidence = compute_composite_prior(
@@ -164,6 +167,7 @@ def assemble(
         implicit_emotional_intensity_score,
         prosody_emotion_estimate,
         anomaly_detected,
+        cfg,
     )
 
     return InputPerceptionPacket(

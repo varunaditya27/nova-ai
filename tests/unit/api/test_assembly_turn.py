@@ -157,6 +157,25 @@ def test_perceive_wired_profile_activates_anomaly_detection():
     assert "atypical for this user" in packet.context_note
 
 
+def test_perceive_applies_configured_timezone_offset_to_circadian_band():
+    """build_pipeline_steps(timezone_offset_hours=...) must reach UserTemporalProfile so the live
+    circadian band is computed from local time, not raw UTC (docs/layer-1-architecture.md §16)."""
+    from datetime import datetime, timezone
+
+    llm = FakeLLM()
+    # 2026-01-05 20:00 UTC == 2026-01-06 01:30 IST (+5:30) — "evening" in UTC, "late_night" in IST.
+    now = datetime(2026, 1, 5, 20, 0, tzinfo=timezone.utc)
+
+    utc_steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                     memory_store=InMemoryMemoryStore())
+    ist_steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                     memory_store=InMemoryMemoryStore(),
+                                     timezone_offset_hours=5.5)
+
+    assert utc_steps.perceive("local-user", "hey", now, "s1").circadian_band == "evening"
+    assert ist_steps.perceive("local-user", "hey", now, "s1").circadian_band == "late_night"
+
+
 def test_perceive_falls_back_to_cold_start_when_profile_provider_raises():
     from datetime import datetime, timezone
 

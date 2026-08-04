@@ -214,6 +214,33 @@ def test_temporal_profile_provider_populates_bands_above_sample_floor():
     assert d["typical_bands"]["morning"] == pytest.approx(0.1)
 
 
+def test_temporal_profile_provider_applies_timezone_offset_to_band_histogram():
+    """The historical band histogram must apply the same timezone_offset_hours as the live
+    circadian band computed in api/assembly.py::perceive, or the two silently diverge
+    (docs/layer-1-architecture.md §16, 'Circadian histogram is UTC-based')."""
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from infra.db.message_store import PostgresMessageStore
+    from api.state import make_temporal_profile_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    rel = PostgresRelationshipStore(factory, "local-user")
+    msgs = PostgresMessageStore(factory, "local-user")
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # 20:00 UTC == 01:30 IST (+5:30) the next day — "evening" in UTC, "late_night" in IST.
+    for i in range(10):
+        rel.record_turn(f"s{i}")
+        msgs.append("user", "message", session_key=f"s{i}", created_at=base.replace(day=1 + i, hour=20))
+
+    utc_bands = make_temporal_profile_provider(factory)("local-user")["typical_bands"]
+    ist_bands = make_temporal_profile_provider(factory, 5.5)("local-user")["typical_bands"]
+
+    assert utc_bands == {"evening": pytest.approx(1.0)}
+    assert ist_bands == {"late_night": pytest.approx(1.0)}
+
+
 def test_temporal_profile_provider_empty_history_yields_no_bands():
     from api.state import make_temporal_profile_provider
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
+from .config import Layer1Config
 from .schemas import (
     AttachmentPayload,
     ProsodyEmotionEstimate,
@@ -21,8 +22,9 @@ from .schemas import (
     VoiceCalibrationProfile,
 )
 
-# Calibration is only trusted as a deviation baseline above this confidence (§6.3).
-CALIBRATION_MIN_CONFIDENCE = 0.5
+# Fallback when no ``cfg`` is supplied (every existing unit test). Calibration is only trusted
+# as a deviation baseline above this confidence (§6.3).
+_DEFAULT = Layer1Config()
 
 
 class ProsodyBackend(Protocol):
@@ -32,7 +34,8 @@ class ProsodyBackend(Protocol):
 
 
 def compute_speech_rate_deviation(
-    speech_rate: float, calibration: Optional[VoiceCalibrationProfile]
+    speech_rate: float, calibration: Optional[VoiceCalibrationProfile],
+    cfg: Optional[Layer1Config] = None,
 ) -> float:
     """Speech rate as a signed deviation from the user's calibrated baseline (§6.3).
 
@@ -41,7 +44,7 @@ def compute_speech_rate_deviation(
     """
     if (
         calibration is None
-        or calibration.calibration_confidence <= CALIBRATION_MIN_CONFIDENCE
+        or calibration.calibration_confidence <= (cfg or _DEFAULT).calibration_min_confidence
         or calibration.baseline_speech_rate <= 0
     ):
         return 0.0
@@ -52,6 +55,7 @@ def extract_prosody(
     attachment: AttachmentPayload,
     backend: Optional[ProsodyBackend] = None,
     calibration: Optional[VoiceCalibrationProfile] = None,
+    cfg: Optional[Layer1Config] = None,
 ) -> tuple[Optional[ProsodyFeatures], Optional[ProsodyEmotionEstimate]]:
     """Extract prosodic features and an emotion estimate from a voice attachment (§6.2).
 
@@ -66,6 +70,6 @@ def extract_prosody(
         return None, None
 
     features.speech_rate_deviation = compute_speech_rate_deviation(
-        features.speech_rate_words_per_min, calibration
+        features.speech_rate_words_per_min, calibration, cfg
     )
     return features, estimate

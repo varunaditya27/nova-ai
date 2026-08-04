@@ -16,10 +16,11 @@ def run(app_state) -> dict:
     from background._adapters import emotional_records, episodic_records, session_records
 
     uid = app_state.default_user_id
+    tz_offset = app_state.config.get("system", {}).get("timezone_offset_hours", 0.0)
     store = PostgresMemoryStore(app_state.session_factory)
-    eps = episodic_records(store, uid)
-    emos = emotional_records(store, uid)
-    sessions = session_records(app_state.session_factory, uid)
+    eps = episodic_records(store, uid, tz_offset)
+    emos = emotional_records(store, uid, tz_offset)
+    sessions = session_records(app_state.session_factory, uid, tz_offset)
     patterns = detect_behavioral_patterns(emos, sessions, eps)
     logger.info("pattern detection: episodes=%d patterns=%d", len(eps), len(patterns))
     return {"episodes": len(eps), "sessions": len(sessions), "patterns": len(patterns)}

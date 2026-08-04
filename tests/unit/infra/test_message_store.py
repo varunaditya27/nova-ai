@@ -103,3 +103,35 @@ def test_day_activity_groups_by_date():
     counts = st.day_activity(datetime(2026, 7, 1, tzinfo=timezone.utc),
                              datetime(2026, 7, 31, tzinfo=timezone.utc))
     assert counts["2026-07-07"] == 2 and counts["2026-07-08"] == 1
+
+
+def test_day_activity_applies_timezone_offset():
+    """A message at 20:00 UTC is already the next calendar day in IST (+5:30) -- the heatmap
+    must bucket by local date, matching Layer 1's live circadian-band offset (see
+    docs/layer-1-architecture.md §16)."""
+    st = _store()
+    st.append("user", "late night IST", created_at=datetime(2026, 7, 7, 20, 0, tzinfo=timezone.utc))
+
+    utc_counts = st.day_activity(datetime(2026, 7, 1, tzinfo=timezone.utc),
+                                 datetime(2026, 7, 31, tzinfo=timezone.utc))
+    ist_counts = st.day_activity(datetime(2026, 7, 1, tzinfo=timezone.utc),
+                                 datetime(2026, 7, 31, tzinfo=timezone.utc),
+                                 timezone_offset_hours=5.5)
+
+    assert utc_counts == {"2026-07-07": 1}
+    assert ist_counts == {"2026-07-08": 1}
+
+
+def test_day_activity_local_date_key_can_extend_past_end_boundary():
+    """Documented boundary behavior: start/end filter the underlying UTC timestamps, not the
+    returned local-date keys, so a message just inside `end` can bucket into a local date one
+    day past `end`'s calendar date (see day_activity's docstring)."""
+    st = _store()
+    boundary_end = datetime(2026, 7, 31, 23, 59, tzinfo=timezone.utc)
+    # 22:00 UTC on the last day == 2026-08-01 03:30 IST -- inside the UTC filter, but its local
+    # date key falls one day past `end`'s calendar date.
+    st.append("user", "late", created_at=datetime(2026, 7, 31, 22, 0, tzinfo=timezone.utc))
+
+    counts = st.day_activity(datetime(2026, 7, 1, tzinfo=timezone.utc), boundary_end,
+                             timezone_offset_hours=5.5)
+    assert counts == {"2026-08-01": 1}

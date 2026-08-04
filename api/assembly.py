@@ -120,9 +120,13 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          relationship_provider: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
+                         layer1_config=None, timezone_offset_hours: float = 0.0,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
+    from backend.layer1_input.config import Layer1Config
     from backend.layer1_input.schemas import UserTemporalProfile, UserBehaviorBaseline
+
+    l1_config = layer1_config or Layer1Config()
     from backend.layer2_memory import memory_arbiter
     from backend.layer2_memory.schemas import ConversationMode, EmotionVector
     from backend.layer3_reasoning import build_emotion_intent_packet
@@ -156,7 +160,12 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                              dominant_label="neutral" if prior < 0.3 else "vulnerable")
 
     def perceive(user_id, message, now, session_id=""):
-        profile_store = None
+        # Cold-start fallback still carries the configured timezone offset — it's a deployment
+        # property, not something that depends on having session history (see
+        # test_perceive_applies_configured_timezone_offset_to_circadian_band).
+        profile_store = _SingleProfileStore(
+            UserTemporalProfile(user_id=_uuid_for(user_id),
+                                timezone_offset_hours=timezone_offset_hours))
         behavior_baseline = None
         if profile_provider is not None:
             try:
@@ -167,7 +176,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                     relationship_age_days=d["relationship_age_days"],
                     average_session_frequency_days=d["average_session_frequency_days"],
                     typical_bands=d["typical_bands"],
-                    last_session_end=d["last_session_end"]))
+                    last_session_end=d["last_session_end"],
+                    timezone_offset_hours=timezone_offset_hours))
                 behavior_baseline = UserBehaviorBaseline(
                     message_length_median_chars=d["message_length_median_chars"])
             except Exception:
@@ -179,7 +189,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         packet = _run(process_input_event(
             _uuid_for(user_id), message, now, [],
             ClientMetadata(session_id=session_id or str(uuid.uuid4())),
-            profile_store=profile_store, behavior_baseline=behavior_baseline))
+            profile_store=profile_store, behavior_baseline=behavior_baseline,
+            config=l1_config))
         setattr(packet, "raw_message", message)   # carry the text forward for recall
         return packet
 

@@ -965,10 +965,10 @@ threads, regardless of actual conversation history.
   every not-yet-seen band as "atypical" the moment `total_sessions` crosses the anomaly-detection
   floor (5). Both derivations are bounded to `message_store.history`'s 200-row cap — an
   approximation of recent behavior, not a precise lifetime statistic.
-  **Caveat:** the histogram buckets by the *stored* (UTC) hour, matching `timezone_offset_hours`
-  defaulting to `0.0` (never populated) — the moment something starts setting a real timezone
-  offset, this derivation needs the same offset applied or the live band and the historical
-  histogram will silently diverge.
+  **Caveat (resolved in §17 below):** at the time of this pass, the histogram bucketed by the
+  *stored* (UTC) hour, matching `timezone_offset_hours` defaulting to `0.0` (never populated) —
+  consistent only because nothing set a real offset yet. §17 sets a real offset and fixes this
+  derivation (and three others found to have the same gap) to match.
 - **`session_id`.** The orchestrator already carries `ctx.session_id`; `perceive`'s contract
   (`PipelineSteps.perceive`) now receives it as a fourth argument instead of Layer 1 minting a
   fresh random UUID every single message.
@@ -989,7 +989,79 @@ threads, regardless of actual conversation history.
   reads all thirteen `layerN.yaml` files), but no function in this package reads `config['layer1']`
   yet — every threshold in `temporal_resolver.py`/`implicit_signals.py`/etc. is still a hardcoded
   module constant. The YAML's stated purpose ("re-tuned without a code change") isn't realized
-  until those constants become config-driven parameters.
+  until those constants become config-driven parameters. **Closed in §17 below.**
+
+## 17. Config wiring + local timezone (Phase 1 follow-up, 2026-08-04)
+
+Closes two of the four items §16 logged as "not fixed this pass": `config/layer1.yaml` is now
+fully live, and the UTC-only timezone caveat is resolved for this (single-user, personal) deployment.
+Narrative threads and the `ChatRequest` behavioral-signal gap remain open — both are real feature
+work, not wiring, per §16 above.
+
+- **`config/layer1.yaml` is fully wired.** New `backend/layer1_input/config.py::Layer1Config` is a
+  frozen dataclass holding every tunable value this package reads (circadian bands/priors, gap
+  buckets, anomaly thresholds, latency thresholds, intensity-formula weights, assembler
+  conflict-resolution thresholds and composite weights, multimodal/prosody confidence floors,
+  thread-surfacing limits). `Layer1Config.from_dict(app_config)` builds one from `config['layer1']`
+  at startup (`api/state.py::build_app_state`), falling back field-by-field to the same defaults
+  that were previously hardcoded — verified by an exact round-trip assertion
+  (`Layer1Config.from_dict(load_config('layer1.yaml')) == Layer1Config()`) so this wiring changes
+  no behavior until someone actually edits the YAML. Every function in `temporal_resolver.py`,
+  `implicit_signals.py`, `assembler.py`, `multimodal_normalizer.py`, `prosody_extractor.py`, and
+  `thread_tracker.py` now takes an optional `cfg: Layer1Config` parameter (defaulting to
+  `Layer1Config()`, so all existing unit tests — which call these functions directly with no
+  `cfg` — are unaffected); `process_input_event` takes `config: Optional[Layer1Config]` and
+  threads it through every sub-component call. The module-level constants that used to hold these
+  values directly (`ANOMALY_MIN_SESSIONS`, `_CIRCADIAN_MOOD_PRIOR`, `LOW_VULNERABILITY_PRIOR`,
+  etc.) were removed rather than kept as compatibility shims — nothing referenced them once the
+  call sites read from `cfg`/`_DEFAULT`. `map_circadian_band` changed from a hardcoded if/elif
+  chain to a generic range-lookup over `cfg.circadian_bands` (verified hour-by-hour equivalent to
+  the old logic for the default config). The two keys with no code path reading them
+  (`multimodal.document_extract_max_chars`, `prosody.calibration_min_samples`) and the two that
+  were never computed backend-side in the first place (`burst_window_seconds`,
+  `latency_deviation_flag`) are called out as decorative in `config/layer1.yaml`'s header rather
+  than silently ignored.
+- **Timezone: fixed to IST (UTC+5:30) for this single-user deployment.** No per-user timezone
+  capture exists (§16's original point stands for any future multi-user deployment), but for a
+  personal deployment a fixed offset is the correct answer rather than a further gap. New
+  `config['system']['timezone_offset_hours']` (`config/defaults.yaml`, default `5.5`) threads into
+  `UserTemporalProfile.timezone_offset_hours` (`api/assembly.py::perceive`, including the
+  cold-start fallback path — previously only the wired-profile branch would have carried it) and
+  into `api/state.py::make_temporal_profile_provider`'s historical `typical_bands` histogram,
+  closing the exact divergence §16 warned about ("the live band and the historical histogram will
+  silently diverge" the moment a real offset exists) — verified end-to-end: the same UTC timestamp
+  produces `"evening"` with no offset and `"late_night"` with `+5.5`, in both the live circadian
+  band and the historical histogram.
+  **The same fix was also needed in three places outside this package** that independently derive
+  local-time meaning from a stored UTC timestamp — found by grepping for `.hour`/`.date()`/
+  `weekday()` across `api/`/`background/` once the divergence pattern was understood: the Digital
+  Desk's greeting (`api/routes/continuity.py::_greeting`), the calendar heatmap's day bucketing
+  (`infra/db/message_store.py::day_activity` — rewritten to bucket in Python rather than
+  `func.date(...)`, since SQLite and Postgres have no portable shared syntax for a fractional-hour
+  SQL-side shift), and Layer 10's day-of-week pattern detector's date derivation
+  (`background/_adapters.py::_as_date`, feeding `episodic_records`/`emotional_records`/
+  `session_records`, consumed by `detect_behavioral_patterns`'s "emotional dip on Sundays" check
+  and `longitudinal_summary_job.py`'s week-boundary computation). All four now take the same
+  `timezone_offset_hours`/`cfg` parameter sourced from `config['system']['timezone_offset_hours']`.
+  A fifth site was found *inside this package itself*: `make_fuzzy_labeler`'s same-day/yesterday
+  disambiguation (§3.6) compared `now.date() == ts.date()` on two raw-UTC instants — the one path
+  by which temporal information reaches the LLM (the CLAUDE.md fuzzy-label invariant), live on
+  every turn. Fixed by threading the same `timezone_offset_hours` through it, sourced from
+  `profile.timezone_offset_hours` in `service.py` (the same value already used to compute
+  `local_dt`, so no new parameter was needed at the call site).
+  `api/streaming.py::_circadian_band` (the `/chat/stream` typing-pacing overlay) still reads raw
+  UTC — it's a separate, bespoke circadian approximation already flagged in Layer 9's polish pass
+  as duplicate-but-cosmetic (pacing feel only, not a data-attribution bug), so it was left alone
+  here. `backend/layer6_proactivity/timing_gate.py`'s daily-cap day-boundary and
+  `backend/layer13_onboarding/passive_elicitation.py`'s temporal-pattern extractor also read raw
+  UTC hours, but both are unwired (zero production callers — confirmed in their own layer audits),
+  so there is no live call site to fix; noted in `docs/POLISH_BACKLOG.md` for whoever wires them.
+  `infra/db/message_store.py::day_activity` has one remaining documented edge case: `start`/`end`
+  filter the underlying UTC timestamps, not the returned local-date keys, so a message just inside
+  `end` can bucket into a local date one day past `end`'s calendar date (e.g. 22:00 UTC is 03:30
+  IST the next day) — acceptable for a calendar heatmap where the caller (`GET /calendar`) already
+  defaults to an open-ended range, called out in the function's docstring rather than silently
+  left as a surprise.
 
 ---
 

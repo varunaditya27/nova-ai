@@ -113,6 +113,26 @@ def test_episodic_records_reads_real_emotion_vector_not_content_basis_valence():
     assert recs[0].emotional_intensity == pytest.approx(0.8)
 
 
+def test_episodic_records_applies_timezone_offset_to_date():
+    """A 20:00 UTC episode is already the next calendar day in IST -- Layer 10's day-of-week
+    pattern detector (progress_tracker.detect_behavioral_patterns) buckets by this date, so it
+    must agree with Layer 1's live circadian-band offset (docs/layer-1-architecture.md §16)."""
+    from background._adapters import episodic_records
+
+    st = _state()
+    PostgresMemoryStore(st.session_factory).save_episodic(EpisodicMemory(
+        user_id="u1", summary="late night", embedding=[0.1, 0.2], S_current=0.5,
+        importance_score=0.2, emotion_vector=EmotionVector(valence=0.0, arousal=0.0),
+        created_at=datetime(2026, 1, 1, 20, 0, tzinfo=timezone.utc)))
+
+    utc_recs = episodic_records(PostgresMemoryStore(st.session_factory), "u1")
+    ist_recs = episodic_records(PostgresMemoryStore(st.session_factory), "u1",
+                                timezone_offset_hours=5.5)
+
+    assert utc_recs[0].date.isoformat() == "2026-01-01"
+    assert ist_recs[0].date.isoformat() == "2026-01-02"
+
+
 def test_emotional_records_adapter_derives_records_from_episode_emotion_vectors():
     from infra.db.memory_store import PostgresMemoryStore
     from background._adapters import emotional_records

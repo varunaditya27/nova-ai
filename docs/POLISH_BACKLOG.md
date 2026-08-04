@@ -15,7 +15,8 @@ that closed it instead of deleting the entry — it's the record of what got ski
 
 Module (`backend/layer1_input/`) itself had no dead code or bloat — every symbol has a caller.
 The findings below are gaps between what the module can do and what the live pipeline actually
-feeds it. Full detail: `docs/layer-1-architecture.md` §16.
+feeds it. Full detail: `docs/layer-1-architecture.md` §16 (initial audit), §17 (config + timezone
+follow-up, 2026-08-04).
 
 - **Narrative-thread creation.** Nothing anywhere constructs a `NarrativeThread` — `due_threads`
   is always `[]` live, and `backend/layer6_proactivity/intake.py::on_thread_due` is an orphaned
@@ -29,17 +30,23 @@ feeds it. Full detail: `docs/layer-1-architecture.md` §16.
   in `api/assembly.py::perceive`. Fixing this needs a `ChatRequest` schema change (additive,
   optional fields) plus frontend instrumentation to actually populate them — a coordinated
   backend+frontend change, not backend-only.
-- **`config/layerN.yaml` files are unread.** Fixed the *loading* gap this phase (all 13 now merge
-  into the config dict via `api/state.py::build_app_state`). Still open: no layer module actually
-  reads `config['layerN']` — every threshold (circadian bands, gap buckets, intensity weights,
-  etc.) is a hardcoded Python constant. Realizing the YAML's stated purpose ("re-tune without a
-  code change") means threading config through each layer's functions — do this per-layer as each
-  is revisited, not as one big cross-cutting change.
-- **Circadian histogram is UTC-based.** `make_temporal_profile_provider`'s `typical_bands`
-  bucketing uses the stored (UTC) hour, matching `timezone_offset_hours` always defaulting to
-  `0.0` (never populated anywhere). Currently consistent because both sides are UTC. The moment
-  something starts capturing a real user timezone, this derivation needs the same offset applied,
-  or the live band and the historical histogram will silently diverge.
+- **`config/layerN.yaml` files are unread — `[done]` for layer1 (2026-08-04, follow-up pass).**
+  `backend/layer1_input/config.py::Layer1Config` now reads every `config['layer1']` key live,
+  threaded through all 6 sub-component modules as an optional `cfg` param; see
+  `docs/layer-1-architecture.md` §17. Layers 2–13 remain unread — wire each as its layer is
+  revisited, not as one cross-cutting change (original reasoning still holds).
+- **Circadian histogram is UTC-based — `[done]` (2026-08-04, follow-up pass).** Fixed by setting
+  a real `config['system']['timezone_offset_hours']` (5.5, IST — single-user personal deployment)
+  and threading it through both the live circadian band and the historical `typical_bands`
+  histogram so they stay consistent. The same fix was needed in four other UTC-timestamp
+  derivations found via grep once the pattern was understood — Layer 1's own `make_fuzzy_labeler`
+  same-day/yesterday check (the sole path temporal info reaches the LLM), the Digital Desk
+  greeting, the calendar heatmap's day bucketing, and Layer 10's day-of-week pattern detector's
+  date derivation — all fixed together; see `docs/layer-1-architecture.md` §17 for the full list
+  and reasoning.
+  `api/streaming.py::_circadian_band` (the `/chat/stream` pacing overlay) was deliberately left
+  UTC-only — it's cosmetic pacing feel, not a data-attribution path, and already flagged as a
+  duplicate implementation in the Layer 9 entry below.
 
 ---
 
@@ -237,6 +244,14 @@ a milestone or deadline date on the goal; Layer 7's live extraction path never s
 unwired, and the extractor only returns a free-text deadline description, never a parsed date).
 The intake wiring itself is correct — it simply has no populated input yet. See the Layer 7 entry
 below.
+
+**Correction (2026-08-04, from the Layer 1 timezone follow-up):** `evaluate_timing_gate`'s daily
+cap (`ctx.proactive_messages_sent_today >= 1`) reads a pre-computed field on `UserTimingContext` —
+the day-boundary computation lives entirely with whatever caller builds that context, not in
+`timing_gate.py` itself. Not fixable here: SC-3 has zero production callers (see above), so there
+is no live call site to check yet. Whoever wires SC-3 needs to make sure "today" is computed with
+the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1-architecture.md`
+§17) — a raw-UTC day boundary would let the cap reset at the wrong local hour.
 
 ---
 

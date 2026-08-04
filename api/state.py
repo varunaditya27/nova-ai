@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from config import load_config
@@ -301,11 +301,16 @@ def make_relationship_provider(session_factory) -> Callable:
     return _provider
 
 
-def make_temporal_profile_provider(session_factory) -> Callable:
+def make_temporal_profile_provider(session_factory, timezone_offset_hours: float = 0.0) -> Callable:
     """Layer 1 profile source: derive per-user temporal-history signals from state that is
     already persisted for Layer 4/5 (session counters) and the message log, instead of a
     dedicated Layer-1 store — see docs/layer-1-architecture.md §16 "Live wiring status". Without
     this, Layer 1 has no way to know a user's session history and every turn looks cold-start.
+
+    ``timezone_offset_hours`` must match the same value threaded into ``UserTemporalProfile`` in
+    ``api/assembly.py::perceive`` — the live circadian band is computed from local time, so the
+    historical band histogram built here has to apply the identical offset or the two will
+    silently diverge (see docs/layer-1-architecture.md §16, "Circadian histogram is UTC-based").
 
     Returns a plain dict (not a Layer-1 schema type — ``api/assembly.py`` owns building the
     ``UserTemporalProfile``/``UserBehaviorBaseline`` objects, matching ``make_goal_provider``
@@ -356,7 +361,8 @@ def make_temporal_profile_provider(session_factory) -> Callable:
 
         band_counts: dict[str, int] = {}
         for r in recent_user:
-            band = map_circadian_band(r["created_at"].hour).value
+            local_hour = (_as_utc(r["created_at"]) + timedelta(hours=timezone_offset_hours)).hour
+            band = map_circadian_band(local_hour).value
             band_counts[band] = band_counts.get(band, 0) + 1
         total_banded = sum(band_counts.values())
         # Require a handful of samples before trusting the histogram — with too few, an unseen
@@ -451,6 +457,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     store = PostgresMemoryStore(session_factory)
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
     grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
+    tz_offset = config.get("system", {}).get("timezone_offset_hours", 0.0)
     session_writer = _chain_writers(
         make_message_writer(session_factory),
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
@@ -463,6 +470,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
+    from backend.layer1_input.config import Layer1Config
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
@@ -470,8 +478,9 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
         relationship_provider=make_relationship_provider(session_factory),
-        profile_provider=make_temporal_profile_provider(session_factory),
-        vector_store=vector_store)
+        profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
+        vector_store=vector_store,
+        layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
