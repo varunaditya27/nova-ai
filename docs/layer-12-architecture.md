@@ -1493,6 +1493,65 @@ def generate_export(request: DataExportRequest) -> ExportPackage:
   (7), `test_selective_deletion` (11), `test_memory_audit_view` (9), `test_correction_interface`
   (8), `test_sync_coordinator` (10), `test_privacy_agent` (8).
 
+## 14. Live wiring status (Phase 12 polish pass, 2026-08-04)
+
+Only **SC-2 (Selective Deletion)** has a production caller: `api/routes/memory.py`'s
+`DELETE /memory/{memory_id}` builds a `_EpisodicDeletionStore` duck-type adapter over
+`PostgresMemoryStore` and calls `create_deletion_request` → `dry_run_deletion` →
+`execute_deletion` for real, single-memory deletions. Verified end-to-end
+(`tests/unit/api/test_routes_privacy.py`): the deleted memory 404s on `GET`, disappears from
+`GET /memory/audit`, and is unrecallable through the `GET /memory/search` keyword-scan fallback
+— not just logically flagged.
+
+**Everything else in this module is complete, unit-tested (62 tests, all passing), and has zero
+production callers:**
+- **SC-1** (`encryption_manager.py`, `integrity_verifier.py`) — no code outside tests
+  instantiates `EncryptionManager` or `IntegrityVerifier`. Memory-at-rest in this codebase is
+  plain Postgres/SQLite; the spec's SQLCipher/AES-256-GCM/Secure-Enclave design is not deployed.
+- **SC-3** (`memory_audit.py`, `correction_interface.py`) — `MemoryAuditView`,
+  `AuditQueryEngine`, and the six `MemoryCorrectionType` operations have no route or caller.
+  `GET /memory/audit` (the only "audit" HTTP route) returns a flat episodic/semantic list built
+  directly in `api/routes/memory.py` — it does not use Layer 12's richer 7-section view.
+- **SC-4** (`sync_coordinator.py`) — `api/routes/sync.py` does **not** import it. Sync is
+  reimplemented independently in `infra/db/sync_store.py::PostgresSyncStore`, which is a plainer
+  blind-relay store (delta rows keyed by monotonic id) rather than Layer 12's
+  `SyncDelta`/`ConflictResolutionPolicy` design. The two implementations have diverged; only the
+  `infra/db` one runs in production.
+- **`privacy_agent.py`** (the SC-1–4 coordinator, consent management) — no caller anywhere.
+
+**Fixed this pass (both in `selective_deletion.py`, no behavior change to the one live caller's
+observable output — `PostgresMemoryStore.delete_episodic` already independently zeroed `summary`
+and `embedding` regardless of what `execute_deletion` passed to `update()` first):**
+- `execute_deletion` read `getattr(record, "content", "", ...)` — a field name that doesn't exist
+  on `EpisodicMemory` (the real field is `summary`), so the "secure zero before delete" step was a
+  silent no-op for the one type of record this code path actually deletes. It also zeroed with
+  `"\x00" * len(content)` — since `content` was always `""` this never executed, but had it fired
+  against the real Postgres store it would have raised: Postgres `jsonb` rejects the NUL byte (U+0000) in
+  strings, and `EpisodicMemory` payloads are stored as JSONB. Fixed to zero whichever of
+  `content`/`summary` the record actually has, using `""` rather than NUL padding. This is
+  defense-in-depth for any future adapter whose `delete()` is a physical delete rather than
+  `PostgresMemoryStore`'s current zero-then-flag logical delete — not a fix to a live leak.
+- `dry_run_deletion`'s `summary_human_readable` always opened with `"...will also:"` even when
+  every cascade store (`semantic_store`/`personality_store`/`longitudinal_store`) was `None` — the
+  only way the API route currently calls it. A header promising a computed cascade followed by
+  zero bullets reads as "nothing else affected" when the truth is "nothing else was checked".
+  `DELETE /memory/{id}`'s `MemoryDeletionOut.cascade` field forwarded this string to API
+  consumers unchanged. Fixed to say plainly that cascade impact was not computed when no stores
+  were wired, and to say "nothing else references these memories" (rather than staying silent)
+  when stores *are* wired and genuinely find no cascade. The underlying cross-store cascade
+  wiring gap itself (semantic/personality/longitudinal stores never passed to `dry_run_deletion`)
+  was already tracked in `docs/POLISH_BACKLOG.md` — this fix only corrects what the response text
+  claims about it.
+- `/memory/integrity` verifies **`PostgresAuditTrail`** (Layer 2's SHA-256 hash chain) and
+  **`PostgresPrivacyAudit`** (`infra/db/privacy_audit.py`, a separate SHA-256 chain logging
+  deletion events) — both real, both live. Neither is Layer 12's own `integrity_verifier.py`
+  (a Merkle-tree design over on-device store files); that module has no caller, consistent with
+  the rest of SC-1.
+
+See `docs/POLISH_BACKLOG.md` for the larger structural items (deploy real encryption-at-rest,
+reconcile or retire the two divergent sync implementations, wire the richer audit/correction
+views if a UI ever needs them).
+
 ---
 
 *This document specifies Layer 12 completely. All four sub-components — SC-1 On-Device Memory (hybrid storage tiering table, complete KeyHierarchy schema with all four key types and derivation algorithms, KeyLifecycleManager with rotation and destruction operations, full STORE_ARCHITECTURE map with 8 database files, IntegrityVerifier with Merkle tree algorithm and tamper detection), SC-2 Selective Deletion (6 DeletionType values with undo windows and confirmation requirements, DeletionRequest and DeletionScope schemas, CascadeImpactReport schema, dry run algorithm computing cascade across semantic facts, personality vector, and longitudinal references, DeletionExecutor with secure zero overwrite and deletion certificate generation), SC-3 Memory Audit (MemoryAuditView with all 7 sections and complete AuditableMemory/AuditableFact/AuditableBelief/PersonalityAuditSection schemas, AuditQueryEngine with 5 query intent types and retrieval logic, ProvenanceRecord with reinforcement event log, full MemoryCorrectionRequest with all 6 correction types and apply logic), SC-4 Cross-Platform Sync (SyncDelta and SyncOperation schemas, push_delta and pull_and_apply protocol, ConflictResolutionPolicy with per-memory-type resolution for all 5 memory types, SyncConfiguration and DeviceSyncProfile schemas, sync server trust model) — are fully specified. The Privacy Agent coordination architecture, AuditIndexBuilder, ConsentManager with all 6 consent types, DPDP Act compliance map, error handling for all 10 failure cases, performance targets, data export mechanism, and design principles are all explicitly defined. No behavior of Layer 12 requires assumptions or inferences from other documents.*

@@ -101,14 +101,25 @@ def dry_run_deletion(
             if refs:
                 longitudinal_refs.append((s.summary_id, f"{len(refs)} reference(s) would be removed"))
 
-    summary = [f"Deleting {len(target)} memory/memories will also:"]
     del_count = sum(1 for _, _, t in affected_facts if t == "will_be_deleted")
-    if del_count:
-        summary.append(f"  • Remove {del_count} inferred fact(s) derived exclusively from these")
-    if pv_will_change:
-        summary.append("  • Recalculate your personality profile")
-    if longitudinal_refs:
-        summary.append(f"  • Update {len(longitudinal_refs)} weekly summary/summaries")
+    no_stores_checked = semantic_store is None and personality_store is None and longitudinal_store is None
+    if no_stores_checked:
+        # Don't claim a cascade was computed when every cascade store was left unwired — an
+        # unqualified "will also:" header with zero bullets reads as "nothing else affected"
+        # when the truth is "nothing else was checked".
+        summary = [f"Deleting {len(target)} memory/memories. (Cascade impact on facts, "
+                   f"personality, and weekly summaries was not computed — no linked stores "
+                   f"were provided for this check.)"]
+    else:
+        summary = [f"Deleting {len(target)} memory/memories will also:"]
+        if del_count:
+            summary.append(f"  • Remove {del_count} inferred fact(s) derived exclusively from these")
+        if pv_will_change:
+            summary.append("  • Recalculate your personality profile")
+        if longitudinal_refs:
+            summary.append(f"  • Update {len(longitudinal_refs)} weekly summary/summaries")
+        if not (del_count or pv_will_change or longitudinal_refs):
+            summary.append("  • Nothing else — no other data references these memories")
 
     request.affected_memory_ids = sorted(target)
     request.cascade_impacts = CascadeImpactReport(
@@ -155,9 +166,14 @@ def execute_deletion(
         record = memory_store.get(mid)
         if record is None:
             continue
-        content = getattr(record, "content", "") or ""
-        memory_store.update(mid, {"content": "\x00" * len(content), "embedding": None,
-                                  "importance_score": 0.0})       # secure zero before delete
+        # Zero whichever content field the record actually has (EpisodicMemory uses `summary`,
+        # not `content`) — an empty string, not NUL padding: Postgres jsonb rejects \x00 in
+        # strings, so a NUL-filled value would raise on the first real (non-SQLite) delete.
+        zero_fields = {"embedding": None, "importance_score": 0.0}
+        for field in ("content", "summary"):
+            if hasattr(record, field):
+                zero_fields[field] = ""
+        memory_store.update(mid, zero_fields)       # secure zero before delete
         memory_store.delete(mid)
         deleted.append(mid)
 

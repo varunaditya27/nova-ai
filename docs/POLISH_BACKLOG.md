@@ -383,4 +383,48 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
 
 ---
 
-<!-- Next phase (Layer 12 — Privacy) appends its section below this line. -->
+## Layer 12 — Privacy & Data Infrastructure (audited 2026-08-04)
+
+Same pattern as Layer 5/6/10: a fully-built, fully-tested (62 unit tests, all passing) module
+where only a fraction has a production caller. **Only SC-2 (Selective Deletion) is live** —
+`api/routes/memory.py`'s `DELETE /memory/{memory_id}` — verified end-to-end including
+unrecallability through the `GET /memory/search` keyword fallback (new test:
+`tests/unit/api/test_routes_privacy.py::test_deleted_memory_unrecallable_via_keyword_search`).
+SC-1, SC-3, SC-4, and `privacy_agent.py` all have zero callers outside their own tests. Full
+detail: `docs/layer-12-architecture.md` §14.
+
+Fixed inline this pass (both in `selective_deletion.py`, no observable behavior change to the
+live delete path — `PostgresMemoryStore.delete_episodic` already independently zeroed content —
+but real bugs in shared code all the same):
+- `execute_deletion` read a non-existent `record.content` field (real field is `.summary`) and
+  would have zero-padded it with literal NUL bytes — which Postgres `jsonb` rejects, so this
+  would have thrown on the first real (non-SQLite) delete had the field ever actually existed.
+  Fixed to zero whichever of `content`/`summary` the record has, using `""`.
+- `dry_run_deletion`'s cascade summary always said "...will also:" followed by zero bullets when
+  no cascade stores were wired (the only way the live route calls it today) — reads as "checked,
+  found nothing" when the truth is "not checked". Fixed to say so.
+
+Larger, real feature work (not fixed inline):
+- **SC-1 (encryption-at-rest) is entirely undeployed.** The stdlib-honest PBKDF2/HKDF/HMAC
+  construction in `encryption_manager.py` genuinely round-trips and detects tampering in tests,
+  but nothing in `api/`/`infra/` ever calls it — Postgres/SQLite data is stored in plaintext at
+  the DB layer today. Same for `integrity_verifier.py`'s Merkle-tree tamper detection (superseded
+  in practice by the two independent SHA-256 hash chains in `infra/db/audit_trail.py` and
+  `infra/db/privacy_audit.py`, both live). Deploying real at-rest encryption is a deployment-infra
+  project, not a code-polish fix.
+- **Two divergent, non-interoperable sync implementations exist.** `backend/layer12_privacy/
+  sync_coordinator.py` (SyncDelta/ConflictResolutionPolicy, spec-accurate) and `infra/db/
+  sync_store.py::PostgresSyncStore` (the one `api/routes/sync.py` actually uses — a simpler blind
+  relay keyed by monotonic row id, no per-type conflict resolution). They were likely built at
+  different times against the same spec. Needs a decision: retire the unused one, or migrate
+  `api/routes/sync.py` onto it and add the conflict-resolution logic the current store lacks.
+- **SC-3's richer audit/correction views have no UI or route.** `MemoryAuditView` (7 sections),
+  `AuditQueryEngine` (5 query intents), and the 6 `MemoryCorrectionType` operations are unused —
+  `GET /memory/audit` returns a much flatter episodic/semantic list built ad hoc in
+  `api/routes/memory.py`. Worth wiring only if/when a frontend surface needs it.
+- **`privacy_agent.py`'s consent management (`ConsentManager`, 6 consent types) is unused** — no
+  route captures or checks user consent for any data category.
+
+---
+
+<!-- Next phase (Layer 13 — Onboarding) appends its section below this line. -->
