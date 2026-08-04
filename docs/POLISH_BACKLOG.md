@@ -273,4 +273,22 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
 
 ---
 
-<!-- Next phase (Layer 8 — Tools) appends its section below this line. -->
+## Layer 8 — Tool Use & Actions (audited 2026-08-04)
+
+The cleanest and most completely-wired audit of the pass so far: zero bugs found, all 92 tests
+pass, and every sub-component (Tool Manager, Confirmation Gate, Parameter Resolver, Action
+Recorder, all 5 plugins) runs live in production — pre-generation intent detection, the bound-token
+confirmation security model, gemma2:2b parameter extraction, and all `/tools/*` routes were each
+verified against the architecture doc line by line. Nothing to fix, nothing to log as missing.
+Full detail: `docs/layer-8-architecture.md`'s "Live wiring status" note.
+
+- **Known limitation, not a bug:** pending confirmations (`ToolManager._pending`) are in-process
+  memory only, not persisted — a process restart between issuing a SOFT/HARD confirmation and the
+  user confirming it silently drops the pending action (`404` on confirm, not a security issue).
+  Consistent with the codebase's current single-process/single-user deployment assumption
+  (`api/routes/tools.py` already documents the "process singleton" design). Worth revisiting only
+  if the deployment model changes (multi-worker, frequent restarts).
+
+---
+
+<!-- Next phase (Layer 9 — Output) appends its section below this line. -->
