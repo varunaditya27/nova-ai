@@ -330,4 +330,30 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
 
 ---
 
-<!-- Next phase (Layer 10 — Longitudinal) appends its section below this line. -->
+## Layer 10 — Longitudinal Life Layer (audited 2026-08-04)
+
+Module clean (65 tests). Live wiring is partial: 2 of 5 sub-components run as background jobs
+(weekly summary, pattern detection); SC-1/4/5 and the `Layer10ContextPacket` read path are
+unwired. Two real bugs fixed this phase — see `docs/layer-10-architecture.md` §15 for detail:
+a field-name bug (`content_basis_valence` doesn't exist on `EpisodicMemory`, silently zeroing
+every episode's emotional intensity) and a hardcoded-empty-list gap (`emotional_records=[]`
+meant weekly summaries never had real emotional texture and the emotional-cycle pattern
+detector could never fire) — fixed by adding `background/_adapters.py::emotional_records`,
+deriving records from the same per-episode `emotion_vector` data already read elsewhere.
+
+- **Pattern detection results are computed and discarded.** `pattern_detection_job.py` runs
+  `detect_behavioral_patterns` weekly but never persists the output or feeds it to Layer 6 — the
+  job's own docstring already flags this as a follow-up. Needs a patterns table (none exists) and
+  a Layer 6 handoff, the same shape as Layer 6's other unwired intake contracts.
+- **`Layer10ContextPacket` never reaches Layer 4 or Layer 6.** This is the architectural point of
+  Layer 10 — "long-term narrative grounding" in every response (§8, §9) — and it doesn't happen:
+  `engine.assemble_context_packet` has zero production callers. Needs SC-1 (chapter synthesis)
+  and SC-5 (Life Calendar scheduler) to exist first, since the context packet is assembled from
+  their output; this is the biggest remaining feature gap in Layer 10, comparable in scope to
+  Layer 5's full unwired state.
+- **SC-4 (Retrospective Engine) is unwired.** No anniversary/milestone surfacing happens live —
+  needs the Life Calendar (SC-5) to schedule it, so it's blocked on the same gap as above.
+
+---
+
+<!-- Next phase (Layer 11 — Safety) appends its section below this line. -->

@@ -9,7 +9,7 @@ import infra.db.models as models
 from infra.db.memory_store import PostgresMemoryStore
 from infra.db.proactive_store import PostgresProactiveQueue
 from infra.db.longitudinal_store import PostgresLongitudinalStore
-from backend.layer2_memory.schemas import EpisodicMemory
+from backend.layer2_memory.schemas import EmotionVector, EpisodicMemory
 from backend.layer6_proactivity.schemas import ProactiveItem
 from background import scheduler
 
@@ -22,10 +22,11 @@ def _state(user="u1"):
                            config={"onboarding": {"graduation_sessions": 5}})
 
 
-def _add_episode(factory, uid, summary="hi", strength=0.5):
+def _add_episode(factory, uid, summary="hi", strength=0.5, valence=0.0, arousal=0.0):
     PostgresMemoryStore(factory).save_episodic(EpisodicMemory(
         user_id=uid, summary=summary, embedding=[0.1, 0.2], S_current=strength,
-        importance_score=0.2, created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
+        importance_score=0.2, emotion_vector=EmotionVector(valence=valence, arousal=arousal),
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)))
 
 
 def test_integrity_job_reports_intact():
@@ -96,6 +97,50 @@ def test_pattern_job_runs():
     _add_episode(st.session_factory, "u1")
     out = scheduler.run_job(st, "pattern_detection")
     assert "patterns" in out and out["episodes"] == 1
+
+
+def test_episodic_records_reads_real_emotion_vector_not_content_basis_valence():
+    """_adapters.episodic_records used to read a field, `content_basis_valence`, that doesn't
+    exist on EpisodicMemory (that name belongs to Layer 6's ProactiveItem) -- emotional_intensity
+    was always 0.0 regardless of the episode's real emotion. The real field is emotion_vector."""
+    from infra.db.memory_store import PostgresMemoryStore
+    from background._adapters import episodic_records
+
+    st = _state()
+    _add_episode(st.session_factory, "u1", valence=-0.8, arousal=0.6)
+    recs = episodic_records(PostgresMemoryStore(st.session_factory), "u1")
+    assert len(recs) == 1
+    assert recs[0].emotional_intensity == pytest.approx(0.8)
+
+
+def test_emotional_records_adapter_derives_records_from_episode_emotion_vectors():
+    from infra.db.memory_store import PostgresMemoryStore
+    from background._adapters import emotional_records
+
+    st = _state()
+    _add_episode(st.session_factory, "u1", valence=-0.5, arousal=0.4)
+    recs = emotional_records(PostgresMemoryStore(st.session_factory), "u1")
+    assert len(recs) == 1
+    assert recs[0].valence == pytest.approx(-0.5)
+    assert recs[0].arousal == pytest.approx(0.4)
+
+
+def test_longitudinal_job_populates_emotional_summary_from_real_episodes():
+    """generate_weekly_summary previously always received emotional_records=[] -- the weekly
+    summary's emotional texture was always empty regardless of real session emotion."""
+    st = _state()
+    now = datetime.now(timezone.utc)
+    PostgresMemoryStore(st.session_factory).save_episodic(EpisodicMemory(
+        user_id="u1", summary="a rough day", embedding=[0.1, 0.2], S_current=0.5,
+        importance_score=0.2, emotion_vector=EmotionVector(valence=-0.6, arousal=0.5),
+        created_at=now))
+    with session_scope(st.session_factory) as s:
+        s.add(models.Session(user_id="u1", session_key="s1", turn_count=3))
+
+    out = scheduler.run_job(st, "longitudinal_summary")
+    summary = PostgresLongitudinalStore(st.session_factory, "u1").latest()
+    assert summary is not None
+    assert summary.emotional_summary.avg_valence != 0.0
 
 
 def test_start_scheduler_noop_when_disabled():
