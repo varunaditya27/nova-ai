@@ -166,4 +166,39 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
 
 ---
 
-<!-- Next phase (Layer 5 — Relationship) appends its section below this line. -->
+## Layer 5 — Social Intelligence & Coaching (audited 2026-08-04)
+
+The cleanest audit so far: `backend/layer5_relationship/` has zero bugs found and all 63 tests
+pass. Nothing was fixed inline this phase because there is nothing small to fix — the entire
+layer is complete, tested, and has **zero production callers**, with no existing integration
+point to hang a small adapter fix on (unlike Layer 4, which at least had a parallel hand-built
+path to forward signals into). Full detail: `docs/layer-5-architecture.md` §15. This is one
+feature to build, in dependency order:
+
+- **No persistence.** `infra/db/models.py` has no tables for `SocialGraph`/`SocialNode`/
+  `SocialEdge`/`SocialEvent`/`SocialPattern`. Needed before anything else — SC-1 through SC-3
+  are stateful across sessions by design (§13 principle 1: "social context is longitudinal, not
+  per-message").
+- **No orchestrator hook.** `backend.pipeline.PipelineSteps` has no Layer 5 entry point;
+  `TurnContext` carries no social graph / event history / active patterns. Needs a new hook
+  (analogous to `build_persona`/`plan`) that runs after Layer 4 produces the `FinalResponsePacket`
+  and calls `build_social_intelligence_packet`.
+- **No per-turn entity/event extraction call site.** `social_graph.resolve_entity` and
+  `event_tracker.detect_events_rule_based`/`extract_events` are ready to call on each user
+  message but nothing calls them — this is what would populate the persistence layer above.
+- **No pattern-detection background job.** SC-3's `detect_patterns` is a pure function designed
+  to run "every 5 sessions" (§5.4) as a batch job; `background/scheduler.py`'s `JOBS` registry
+  (currently 6 entries) has no seventh entry for it.
+- **UWM social-context write-back is unreachable.** `build_social_context_update` (§9) computes
+  the `SocialContextUpdate` that Layer 2's UWM should store — moot until the above exist, and
+  further blocked on Layer 2's own finding (audited 2026-08-04) that the UWM is never created
+  for any real user at all.
+
+Suggested build order given the above dependencies: persistence → per-turn extraction (writes
+only) → orchestrator hook for the coaching-injection read path → background pattern-detection
+job. Each step is independently shippable and testable against the existing, already-correct
+`backend/layer5_relationship/` module.
+
+---
+
+<!-- Next phase (Layer 6 — Proactivity) appends its section below this line. -->
