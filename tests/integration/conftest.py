@@ -21,7 +21,7 @@ def make_recording_steps(**overrides):
     rec = SimpleNamespace(order=[], deliver_crisis_mode=None, state_update_called=False,
                           delivered_text=None)
 
-    def perceive(user_id, message, now):
+    def perceive(user_id, message, now, session_id=""):
         rec.order.append("L1_perceive"); return {"perceived_message": message}
 
     def recall(user_id, input_packet):

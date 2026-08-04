@@ -149,3 +149,81 @@ def test_cold_start_provider_active_then_graduated():
         __import__("types").SimpleNamespace(user_id="local-user", session_id="s1"))
     assert PostgresOnboardingStore(factory, "local-user").state()["cold_start_active"] is False
     assert provider("local-user", "hi") is None
+
+
+def test_temporal_profile_provider_derives_from_relationship_and_message_stores():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from infra.db.message_store import PostgresMessageStore
+    from api.state import make_temporal_profile_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    rel = PostgresRelationshipStore(factory, "local-user")
+    rel.record_turn("s1")
+    rel.record_turn("s2")
+    rel.record_turn("s3")
+
+    msgs = PostgresMessageStore(factory, "local-user")
+    msgs.append("user", "hi", session_key="s1",
+                created_at=datetime(2026, 1, 1, 20, 0, tzinfo=timezone.utc))   # evening
+    msgs.append("user", "still going strong", session_key="s2",
+                created_at=datetime(2026, 1, 5, 20, 0, tzinfo=timezone.utc))  # evening, +4 days
+    msgs.append("user", "one more", session_key="s3",
+                created_at=datetime(2026, 1, 9, 20, 0, tzinfo=timezone.utc))  # evening, +4 days
+
+    provider = make_temporal_profile_provider(factory)
+    d = provider("local-user")
+
+    assert d["total_sessions"] == 3
+    assert d["relationship_age_days"] == pytest.approx(
+        (datetime.now(timezone.utc) - datetime(2026, 1, 1, 20, 0, tzinfo=timezone.utc)).days, abs=1)
+    assert d["last_session_end"] == datetime(2026, 1, 9, 20, 0, tzinfo=timezone.utc)
+    # Mean GAP BETWEEN sessions (s1->s2 and s2->s3 are both 4 days apart) — NOT
+    # relationship_age_days / total_sessions, which would give a much smaller, wrong number
+    # and silently defeat detect_temporal_anomaly's cadence check (see api/state.py comment).
+    assert d["average_session_frequency_days"] == pytest.approx(4.0)
+    # Below the minimum-sample floor (3 banded messages < 10) — stays empty rather than reporting
+    # a low-confidence histogram that would flag every unseen band as "atypical".
+    assert d["typical_bands"] == {}
+    assert d["message_length_median_chars"] is not None
+
+
+def test_temporal_profile_provider_populates_bands_above_sample_floor():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from infra.db.message_store import PostgresMessageStore
+    from api.state import make_temporal_profile_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    rel = PostgresRelationshipStore(factory, "local-user")
+    msgs = PostgresMessageStore(factory, "local-user")
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i in range(9):   # 9 evening messages
+        rel.record_turn(f"s{i}")
+        msgs.append("user", "evening chat", session_key=f"s{i}",
+                    created_at=base.replace(day=1 + i, hour=20))
+    rel.record_turn("s9")
+    msgs.append("user", "morning chat", session_key="s9", created_at=base.replace(day=10, hour=9))
+
+    d = make_temporal_profile_provider(factory)("local-user")
+    assert d["typical_bands"]["evening"] == pytest.approx(0.9)
+    assert d["typical_bands"]["morning"] == pytest.approx(0.1)
+
+
+def test_temporal_profile_provider_empty_history_yields_no_bands():
+    from api.state import make_temporal_profile_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    d = make_temporal_profile_provider(factory)("brand-new-user")
+    assert d["total_sessions"] == 0
+    assert d["relationship_age_days"] == 0
+    assert d["typical_bands"] == {}
+    assert d["last_session_end"] is None
+    assert d["message_length_median_chars"] is None

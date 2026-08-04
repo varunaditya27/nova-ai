@@ -39,7 +39,7 @@ _CRISIS_FALLBACK = ("I'm here with you. If you're in immediate danger, please co
 @dataclass
 class PipelineSteps:
     """Injectable layer entry points. All optional; production wires real layer adapters."""
-    perceive: Optional[Callable] = None         # L1  (user_id, message, now) -> input_packet
+    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id) -> input_packet
     recall: Optional[Callable] = None           # L2  (user_id, input_packet) -> list[memory]
     cold_start: Optional[Callable] = None       # L13 (user_id, message) -> directives | None
     classify: Optional[Callable] = None         # L3  (message, input_packet, recalled) -> EI
@@ -147,7 +147,7 @@ class ConversationOrchestrator:
 
         try:
             # ── Layer 1: input perception ───────────────────────────────────
-            ctx.input_packet = s.perceive(user_id, message, ctx.now)
+            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id)
             ctx.layers_run.append("layer1_input")
 
             # ── Layer 2: memory recall (read-only during inference) ─────────

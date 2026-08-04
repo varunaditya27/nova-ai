@@ -6,7 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers are implemented, tested, documented, and wired together through the conversation orchestrator (130 layer modules + 6 pipeline modules; **~1350 tests passing** with the third-party-dep suites (SQLAlchemy, FastAPI) installed — `pytest tests/ -q`; a bare-stdlib interpreter can still collect/run the layer-level suites, but the `tests/unit/api/` files that exercise `infra/db` need SQLAlchemy on the path, so use `.venv` or an environment with the project's deps installed rather than assuming zero third-party requirements). The full HTTP surface (40+ routes) is live and frontend-ready — see `docs/API_REFERENCE.md`. The code is pure-stdlib and dependency-injected at the layer level so the core pipeline runs with no model servers or databases; production swaps concrete backends behind the same interfaces. **`docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical top-level single source of truth** — read it first; per-layer detail lives in `docs/layer-N-architecture.md` (each with an as-built section). When code and any doc disagree, the code wins.
+**Implementation status:** all 13 layers implemented and wired through the conversation orchestrator (130 layer modules + 6 pipeline modules). **~1360 tests passing** — run with `.venv/bin/pytest` (or any interpreter with the project's deps; `tests/unit/api/` needs SQLAlchemy on the path). 40+ routes live — see `docs/API_REFERENCE.md`. Layer code is pure-stdlib and dependency-injected; production swaps concrete backends behind the same interfaces.
+
+**Docs hierarchy:** `docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical source of truth (read first) → `docs/layer-N-architecture.md` per layer (each with an as-built section) → `docs/POLISH_BACKLOG.md` for open follow-ups found during the audit pass. **When code and docs disagree, the code wins** — then fix the doc.
+
+## Engineering Principles (strictly enforced)
+
+- **No AI slop.** Don't add abstractions, config knobs, fallback paths, or "for future extensibility" scaffolding beyond what the current task needs. Three similar lines beat a premature helper. A bug fix doesn't need surrounding refactoring.
+- **No speculative error handling.** Guard the boundaries that can actually fail (LLM calls, DB reads, backend I/O — this codebase already does this well, e.g. every Layer-1 sub-component degrades gracefully per §11). Don't wrap internal, trusted calls in `try/except` "just in case."
+- **Small, verifiable diffs.** Prefer the smallest change that makes the claim true. If you're not sure a piece of code is dead, prove it (grep for callers) before deleting it, and prove a fix works (test + a live run) before calling it done — this file has drifted from the code before (see git history); don't let it happen again.
+- **This is a polish project, layer by layer.** We are auditing each of the 13 layers in turn: verify it does what its architecture doc says, cut dead/bloated code, fix what's small and safe, and log everything bigger as a dated entry in `docs/POLISH_BACKLOG.md` instead of fixing it inline. Check that file before starting a layer's audit and before assuming a gap is new.
+- **Keep this file lean.** Add facts, not narration. When a finding needs more than 2–3 lines, it belongs in `docs/POLISH_BACKLOG.md` or the relevant `docs/layer-N-architecture.md`'s as-built section — link to it from here instead of inlining it.
 
 ## Commands
 
@@ -48,7 +58,7 @@ python scripts/export_audit.py
 python scripts/calibrate_weights.py
 ```
 
-Configuration loads `config/defaults.yaml` first, then overrides with layer-specific `config/layerN.yaml` files. Example config keys: `llm.groq_model`, `llm.ollama_system1_model`, `memory.recall_weights`, `memory.decay_rate`.
+Configuration loads `config/defaults.yaml` first, then merges all thirteen `config/layerN.yaml` files, then `config/local.yaml` (`api/state.py::build_app_state`). Keys actually read by code — `llm.*`, `memory.*`, `onboarding.*`, `scheduler.*` — live under `defaults.yaml`; the per-layer files merge in under their own `layerN:` key but aren't consumed yet (layer code still uses hardcoded constants). See `docs/POLISH_BACKLOG.md`.
 
 ## Architecture: The 13-Layer Cognitive Pipeline
 
@@ -67,7 +77,7 @@ Note: Layer 3 uses a separate fast classification model (**Phi-3 Mini 3.8B or Ge
 
 | # | Module | Role |
 |---|---|---|
-| 1 | `backend/layer1_input/` | Input perception: temporal context (circadian bands, session gap), implicit behavioral signals (latency, deletion, message length), multimodal normalization, voice prosody |
+| 1 | `backend/layer1_input/` | Input perception: temporal context (circadian bands, session gap), implicit behavioral signals (latency, deletion, message length), multimodal normalization, voice prosody. Audited (Polish Phase 1): module itself is clean; live wiring gaps tracked in `docs/POLISH_BACKLOG.md` |
 | 2 | `backend/layer2_memory/` | Memory arbiter: STM buffer, Episodic/Semantic/Identity stores, User World Model, recall scoring, forgetting & consolidation, audit trail |
 | 3 | `backend/layer3_reasoning/` | Emotion + intent classification (shared LLM call), Background Emotional State, stated-vs-felt mismatch detection, Empathy Hypothesis, conversation mode resolution |
 | 4 | `backend/layer4_persona/` | Persona State Resolver, Relationship State Manager, tone calibration, Drift Detector, Semantic Planner (Agent 4a), Emotion Refiner (Agent 4b) |
@@ -255,10 +265,11 @@ calibration, surfaced on `GET /relationship` and folded into the persona instruc
 triggers and surfaces at most one onboarding question per session (rate-limited, distress-suppressed,
 never repeated — asked targets persist in `PostgresOnboardingStore`); the orchestrator passes
 `session_id` to the `cold_start` hook and `assembly.plan` weaves the question into the planner
-directive. **Not yet wired (documented follow-ups):** auth/multi-user; WebSocket transport for
-streaming (SSE is live; WS is the future bidirectional upgrade); the Layer-13 *feature-pacing*
-machinery (elicitation is wired; progressive feature introduction is not); deeper persona learning
-beyond the four communication-style params. See
+directive. **Not yet wired:** auth/multi-user; WebSocket transport (SSE is live); Layer-13
+feature-pacing (elicitation is wired, progressive feature introduction is not); persona learning
+beyond the four communication-style params. Per-layer gaps surfaced during the ongoing polish
+pass (narrative threads, implicit signals, etc.) are tracked in `docs/POLISH_BACKLOG.md`, not
+here — check that file before starting work on any layer. See
 `docs/superpowers/specs/2026-07-04-api-conversation-endpoint-design.md`
 §8 and `docs/superpowers/specs/2026-07-06-chat-streaming-and-full-integration-design.md` for the
 full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**

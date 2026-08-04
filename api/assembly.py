@@ -85,15 +85,33 @@ class _ToolTurnOutcome:
     response_text: str = ""
 
 
+class _SingleProfileStore:
+    """Wraps one pre-fetched ``UserTemporalProfile`` as a Layer-1 ``ProfileStore``.
+
+    Layer 1's own store protocol is keyed by the uuid5 ``process_input_event`` derives from the
+    raw user_id; the Postgres-backed lookup in ``profile_provider`` runs against the raw id
+    upstream of that derivation (same reasoning as the ANN-recall raw-id note above), so this
+    wrapper just ignores whatever key ``.get()`` is called with and returns the profile already
+    resolved for this turn.
+    """
+    def __init__(self, profile) -> None:
+        self._profile = profile
+
+    def get(self, _user_id):
+        return self._profile
+
+
 def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_writer: Optional[Callable] = None,
                          cold_start: Optional[Callable] = None,
                          tool_manager=None,
                          goal_provider: Optional[Callable] = None,
                          relationship_provider: Optional[Callable] = None,
+                         profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
+    from backend.layer1_input.schemas import UserTemporalProfile, UserBehaviorBaseline
     from backend.layer2_memory import memory_arbiter
     from backend.layer2_memory.schemas import ConversationMode, EmotionVector
     from backend.layer3_reasoning import build_emotion_intent_packet
@@ -107,10 +125,31 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     embedder = _EmbedderAdapter(embed)
     veto_tiers = {CrisisTier.TIER_1.value, CrisisTier.TIER_2.value}
 
-    def perceive(user_id, message, now):
+    def perceive(user_id, message, now, session_id=""):
+        profile_store = None
+        behavior_baseline = None
+        if profile_provider is not None:
+            try:
+                d = profile_provider(user_id)
+                profile_store = _SingleProfileStore(UserTemporalProfile(
+                    user_id=_uuid_for(user_id),
+                    total_sessions=d["total_sessions"],
+                    relationship_age_days=d["relationship_age_days"],
+                    average_session_frequency_days=d["average_session_frequency_days"],
+                    typical_bands=d["typical_bands"],
+                    last_session_end=d["last_session_end"]))
+                behavior_baseline = UserBehaviorBaseline(
+                    message_length_median_chars=d["message_length_median_chars"])
+            except Exception:
+                logger.exception("temporal profile provider failed; Layer 1 falls back to cold start")
+        # NOTE: attachments are always [] and ClientMetadata carries no real behavioral timestamps
+        # (latency/deletion/burst) — the client doesn't send them yet (ChatRequest has no fields
+        # for them). SC-2's implicit-signal scoring and SC-3/SC-4 (multimodal/voice) are therefore
+        # always neutral/inactive in the live pipeline; see docs/layer-1-architecture.md §16.
         packet = _run(process_input_event(
             _uuid_for(user_id), message, now, [],
-            ClientMetadata(session_id=str(uuid.uuid4()))))
+            ClientMetadata(session_id=session_id or str(uuid.uuid4())),
+            profile_store=profile_store, behavior_baseline=behavior_baseline))
         setattr(packet, "raw_message", message)   # carry the text forward for recall
         return packet
 
