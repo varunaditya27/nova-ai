@@ -263,8 +263,20 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 logger.exception("relationship provider failed; using default persona")
         return packet
 
+    # Layer 7 §6.3 hard blocks: never reference goals in these modes, or before the
+    # relationship has moved past first contact. This directive predates SC-4
+    # (decide_goal_reference) reaching the live path (its real output is computed
+    # post-turn — see POLISH_BACKLOG.md), so the blocks are duplicated here rather than
+    # left unenforced.
+    _GOAL_BLOCKED_MODES = {"crisis", "emotional_support", "casual"}
+
     def _goal_directive(ctx) -> str:
         if goal_provider is None:
+            return ""
+        if getattr(ctx, "conversation_mode", "casual") in _GOAL_BLOCKED_MODES:
+            return ""
+        stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
+        if stage == "new":
             return ""
         try:
             titles = [t for t in (goal_provider(ctx.user_id, ctx.message) or []) if t]
@@ -273,9 +285,9 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             return ""
         if not titles:
             return ""
-        joined = "; ".join(f"'{t}'" for t in titles[:3])
-        return (f"The user has active goal(s): {joined}. If it fits naturally, reference their "
-                f"progress or gently encourage them — never force it or lecture.")
+        # §6.4 anti-pattern: never reference more than one goal per response.
+        return (f"The user has an active goal: '{titles[0]}'. If it fits naturally, reference "
+                f"their progress or gently encourage them — never force it or lecture.")
 
     def _elicitation_directive(ctx) -> str:
         """Layer-13: weave a surfaced onboarding question in naturally (never front-loaded)."""

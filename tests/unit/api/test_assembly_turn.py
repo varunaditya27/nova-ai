@@ -217,6 +217,97 @@ def test_real_layer3_wiring_routes_emotional_turn_to_system2():
     assert out.refined is True
 
 
+def test_real_layer7_goal_directive_blocked_in_emotional_support_and_shown_in_goal_planning():
+    """Layer 7 architecture doc §6.3 hard-blocks goal references in crisis/emotional_support/
+    casual modes and before the relationship stage advances past 'new'. api/assembly.py's
+    _goal_directive predates the real SC-4 decide_goal_reference reaching the live path (its
+    output is computed post-turn -- see POLISH_BACKLOG.md), so these blocks are enforced
+    directly in the directive rather than left unenforced. This runs the REAL orchestrator so a
+    regression here (e.g. dropping a block) is caught end-to-end, not just at the unit level."""
+    import json
+    from types import SimpleNamespace
+
+    class ClassifyingLLM(FakeLLM):
+        def __init__(self, primary_intent):
+            super().__init__(reply="a warm reply")
+            self._intent = primary_intent
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "sadness", "valence": -0.7, "arousal": 0.6,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": self._intent})
+            return self._reply
+
+    def _rel_provider(stage):
+        def _p(user_id):
+            return SimpleNamespace(stage=stage, total_messages_exchanged=10, total_sessions=5)
+        return _p
+
+    captured = []
+
+    class CapturingClassifyingLLM(ClassifyingLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Semantic Planner" in prompt:
+                captured.append(prompt)
+            return super().complete(prompt, system=system, temperature=temperature,
+                                    max_tokens=max_tokens)
+
+    # Same emotional_support scenario, capturing the planner prompt directly.
+    llm2 = CapturingClassifyingLLM("venting")
+    steps2 = build_pipeline_steps(system1=llm2, system2=llm2, embed=llm2,
+                                  memory_store=InMemoryMemoryStore(),
+                                  goal_provider=lambda uid, msg: ["Run a 5K"],
+                                  relationship_provider=_rel_provider("developing"))
+    ConversationOrchestrator(steps2).run_turn(
+        "local-user",
+        "I have been feeling really overwhelmed and quite sad lately, and honestly "
+        "nothing feels right anymore!")
+    assert captured, "planner was never invoked"
+    assert not any("Run a 5K" in p for p in captured), "goal referenced in a blocked mode"
+
+    # goal_planning mode, established relationship: directive should be present.
+    captured3 = []
+
+    class GoalPlanningLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.3,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "goal_setting"})
+            if "Semantic Planner" in prompt:
+                captured3.append(prompt)
+            return self._reply
+
+    llm3 = GoalPlanningLLM()
+    steps3 = build_pipeline_steps(system1=llm3, system2=llm3, embed=llm3,
+                                  memory_store=InMemoryMemoryStore(),
+                                  goal_provider=lambda uid, msg: ["Run a 5K"],
+                                  relationship_provider=_rel_provider("developing"))
+    ConversationOrchestrator(steps3).run_turn(
+        "local-user", "I want to set a new goal for this quarter, can we plan it out?")
+    assert captured3, "planner was never invoked"
+    assert any("Run a 5K" in p for p in captured3), "goal directive missing in goal_planning mode"
+
+    # goal_planning mode but a brand-new relationship (default stage): blocked by stage.
+    captured4 = []
+
+    class GoalPlanningLLM4(GoalPlanningLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Semantic Planner" in prompt:
+                captured4.append(prompt)
+            return super().complete(prompt, system=system, temperature=temperature,
+                                    max_tokens=max_tokens)
+
+    llm4 = GoalPlanningLLM4()
+    steps4 = build_pipeline_steps(system1=llm4, system2=llm4, embed=llm4,
+                                  memory_store=InMemoryMemoryStore(),
+                                  goal_provider=lambda uid, msg: ["Run a 5K"])  # no relationship_provider -> stage="new"
+    ConversationOrchestrator(steps4).run_turn(
+        "local-user", "I want to set a new goal for this quarter, can we plan it out?")
+    assert captured4, "planner was never invoked"
+    assert not any("Run a 5K" in p for p in captured4), "goal referenced for a brand-new relationship"
+
+
 def test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt():
     """Layer 2's recalled memories reach ctx.recalled_memories every turn, but plan() in
     api/assembly.py never threaded them into generate_semantic_draft -- the planner LLM

@@ -231,6 +231,46 @@ detail: `docs/layer-6-architecture.md` §15.
   itself gets wired (Phase 5 finding). These close automatically as their source layers do —
   nothing to do in Layer 6 itself.
 
+**Correction (2026-08-04, from the Layer 7 audit):** the goal→proactive intake described above as
+"the one live intake contract" produces **zero real candidates today**. `goal_checkin_item` needs
+a milestone or deadline date on the goal; Layer 7's live extraction path never sets either (SC-5
+unwired, and the extractor only returns a free-text deadline description, never a parsed date).
+The intake wiring itself is correct — it simply has no populated input yet. See the Layer 7 entry
+below.
+
 ---
 
-<!-- Next phase (Layer 7 — Goals) appends its section below this line. -->
+## Layer 7 — Goals & Accountability Engine (audited 2026-08-04)
+
+The best-wired layer audited so far: `run_goal_pipeline` (SC-1/2/3/4) runs for real every turn.
+Module itself is clean — 58/58 tests, matches spec. One real bug fixed, two structural gaps
+logged. Full detail: `docs/layer-7-architecture.md` §13.
+
+- **Fixed:** `api/assembly.py::_goal_directive` was injecting goal-accountability directives
+  regardless of conversation mode or relationship stage, violating §6.3's hard blocks (no goal
+  references in crisis/emotional_support/casual modes or brand-new relationships) and §6.4's
+  single-goal rule. Added the three blocks + capped to one goal; verified end-to-end. Practical
+  effect: goal injection now fires much less often, since `casual` (one of the three blocked
+  modes) is the default resolved mode for most short turns — this is correct per spec, but a
+  real behavior change from what was previously live.
+- **SC-4's real output (`GoalContextPacket`) never reaches Layer 4.** `make_goal_writer` runs
+  `run_goal_pipeline` post-turn and discards its `Layer7Output` — `reference_type`,
+  `response_instruction`, `tone_instruction`, etc. are computed after the response already went
+  out. `_goal_directive`'s simpler hand-rolled directive (now correctly gated, see above) is what
+  actually reaches the prompt. Reconciling this needs the goal pipeline's SC-2/3/4 read path to
+  run pre-generation for the current turn — a pipeline-ordering question (Layer 2's "read-only
+  during inference" invariant is exactly why writers run post-turn today), not a small fix.
+- **SC-5 (Goal Decomposer) is unwired; goals never get milestones or a parsed deadline.**
+  `decompose_goal`, `register_milestones_with_layer6`, and `check_milestone_completion` have no
+  production callers. Compounding this, `engine.py`'s live `Goal(...)` construction doesn't even
+  thread the extractor's `deadline_description` through (and the extractor never returns a parsed
+  date in the first place — no natural-language date parsing exists anywhere in the codebase).
+  Net effect: every goal created through the live pipeline has `milestones=[]` and
+  `deadline=None`, which is why Layer 6's `goal_checkin_item` intake (documented in the Layer 6
+  entry above) never actually produces a candidate — see the correction note there. Fixing this
+  needs (a) SC-5 wired to a real caller and (b) either date-parsing for `deadline_description` or
+  accepting that only milestone-based check-ins will ever fire.
+
+---
+
+<!-- Next phase (Layer 8 — Tools) appends its section below this line. -->

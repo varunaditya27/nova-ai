@@ -1145,4 +1145,56 @@ The three LLM uses are injected: SC-1 extraction (`llm_fn` returning a dict/JSON
 
 ---
 
+## 13. Live wiring status (Phase 7 polish pass, 2026-08-04)
+
+`backend/layer7_goals/` itself is clean: all 58 tests pass, matches the spec closely (including
+the documented §12.5 deviations). Layer 7 is the best-wired layer audited so far — `run_goal_pipeline`
+(SC-1 extraction, SC-2 retrieval, SC-3 inline progress inference, SC-4 accountability decision) runs
+for real every turn via `make_goal_writer`. One real bug was found and fixed; two structural gaps
+were found and logged.
+
+### 13.1 Fixed this phase — `_goal_directive` ignored §6.3's hard blocks
+
+`api/assembly.py`'s `_goal_directive` (which actually reaches the planner prompt — see §13.2)
+built its own goal-accountability directive independently of the real `decide_goal_reference`,
+and had none of §6.3's hard blocks: it injected a goal reference regardless of
+`conversation_mode` (including `crisis` and `emotional_support`, which §6.3 and §6.4 anti-pattern
+4 explicitly forbid — "Human distress overrides everything") and regardless of relationship stage
+(including brand-new relationships, also explicitly blocked). It also referenced up to 3 goals,
+violating anti-pattern 3 ("never reference more than one goal per response").
+
+Fixed by adding the three doc-specified blocks directly to `_goal_directive` and capping to the
+single highest-relevance goal title. Verified with a new end-to-end test
+(`test_real_layer7_goal_directive_blocked_in_emotional_support_and_shown_in_goal_planning`) that
+runs the real orchestrator through blocked-mode, blocked-stage, and allowed cases.
+
+**Practical effect worth stating plainly**: `conversation_mode` defaults to `casual` for most
+short/neutral turns (Phase 3 finding), and `casual` is one of the three blocked modes — so this
+fix makes goal-accountability injection fire far less often than before (previously: every turn
+with an active goal, unconditionally). This is the architecturally correct behavior per §6.3, but
+it means the feature is now much quieter in practice than CLAUDE.md previously implied.
+
+### 13.2 Not fixed, tracked in `docs/POLISH_BACKLOG.md`
+
+- **The real `GoalContextPacket` (SC-4's actual output) never reaches Layer 4.**
+  `make_goal_writer` calls `run_goal_pipeline` and discards the returned `Layer7Output` entirely
+  — every field SC-4 exists to produce (`reference_type`, `response_instruction`,
+  `tone_instruction`, `goal_reference_position`, `max_goal_reference_chars`) is computed *after*
+  the response has already been delivered, because `make_goal_writer` runs in the post-turn write
+  chain (Layer 2 is read-only during inference, by design). `_goal_directive`'s hand-rolled
+  directive (§13.1) is what actually reaches the prompt. Reconciling this needs SC-2/3/4 to run
+  pre-generation for the current turn, which is a structural pipeline-ordering question, not a
+  small fix.
+- **SC-5 (Goal Decomposer) never runs; `Goal.milestones` is always `[]` and `Goal.deadline` is
+  never populated from extraction.** `engine.py`'s `Goal(...)` construction does not set
+  `deadline` from the extractor's `deadline_description`/`has_explicit_deadline` fields (and the
+  extractor itself only returns a free-text description, never a parsed date — date parsing from
+  natural language isn't implemented anywhere in the codebase). Combined with SC-5 being unwired,
+  every extracted goal has no deadline and no milestones. **This corrects a Phase 6 claim**: Layer
+  6's `api/proactive_gen.py::goal_checkin_item` was documented as "the one live intake contract"
+  producing real candidates, but `_nearest_future_target` requires either a milestone or a
+  deadline date to find anything — so for goals extracted through the live pipeline, it returns
+  `None` on every turn. The goal→proactive intake is wired correctly; it just has no real input to
+  act on yet.
+
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*
