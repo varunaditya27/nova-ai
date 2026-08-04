@@ -427,4 +427,49 @@ Larger, real feature work (not fixed inline):
 
 ---
 
-<!-- Next phase (Layer 13 — Onboarding) appends its section below this line. -->
+## Layer 13 — Onboarding & Cold Start (audited 2026-08-04)
+
+Zero bugs in the module — every file faithfully implements its spec section, all 66 tests pass.
+Fixed two stale "wired by the orchestrator in production" claims inline (module docstring +
+architecture doc §12.2) — no behavior change, just correcting what the code/doc say about
+themselves. The most unwired layer of the whole 13-layer pass: only the active-elicitation queue
+has a production caller (via a lighter reimplementation in `api/elicitation.py`, not the spec'd
+`ElicitationSurfacingPolicy`/`ColdStartEngine`). Full detail: `docs/layer-13-architecture.md` §13.
+
+- **Elicitation answers are asked but never captured.** Nova asks "what should I call you?" and
+  "are you a student, or working?" (the two active-elicitation questions with real natural
+  triggers wired live) but `PostgresOnboardingStore.record_elicitation` only persists that the
+  *question* was surfaced, never the user's *answer* — no code path writes `user_handle` or
+  `life_phase` anywhere. The question exists purely to have been asked once. Fix: capture the
+  next user turn following a surfaced identity/life-context question (or run a small extraction
+  pass over it) and persist the answer into onboarding state / Layer 2 semantic memory. This is
+  the single highest-value gap found in this layer — small in code, meaningfully broken in
+  product experience.
+- **`PassiveElicitationEngine` (8 extractors: vocabulary, emotional style, topic approach,
+  disclosure comfort, named people, life context, urgency, communication style) never runs in
+  production.** All of Layer 13's "infer before asking" design principle — half the point of the
+  layer — is inert. Wiring it means running `extract()` per turn and feeding results into
+  whatever replaces/extends `PostgresOnboardingStore`'s state.
+- **Production graduation criteria are unreachable, not just simplified.** The real
+  `GraduationEvaluator` requires `user_handle`, `life_phase`, `communication_style_profile`, and
+  `emotional_baseline_calibrated` to be populated — fields only `ColdStartContextBuilder` writes,
+  and nothing calls it. `PostgresOnboardingStore` graduates on a bare session counter instead
+  (`session_index >= 5`) because it's the only signal actually available. A real fix means either
+  building production up to populate `InitialState` for real, or formally retiring
+  `GraduationEvaluator`/`ColdStartContextBuilder`/`FeaturePacingController`/`ColdStartEngine` as
+  aspirational-but-superseded and updating the architecture doc to match the session-counter
+  design that's actually running. Worth a deliberate decision, not a silent default.
+- **`ElicitationSurfacingPolicy` vs. `api/elicitation.py`'s ad hoc reimplementation** — behaviorally
+  stricter today (not a safety issue) but the two have diverged from a single spec. Reconcile by
+  either calling the real policy class from `api/elicitation.py`, or deleting the unused class and
+  updating the doc to describe the simpler rate limit that's actually enforced.
+- **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` is fully unwired** (already flagged
+  in the 2026-07-07 "Live integration update" note; confirmed with a fresh grep this pass). No
+  feature in Nova is gated or introduced via this mechanism — features are either always-on or
+  gated ad hoc elsewhere (e.g. cold-start's own `proactivity_mode="observe_only"`).
+
+---
+
+All 13 layers now audited. This file is the durable record of what each pass found beyond what
+was safe to fix inline — see each `## Layer N` section above for the audited-date and the linked
+`docs/layer-N-architecture.md` §"Live wiring status" for full detail.
