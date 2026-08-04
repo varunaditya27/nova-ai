@@ -356,4 +356,31 @@ deriving records from the same per-episode `emotion_vector` data already read el
 
 ---
 
-<!-- Next phase (Layer 11 — Safety) appends its section below this line. -->
+## Layer 11 — Safety & Crisis Architecture (audited 2026-08-04)
+
+The best-built and best-wired layer of the entire audit pass: zero bugs found, and — unlike every
+other layer — all four sub-components have real production callers (SC-1 guardrails post-gen on
+every response, SC-2 crisis detection on every message, SC-3 escalation on the veto path, SC-4
+dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-architecture.md`
+§15.
+
+- **SC-2's semantic + longitudinal detection layers never fire live — lexical-only in practice.**
+  `evaluate(message)` is called with no `semantic_fn` (no fine-tuned classifier deployed) and no
+  `episodic_memories`/`emotional_records` (SC-2 must run before Layer 2's recall completes, by
+  design, so there's no cheap forward — needs a dedicated, decoupled recent-episodes query). Not a
+  live safety hole (Layer 3's independent lexical crisis check still ORs into the same veto), but
+  the doc's three-layer defense-in-depth is really one layer live. Real feature work: deploy/inject
+  a semantic classifier, and add a lightweight episode query that doesn't depend on the main recall
+  path completing first.
+- **`SafetyRecord`'s tamper-evident hash chain (§8) is unused.** `PostgresSafetyLog` persists
+  crisis events as plain JSONB with no cryptographic chain — the "safety is a verifiable property"
+  design principle doesn't hold for the safety log today, even though Layer 2 and Layer 12 each
+  have their own working hash-chained audit trails. Fix: store `content_hash`/`previous_entry_hash`/
+  `chain_hash` in the existing JSONB payload (no migration needed) and read the previous row's
+  `chain_hash` before each write. Scoped, but real work — not a one-line forward.
+- **`region` is hardcoded to `"india"`** — one instance of the cross-cutting `config/layerN.yaml`
+  gap already tracked under Layer 1 (files are merged into config but never read by layer code).
+
+---
+
+<!-- Next phase (Layer 12 — Privacy) appends its section below this line. -->

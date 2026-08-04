@@ -1437,4 +1437,47 @@ This independence — a dedicated classifier that the conversation cannot reach 
 
 ---
 
+## 15. Live wiring status (Phase 11 polish pass, 2026-08-04)
+
+`backend/layer11_safety/` is the best-built module audited in this pass: no bugs found. All four
+sub-components have real, live production callers — SC-1 (`run_all_checks`) post-generation on
+every response, SC-2 (`evaluate`) on every message via the orchestrator's independent crisis scan,
+SC-3 (`generate_crisis_response`) on the veto path, SC-4 (`compute_dependency_score`) weekly via
+`background/dependency_monitor_job.py`. This is unlike every other layer audited so far — nothing
+here needed fixing, and the gaps below are genuine, scoped feature work rather than wiring bugs.
+
+- **SC-2's semantic and longitudinal detection layers never receive real data live — only the
+  lexical layer fires.** `api/assembly.py::safety_scan` calls `evaluate(message)` with no
+  `semantic_fn`, `episodic_memories`, `emotional_records`, or `session_context`. This is partly
+  architectural, not an oversight: SC-2 must run before/parallel to Layer 2's memory recall (§2 —
+  "cannot be blocked by any other pipeline step"), and the orchestrator's `_safe_safety_scan` runs
+  before `ctx.recalled_memories` is populated, so there's no cheap way to thread episodic/emotional
+  history in without a dedicated, decoupled query. No semantic classifier model is deployed either
+  (matches §14's note that the real fine-tuned model is "wired by the pipeline" — aspirationally).
+  Practical effect: SC-2's independent scan is lexical-only today. This isn't a live safety hole —
+  Layer 3 runs its own independent lexical crisis check that ORs into the same veto (Phase 3
+  finding) — but the doc's three-layer defense-in-depth (§4.3) is really one layer, live, doubled.
+- **`SafetyRecord`'s tamper-evident SHA-256 hash chain (§8) is never used.** The live persistence
+  path, `infra/db/safety_store.py::PostgresSafetyLog`, is a plain append-only JSONB table with no
+  `content_hash`/`previous_entry_hash`/`chain_hash` fields — none of §8's cryptographic
+  tamper-evidence exists for crisis/safety events specifically (Layer 2's episodic memory and
+  Layer 12's privacy deletions each have their own separate hash-chained audit trail; Layer 11's
+  own dedicated one, `safety_record.py`, sits unused). This is worth taking seriously: design
+  principle 4 states "safety is not just a behavior — it is a verifiable property," and today that
+  property doesn't hold for the safety log specifically. Wiring it needs either a schema change (a
+  few JSONB-storable fields) or storing the chain fields inside the existing `payload` column, plus
+  reading the previous row's `chain_hash` before each write — real, scoped work, not a one-line fix.
+- **The `SafetyAgent` coordinator class (§7) has zero callers — not a gap.** `api/assembly.py`
+  calls the SC-1/2/3/4 functions directly; `ConversationOrchestrator` implements the equivalent
+  coordination logic itself (crisis veto OR-ing, post-generation guardrails). Confirmed during the
+  Phase 3 audit that this produces the same effective behavior the doc's `SafetyAgent.
+  process_incoming_message` specifies — recorded here as an as-built deviation, not a live gap.
+- **`region` is hardcoded to `"india"` everywhere** (`build_pipeline_steps(region="india")`,
+  never overridden). One instance of the already-documented cross-cutting gap that
+  `config/layerN.yaml` files (here, `config/layer11.yaml`'s `default_region: india`) are merged
+  into config but never read by layer code (see the Layer 1 entry in `docs/POLISH_BACKLOG.md`).
+  Not urgent given the system's current single-user scope.
+
+---
+
 *This document specifies Layer 11 completely. All four sub-components — SC-1 Ethical Guardrails (all six checks with full implementations: ManipulationPatternCheck, ArtificialUrgencyCheck, ValidationRatioCheck, VulnerabilityExploitCheck, SycophancyDriftCheck, BoundaryViolationCheck; the permitted vs. forbidden anthropomorphism table; GuardrailViolation and GuardrailLogEntry schemas), SC-2 Crisis Detection Engine (CrisisTier definitions, CrisisSignal schema, three-layer detection pipeline with lexical patterns for all tiers, semantic classifier integration, longitudinal signal evaluation algorithm, signal fusion rules with tier-specific confidence thresholds, false positive management rules with TIER_CONFIDENCE_THRESHOLDS as a proper top-level constant), SC-3 Escalation Protocol (CrisisModeState and CrisisModeConstraints schemas; full 5-step Tier 1 protocol with example language and constraints; full 4-step Tier 2 protocol; Tier 3 system state change specification; absolute prohibitions list; regional crisis resource registry), and SC-4 Dependency Monitor (14 DependencyIndicators with categories, weights, and detection methods; DependencyScore schema and computation algorithm; tier thresholds; all four graduated intervention scripts; 4 hard architectural limits with example language and frequency constraints) — are fully specified. The Safety Agent coordination architecture, SafetyRecord audit trail with tamper-evident chain, access policy, error handling for all failure cases, performance targets, and design principles are all explicitly defined. Layer 11 is the single source of truth for crisis and safety (Section 12): there is no second crisis system — Layer 8 is Tool Use & Actions and has no crisis role. Section 12 specifies how crises reach Layer 11, its veto authority over the response pipeline, and the semantic classifier's injection-resistance properties. No behavior of Layer 11 requires assumptions or inferences from other documents.*
