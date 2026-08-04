@@ -125,6 +125,25 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     embedder = _EmbedderAdapter(embed)
     veto_tiers = {CrisisTier.TIER_1.value, CrisisTier.TIER_2.value}
 
+    # Recall runs before Layer 3 classification by design (docs/NOVA_AI_MASTER_ARCHITECTURE.md §3
+    # step 3 vs step 5), so recall_scorer's mood-congruent emotional_component has no Layer-3
+    # EmotionClassification to use. Layer 1's composite_emotional_prior — a single [0,1]
+    # pre-linguistic vulnerability signal — is the only "current emotion" proxy available this
+    # early, so we map it onto valence/arousal rather than passing a hardcoded neutral vector
+    # (which would make the β=0.30 component favor neutral-toned memories on every single turn,
+    # backwards from the mood-congruent-recall design intent). Below the confidence floor, or
+    # if Layer 1 didn't run, fall back to neutral rather than trusting a low-signal prior.
+    _EMOTION_PRIOR_CONFIDENCE_FLOOR = 0.3
+
+    def _emotion_from_input_packet(input_packet) -> EmotionVector:
+        prior = getattr(input_packet, "composite_emotional_prior", None)
+        confidence = getattr(input_packet, "prior_confidence", 0.0) or 0.0
+        if prior is None or confidence < _EMOTION_PRIOR_CONFIDENCE_FLOOR:
+            return EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral")
+        prior = max(0.0, min(1.0, prior))
+        return EmotionVector(valence=-prior, arousal=prior,
+                             dominant_label="neutral" if prior < 0.3 else "vulnerable")
+
     def perceive(user_id, message, now, session_id=""):
         profile_store = None
         behavior_baseline = None
@@ -170,7 +189,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 recall_store = memory_store
         packet = _run(memory_arbiter(
             user_id, query,
-            EmotionVector(valence=0.0, arousal=0.0, dominant_label="neutral"),
+            _emotion_from_input_packet(input_packet),
             ConversationMode(default_mode), datetime.now(timezone.utc),
             store=recall_store, embedder=embedder))
         return list(getattr(packet, "recalled_memories", []) or [])

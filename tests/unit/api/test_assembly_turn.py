@@ -66,6 +66,39 @@ def test_recall_hook_uses_configured_default_mode(monkeypatch):
     assert seen_modes == [ConversationMode.GOAL_PLANNING]
 
 
+def test_recall_favors_distressed_memory_when_input_packet_signals_vulnerability():
+    """recall_scorer's mood-congruent component (beta=0.30) should track Layer 1's
+    composite_emotional_prior, not a hardcoded neutral vector -- otherwise it systematically
+    favors neutral-toned memories every turn, backwards from the documented intent."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    common = dict(embedding=[1.0, 1.0, 1.0], S_current=1.0, importance_score=0.5,
+                 decay_rate=0.05, created_at=now, user_id="u1")
+    distressed = EpisodicMemory(summary="the distressed one",
+                                emotion_vector=EmotionVector(valence=-0.7, arousal=0.8), **common)
+    neutral = EpisodicMemory(summary="the neutral one",
+                             emotion_vector=EmotionVector(valence=0.0, arousal=0.0), **common)
+    store.save_episodic(distressed)
+    store.save_episodic(neutral)
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store)
+
+    high_vulnerability = SimpleNamespace(raw_message="hey", composite_emotional_prior=0.8,
+                                         prior_confidence=0.9)
+    recalled = steps.recall("u1", high_vulnerability)
+    assert recalled and recalled[0].memory.summary == "the distressed one"
+
+    low_vulnerability = SimpleNamespace(raw_message="hey", composite_emotional_prior=0.05,
+                                        prior_confidence=0.9)
+    recalled = steps.recall("u1", low_vulnerability)
+    assert recalled and recalled[0].memory.summary == "the neutral one"
+
+
 def test_perceive_uses_profile_provider_instead_of_cold_start():
     """A wired profile_provider should make Layer 1 see real history, not a fresh cold start."""
     from datetime import datetime, timezone

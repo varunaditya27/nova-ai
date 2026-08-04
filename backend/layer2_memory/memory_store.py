@@ -1,9 +1,10 @@
 """In-memory memory store + UWM query interface (architecture doc §7.9, §11, §13).
 
 The backing storage for episodic / semantic / identity memories and the User World Model.
-Production persists these in SQLite + SQLCipher (on-device) with an hnswlib vector index;
-this in-process implementation is the default behind the same interface, used in tests and
-before a DB store is wired. The Memory Arbiter and State Updater are the only callers.
+Production persists these in PostgreSQL (``infra/db/memory_store.py``) with ChromaDB for the
+vector index (see §19) — this in-process implementation is the default behind the same
+interface, used in tests and before a DB store is wired. The Memory Arbiter and State Updater
+are the only callers.
 """
 
 from __future__ import annotations

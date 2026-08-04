@@ -43,4 +43,49 @@ feeds it. Full detail: `docs/layer-1-architecture.md` §16.
 
 ---
 
-<!-- Next phase (Layer 2 — Memory) appends its section below this line. -->
+## Layer 2 — Cognition & Memory (audited 2026-08-04)
+
+Same shape as Layer 1: every module has a real caller (production or its own tested public API),
+no unreachable code. But five of the eight sub-components are complete and tested in isolation
+with **zero live production callers** — bigger in aggregate than Layer 1's gaps, because each one
+needs a new detector, table, or LLM step rather than a small adapter. Full detail:
+`docs/layer-2-architecture.md` §20.
+
+- **User World Model is never created for any real user.** `UserWorldModel(` is constructed only
+  in tests. `state_updater`'s UWM step only bumps `update_version` on an *existing* row — nothing
+  creates the first one — so `store.load_uwm(user_id)` always returns `None` live, which means
+  `arbiter._attach_uwm` always sets `uwm_unavailable=True` and `uwm_context` is always the empty
+  default. The entire profile/relationship-graph/life-context/psychological-model/communication-
+  model structure (`schemas.py`, ~160 lines) is unused live. Needs a real extraction+merge step
+  (an "UWM updater," referenced by `state_updater`'s own comment but not implemented) that reads
+  the turn and updates these fields — a substantial feature, likely LLM-assisted, not a wiring fix.
+- **Identity Memory is never seeded or updated.** `IdentityMemory(` is constructed only in tests;
+  `apply_identity_update` (contradiction-driven belief revision, the resistance-scales-with-
+  centrality mechanism) has zero live callers because nothing ever creates an `IdentityContradiction`
+  to feed it. Nova has no live self-model — `identity_beliefs()` always returns `[]`. Needs (a) an
+  initial seed of core beliefs/values (`scripts/seed_db.py` doesn't touch identity) and (b) a
+  contradiction-detection mechanism, which doesn't exist anywhere in the codebase.
+- **Narrative-chain linking (SC-8, distinct from Layer 1's narrative *threads*) is orphaned.**
+  `detect_narrative_links` is fully implemented and tested but has zero live callers, and there's
+  no persisted `NarrativeChain` table (`infra/db/models/memory.py` has no such model) — so
+  `active_narrative_chains` is always `[]`/`None` live. Needs a store + a call site in the
+  post-turn write path.
+- **Episodic memory extraction is a stub, not the LLM summarization it's typed as.**
+  `state_updater.py`'s `EpisodeExtractor` type alias says "Production wires the Episodic Memory
+  Extractor (LLM summarization)"; the actual production extractor in `api/state.py::
+  make_state_update_writer` is `message[:2000]` — a raw truncation of the current message, one
+  episode per turn, no summarization, no multi-turn synthesis. Works well enough for the recall
+  loop to function end-to-end (confirmed live), but doesn't match what the type alias promises.
+- **STM buffer (SC-1) is never actually accumulated.** `stm.add_turn`/`should_promote` (eviction +
+  promotion-to-episodic logic) are tested but have zero live callers — `api/state.py`'s writer
+  constructs a fresh, empty `ShortTermMemoryBuffer` every single turn and the extractor closure
+  ignores it entirely. The promotion-on-eviction mechanism (high-arousal or life-event-keyword
+  turns get promoted to episodic memory even if never explicitly summarized) never runs.
+- **Recall's `conversation_mode` is always `default_mode`, not the real one — by design, not a
+  gap.** Recall runs before Layer 3 classification (`docs/NOVA_AI_MASTER_ARCHITECTURE.md` §3 steps
+  3 vs 5), so there's no mode signal available yet. Documented in §11.2's as-built note; nothing to
+  fix here.
+
+---
+
+<!-- Next phase (Layer 3 — Reasoning) appends its section below this line. -->

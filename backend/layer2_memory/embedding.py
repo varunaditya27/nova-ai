@@ -1,9 +1,10 @@
 """Embedding utilities for Layer 2 (architecture doc §4.4, §8.2, §17.1).
 
-Production uses all-MiniLM-L6-v2 (384-dim) for vectors and hnswlib (in-process, on-device,
-no server) for the index. Both sit behind ``Embedder`` / ``VectorIndex`` protocols so the
-deterministic, dependency-free implementations here drive tests and offline development, and
-the real backends drop in without touching the memory engine.
+Production uses the Ollama ``nomic-embed-text`` embedder and ChromaDB for the vector index
+(``infra/vector_store/``) — supersedes this doc's original all-MiniLM/hnswlib target, see
+§19. Both sit behind ``Embedder`` / ``VectorIndex`` protocols so the deterministic,
+dependency-free implementations here drive tests and offline development, and the real
+backends drop in without touching the memory engine.
 """
 
 from __future__ import annotations

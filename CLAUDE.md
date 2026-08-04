@@ -78,7 +78,7 @@ Note: Layer 3 uses a separate fast classification model (**Phi-3 Mini 3.8B or Ge
 | # | Module | Role |
 |---|---|---|
 | 1 | `backend/layer1_input/` | Input perception: temporal context (circadian bands, session gap), implicit behavioral signals (latency, deletion, message length), multimodal normalization, voice prosody. Audited (Polish Phase 1): module itself is clean; live wiring gaps tracked in `docs/POLISH_BACKLOG.md` |
-| 2 | `backend/layer2_memory/` | Memory arbiter: STM buffer, Episodic/Semantic/Identity stores, User World Model, recall scoring, forgetting & consolidation, audit trail |
+| 2 | `backend/layer2_memory/` | Memory arbiter: STM buffer, Episodic/Semantic/Identity stores, User World Model, recall scoring, forgetting & consolidation, audit trail. Audited (Polish Phase 2): episodic recall/decay/consolidation loop is live and correct; User World Model, Identity Memory, narrative-chain linking, and STM promotion are complete but never invoked in production — see `docs/POLISH_BACKLOG.md` |
 | 3 | `backend/layer3_reasoning/` | Emotion + intent classification (shared LLM call), Background Emotional State, stated-vs-felt mismatch detection, Empathy Hypothesis, conversation mode resolution |
 | 4 | `backend/layer4_persona/` | Persona State Resolver, Relationship State Manager, tone calibration, Drift Detector, Semantic Planner (Agent 4a), Emotion Refiner (Agent 4b) |
 | 5 | `backend/layer5_relationship/` | Social Graph, interpersonal event tracking, social pattern recognition, coaching opportunity detection and injection |
