@@ -118,6 +118,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          tool_manager=None,
                          goal_provider: Optional[Callable] = None,
                          relationship_provider: Optional[Callable] = None,
+                         uwm_provider: Optional[Callable] = None,
+                         identity_provider: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
@@ -257,6 +259,47 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         tier = getattr(signal, "tier", CrisisTier.NONE.value)
         return _CrisisAssessment(is_crisis=tier in veto_tiers, tier=tier, signal=signal)
 
+    def _uwm_directive(uwm) -> str:
+        """Plain-language brief from the User World Model's profile/relationship-graph/
+        life-context (§7) — never raw scores, matching every other directive in this module.
+        communication_model is intentionally not read here: style_learning.py already owns
+        communication style live, via the relationship-state directive above."""
+        if uwm is None:
+            return ""
+        parts = []
+        p = uwm.profile
+        facts = [f for f in (
+            p.preferred_name and f"goes by {p.preferred_name}",
+            p.current_life_stage if p.current_life_stage != "unknown" else None,
+            p.field_of_study_or_work,
+            p.institution_or_employer and f"at {p.institution_or_employer}",
+        ) if f]
+        if facts:
+            parts.append("What you know about the user: " + ", ".join(facts) + ".")
+        people = sorted(uwm.relationship_graph.people, key=lambda n: n.mention_count, reverse=True)[:3]
+        if people:
+            names = ", ".join(f"{n.name} ({n.relationship_tier})" for n in people)
+            parts.append(f"People who matter to them: {names}.")
+        situations = [s.description for s in uwm.life_context.active_situations if s.status == "active"][:2]
+        if situations:
+            parts.append("Currently going through: " + "; ".join(situations) + ".")
+        if not parts:
+            return ""
+        return (" ".join(parts) + " Weave this in naturally only if relevant — never recite it "
+                "back at them or make it sound like you're reading from a file.")
+
+    def _identity_directive(beliefs) -> str:
+        """Plain-language brief from Nova's own self-model (§6) — top-centrality non-immutable
+        beliefs only. Filters immutable beliefs here too (not just in identity_provider) as
+        defense in depth: immutable safety policies are enforced by Layer 11's separate
+        hard-coded path, not by reminding the LLM every turn, and must never reach this prompt
+        even if some future provider implementation forgets to exclude them itself."""
+        mutable = [b for b in (beliefs or []) if not getattr(b, "is_immutable", False)]
+        if not mutable:
+            return ""
+        traits = "; ".join(b.statement for b in mutable)
+        return f"This reflects who you (Nova) genuinely are: {traits}. Let it show, don't recite it."
+
     def build_persona(ctx):
         """Per-user Layer-4/5 persona packet: loads the persisted relationship state and turns the
         qualitative stage into a plain-language familiarity directive for the planner prompt."""
@@ -283,6 +326,20 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         logger.exception("style directive failed; persona without learned style")
             except Exception:
                 logger.exception("relationship provider failed; using default persona")
+        if uwm_provider is not None:
+            try:
+                directive = _uwm_directive(uwm_provider(ctx.user_id))
+                if directive:
+                    packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
+            except Exception:
+                logger.exception("UWM provider failed; persona without world-model context")
+        if identity_provider is not None:
+            try:
+                directive = _identity_directive(identity_provider(ctx.user_id))
+                if directive:
+                    packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
+            except Exception:
+                logger.exception("identity provider failed; persona without self-model context")
         return packet
 
     # Layer 7 §6.3 hard blocks: never reference goals in these modes, or before the

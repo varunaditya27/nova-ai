@@ -12,7 +12,8 @@ from uuid import UUID
 
 from backend.layer2_memory.memory_store import resolve_uwm_query
 from backend.layer2_memory.schemas import (
-    EpisodicMemory, IdentityMemory, Memory, SemanticMemory, UserWorldModel,
+    ChainStatus, EpisodicMemory, IdentityMemory, Memory, NarrativeChain, SemanticMemory,
+    UserWorldModel,
 )
 import infra.db.models as m
 from infra.db.engine import session_scope
@@ -138,3 +139,26 @@ class PostgresMemoryStore:
 
     def query_uwm(self, user_id, query_type: str, context: str = "") -> dict:
         return resolve_uwm_query(self.load_uwm(user_id), query_type, context)
+
+    # ── Narrative chains (SC-8, §10.3) ──────────────────────────────────
+    def save_narrative_chain(self, user_id, chain: NarrativeChain) -> UUID:
+        with session_scope(self._sf) as s:
+            row = s.query(m.NarrativeChain).filter_by(chain_id=str(chain.chain_id)).one_or_none()
+            if row is None:
+                s.add(m.NarrativeChain(
+                    user_id=str(user_id), chain_id=str(chain.chain_id),
+                    status=chain.status.value, payload=to_jsonable(chain)))
+            else:
+                row.status = chain.status.value
+                row.payload = to_jsonable(chain)
+        return chain.chain_id
+
+    def active_narrative_chains(self, user_id) -> list[NarrativeChain]:
+        """Chains not yet archived — resolved chains stay visible (an arc just concluded), only
+        archived ones (explicitly retired) are excluded."""
+        with session_scope(self._sf) as s:
+            rows = (s.query(m.NarrativeChain)
+                    .filter_by(user_id=str(user_id))
+                    .filter(m.NarrativeChain.status != ChainStatus.ARCHIVED.value)
+                    .all())
+            return [from_jsonable(NarrativeChain, r.payload) for r in rows]

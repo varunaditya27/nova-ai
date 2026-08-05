@@ -159,9 +159,9 @@ class ShortTermMemoryBuffer:
     session_id: UUID
     user_id: UUID
     turns: list[ConversationTurn] = field(default_factory=list)
-    max_turns: int = 40
+    max_turns: int = 100
     total_chars: int = 0
-    char_limit: int = 12000
+    char_limit: int = 30000
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -264,6 +264,19 @@ class BeliefUpdateEvent:
 
 
 @dataclass
+class IdentityEvidence:
+    """One session's contradictory evidence against a belief, with its own strength — distinct
+    from ``BeliefUpdateEvent`` (that records an actual rewrite; this records evidence that hasn't
+    (yet) crossed the update threshold). Structured so accumulated strength can genuinely be
+    summed across sessions (§6.4) — a plain ``list[str]`` of summaries has nowhere to keep the
+    per-event score."""
+    summary: str
+    strength: float = 0.0
+    session_id: Optional[UUID] = None
+    recorded_at: Optional[datetime] = None
+
+
+@dataclass
 class IdentityMemory:
     belief_id: UUID = field(default_factory=uuid4)
     category: IdentityCategory = IdentityCategory.OPINION
@@ -271,7 +284,7 @@ class IdentityMemory:
     centrality: float = 0.5
     update_threshold: float = 0.625
     evidence_for: list[str] = field(default_factory=list)
-    evidence_against: list[str] = field(default_factory=list)
+    evidence_against: list[IdentityEvidence] = field(default_factory=list)
     last_updated: Optional[datetime] = None
     update_history: list[BeliefUpdateEvent] = field(default_factory=list)
     is_immutable: bool = False

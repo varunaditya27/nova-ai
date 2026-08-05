@@ -53,41 +53,86 @@ follow-up, 2026-08-04).
 ## Layer 2 — Cognition & Memory (audited 2026-08-04)
 
 Same shape as Layer 1: every module has a real caller (production or its own tested public API),
-no unreachable code. But five of the eight sub-components are complete and tested in isolation
-with **zero live production callers** — bigger in aggregate than Layer 1's gaps, because each one
-needs a new detector, table, or LLM step rather than a small adapter. Full detail:
-`docs/layer-2-architecture.md` §20.
+no unreachable code. The initial audit found five of the eight sub-components complete and tested
+in isolation with **zero live production callers** — bigger in aggregate than Layer 1's gaps,
+because each one needed a new detector, table, or LLM step rather than a small adapter. As of the
+2026-08-05 follow-up passes below, all eight have real production callers (some narrowed in
+scope — see each bullet's `[done]` note for exactly what's still deferred). Full detail:
+`docs/layer-2-architecture.md` §20 (initial audit), §21 (STM + episodic extraction), §22
+(narrative-chain linking), §23 (User World Model), §24 (Identity Memory).
 
-- **User World Model is never created for any real user.** `UserWorldModel(` is constructed only
-  in tests. `state_updater`'s UWM step only bumps `update_version` on an *existing* row — nothing
-  creates the first one — so `store.load_uwm(user_id)` always returns `None` live, which means
-  `arbiter._attach_uwm` always sets `uwm_unavailable=True` and `uwm_context` is always the empty
-  default. The entire profile/relationship-graph/life-context/psychological-model/communication-
-  model structure (`schemas.py`, ~160 lines) is unused live. Needs a real extraction+merge step
-  (an "UWM updater," referenced by `state_updater`'s own comment but not implemented) that reads
-  the turn and updates these fields — a substantial feature, likely LLM-assisted, not a wiring fix.
-- **Identity Memory is never seeded or updated.** `IdentityMemory(` is constructed only in tests;
-  `apply_identity_update` (contradiction-driven belief revision, the resistance-scales-with-
-  centrality mechanism) has zero live callers because nothing ever creates an `IdentityContradiction`
-  to feed it. Nova has no live self-model — `identity_beliefs()` always returns `[]`. Needs (a) an
-  initial seed of core beliefs/values (`scripts/seed_db.py` doesn't touch identity) and (b) a
-  contradiction-detection mechanism, which doesn't exist anywhere in the codebase.
-- **Narrative-chain linking (SC-8, distinct from Layer 1's narrative *threads*) is orphaned.**
-  `detect_narrative_links` is fully implemented and tested but has zero live callers, and there's
-  no persisted `NarrativeChain` table (`infra/db/models/memory.py` has no such model) — so
-  `active_narrative_chains` is always `[]`/`None` live. Needs a store + a call site in the
-  post-turn write path.
-- **Episodic memory extraction is a stub, not the LLM summarization it's typed as.**
-  `state_updater.py`'s `EpisodeExtractor` type alias says "Production wires the Episodic Memory
-  Extractor (LLM summarization)"; the actual production extractor in `api/state.py::
-  make_state_update_writer` is `message[:2000]` — a raw truncation of the current message, one
-  episode per turn, no summarization, no multi-turn synthesis. Works well enough for the recall
-  loop to function end-to-end (confirmed live), but doesn't match what the type alias promises.
-- **STM buffer (SC-1) is never actually accumulated.** `stm.add_turn`/`should_promote` (eviction +
-  promotion-to-episodic logic) are tested but have zero live callers — `api/state.py`'s writer
-  constructs a fresh, empty `ShortTermMemoryBuffer` every single turn and the extractor closure
-  ignores it entirely. The promotion-on-eviction mechanism (high-arousal or life-event-keyword
-  turns get promoted to episodic memory even if never explicitly summarized) never runs.
+- **User World Model is never created for any real user — `[done]` (2026-08-05, follow-up pass;
+  narrow slice).** New `backend/layer2_memory/uwm_updater.py::merge_uwm_update` (pure merge logic)
+  + `state_updater`'s new optional `uwm_updater_fn` injection point (mirrors `extractor_fn`) +
+  `api/state.py`'s per-turn LLM extraction closure create and merge real UWM rows for
+  `profile`/`relationship_graph`/`life_context`. Read side wired too: `api/assembly.py
+  ::build_persona` now folds a plain-language UWM directive into the planner prompt via a new
+  `uwm_provider`. **Deliberately excluded: `communication_model`** (`backend/layer4_persona
+  /style_learning.py` already owns communication style live — building a second version here
+  would be exactly the "divergent reimplementation pair" this file already warns about) and
+  **`psychological_model`** (attachment/regulation/trigger inference — higher-stakes, separate
+  scoping decision, deferred). See `docs/layer-2-architecture.md` §23 for the full design,
+  including why the read side goes through `build_persona`'s own provider rather than
+  `MemoryPacket.uwm_context` (nothing forwards the full packet past `recall()`'s
+  `list[memory]`-only contract — same finding as §22's narrative-chain read-side gap).
+- **Identity Memory is never seeded or updated — `[done]` (2026-08-05, follow-up pass).**
+  `api/state.py::build_app_state` seeds Nova's self-model idempotently on boot
+  (`backend/layer2_memory/identity_seed.py::default_identity_beliefs` — the 5 immutable safety
+  policies + a small starting personality); a new `backend/layer2_memory/identity.py
+  ::detect_identity_contradictions` (one combined LLM call per turn over all non-immutable
+  beliefs) feeds the pre-existing `apply_identity_update` via `make_identity_writer`; and
+  `make_identity_provider` + `_identity_directive` surface the top-centrality beliefs into the
+  planner prompt via `build_persona`. Along the way, fixed a real doc/schema gap:
+  `IdentityMemory.evidence_against` was `list[str]` with nowhere to hold a contradiction's numeric
+  strength, so multi-session evidence accumulation (§6.3) was structurally impossible before this
+  — promoted to `list[IdentityEvidence]` (structured: summary + strength + session + timestamp).
+  Also caught and fixed in review: the first version left `apply_identity_update`'s `generate_fn`
+  at its offline placeholder default, which would have persisted `"[revised] <statement>"` as
+  Nova's literal belief the first time a threshold was crossed — fixed with a real second LLM
+  call (`api/state.py::_revise_belief_statement`) and a defense-in-depth change to
+  `apply_identity_update` itself (an unchanged/empty `generate_fn` result is now "no update," not
+  a real one). See `docs/layer-2-architecture.md` §24 for the full design, including why a
+  combined single-call detector (not per-belief, not embedding-pre-filtered) was chosen for this
+  app's small, single-user belief set.
+- **Narrative-chain linking (SC-8, distinct from Layer 1's narrative *threads*) is orphaned —
+  `[done]` (2026-08-05, follow-up pass; write path only).** New `narrative_chain` table +
+  `PostgresMemoryStore.save_narrative_chain`/`active_narrative_chains`; `api/state.py
+  ::_link_narrative_chains` calls the existing (already tested) `detect_narrative_links` for every
+  newly-promoted episode, from inside `make_state_update_writer`'s `_extractor`. A first pass of
+  this fix shipped genuinely inert — the formula `0.6·semantic + 0.4·entity_overlap` against a
+  `0.65` threshold can never cross threshold when `entity_overlap` is always `0` (nothing
+  populated `EpisodicMemory.entity_refs`), so linking could never actually fire — caught in
+  review before commit; fixed by extending the existing per-promoted-turn summarization LLM call
+  to also extract named entities into `entity_refs`. See `docs/layer-2-architecture.md` §22 for
+  the full before/after and what's still **not** closed: nothing reads `active_narrative_chains`
+  back into generation — `api/assembly.py::recall`'s hook contract only returns
+  `recalled_memories`, and there's no prompt-building consumer waiting for chains even if it did.
+- **Episodic memory extraction is a stub, not the LLM summarization it's typed as — `[done]`
+  (2026-08-05, follow-up pass, together with the STM item below — they're the same fix).**
+  `api/state.py::make_state_update_writer` now summarizes promoted turns via the injected `system1`
+  LLM (`_summarize_promoted_turn`, with the same best-effort fallback shape as
+  `memory_consolidation_job.py`'s `_generalize`) instead of truncating the raw message. See
+  `docs/layer-2-architecture.md` §21 for the full design (including the deliberate choice not to
+  batch multiple promotable turns into one multi-turn-synthesized episode).
+- **STM buffer (SC-1) is never actually accumulated — `[done]` (2026-08-05, follow-up pass).**
+  New `infra/stm_store.py::InProcessSTMStore` (in-process, per-session, RAM-only, LRU-bounded —
+  matches the "ephemeral" spec exactly for this single-process deployment) accumulates real turns
+  across requests. `make_state_update_writer` checks `should_promote` **on arrival**, immediately
+  for every incoming user turn — an eviction-only first cut was caught in review as producing
+  essentially zero episodes in practice, since real sessions never come close to filling a
+  100-turn window. A second review pass then caught that an *additional* eviction-time check
+  (an earlier version of this fix) was dead code — `should_promote` is pure over a turn's own
+  fields, which never mutate, so a turn that failed on arrival can only fail again at eviction;
+  the eviction-time check and its `promoted_turn_ids` de-duplication guard were removed as
+  unreachable in favor of the single arrival check. See §21 for the corrected design, including
+  the role filter that keeps Nova's own reply text from ever being promoted as if the user said
+  it, and the note that accumulating `stm.turns` still has no prompt-side consumer (§3.1's
+  in-session coherence purpose remains undelivered).
+  `max_turns`/`char_limit` raised from 40/12,000 to 100/30,000 for in-session coherence headroom.
+  **Real behavior change, chosen deliberately:** Nova now remembers far less by default (only
+  emotionally significant or explicitly-flagged moments become long-term memories) — this is what
+  the architecture doc actually specifies, not a regression, but it is a materially different
+  product experience from the "remembers every message" stub it replaces.
 - **Recall's `conversation_mode` is always `default_mode`, not the real one — by design, not a
   gap.** Recall runs before Layer 3 classification (`docs/NOVA_AI_MASTER_ARCHITECTURE.md` §3 steps
   3 vs 5), so there's no mode signal available yet. Documented in §11.2's as-built note; nothing to
