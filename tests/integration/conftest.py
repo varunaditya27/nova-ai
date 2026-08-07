@@ -30,7 +30,7 @@ def make_recording_steps(**overrides):
     def cold_start(user_id, message, session_id=""):
         rec.order.append("L13_coldstart"); return None        # graduated by default
 
-    def classify(message, input_packet, recalled):
+    def classify(user_id, message, input_packet, recalled):
         rec.order.append("L3_classify")
         return SimpleNamespace(crisis_active=False, conversation_mode="casual", complexity="simple")
 

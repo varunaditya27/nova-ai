@@ -406,3 +406,60 @@ def test_real_layer3_wiring_crisis_flag_reaches_orchestrator_veto():
     out = ConversationOrchestrator(steps).run_turn("local-user", "I just can't go on anymore")
     assert out.crisis_active is True
     assert out.conversation_mode == "crisis"
+
+
+def test_real_layer3_wiring_forwards_episodic_memories_to_background_state():
+    """BES (§4) inputs used to be permanently empty (Layer 2's UWM/episodic gap). Now that
+    Layer 2 has a real write path, api/assembly.py::classify pulls active_episodic straight off
+    the same memory_store recall uses -- proves the 14-day valence trend actually reaches
+    compute_background_state through the real classify closure (not a mocked step)."""
+    from datetime import datetime, timedelta, timezone
+    from backend.layer2_memory import InMemoryMemoryStore
+    from backend.layer2_memory.schemas import EmotionVector, EpisodicMemory
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        store.save_episodic(EpisodicMemory(
+            user_id="local-user", summary=f"a hard day {i}",
+            created_at=now - timedelta(days=i + 1),
+            emotion_vector=EmotionVector(valence=-0.8, arousal=0.4)))
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store)
+    packet = steps.classify("local-user", "just checking in", object(), [])
+
+    assert packet.background_state.bes_label != "insufficient_data"
+    assert packet.background_state.valence_14day_mean < -0.3
+
+
+def test_real_layer3_wiring_forwards_uwm_stressors_to_background_state():
+    """active_stressors (§4.2) comes straight off the UWM's life_context -- same Stressor schema
+    compute_stressor_load expects, no translation layer. With near-neutral episodic valence but
+    heavy stressor load, the BES label should reflect the stressor pressure, not just valence."""
+    from datetime import datetime, timedelta, timezone
+    from backend.layer2_memory import InMemoryMemoryStore
+    from backend.layer2_memory.schemas import (
+        EmotionVector, EpisodicMemory, LifeContext, Stressor, UserWorldModel)
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        store.save_episodic(EpisodicMemory(
+            user_id="local-user", summary=f"an ordinary day {i}",
+            created_at=now - timedelta(days=i + 1),
+            emotion_vector=EmotionVector(valence=0.1, arousal=0.3)))
+
+    uwm = UserWorldModel(user_id="local-user", life_context=LifeContext(active_stressors=[
+        Stressor(description="finals week", intensity=1.0, duration_days=10),
+        Stressor(description="job hunt", intensity=1.0, duration_days=10),
+        Stressor(description="family conflict", intensity=1.0, duration_days=10),
+    ]))
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store,
+                                 uwm_provider=lambda uid: uwm)
+    packet = steps.classify("local-user", "just checking in", object(), [])
+
+    assert packet.background_state.stressor_load >= 0.7
+    assert packet.background_state.bes_label == "significant_negative_drift"

@@ -147,26 +147,41 @@ invisible to the test suite because every orchestrator test mocks `classify`) �
 `docs/layer-3-architecture.md` §17 for full detail. This layer had far less "complete but
 unwired" scaffolding than Layers 1-2; most of what's left is smaller connection gaps.
 
-- **`alert_fn` (async CrisisAlert push to Layer 11) is never wired.** Not a safety gap — the
-  orchestrator reads `crisis_active` directly off the returned packet and ORs it with Layer 11's
-  independent scan — but the specific "immediate, before-the-packet-completes" notification
-  behavior the doc describes doesn't happen. Would need `api/assembly.py` to pass a real
-  `alert_fn` that forwards into whatever Layer 11 uses to receive early signals (check whether
-  Layer 11's `evaluate()` even has a push-receiving counterpart, or whether this is redundant
-  with SC-2's own scan and not worth wiring at all).
+- **`alert_fn` (async CrisisAlert push to Layer 11) is never wired.** [investigated 2026-08-07,
+  left unwired] Confirmed Layer 11's `evaluate()` (`backend/layer11_safety/crisis_classifier.py`)
+  has no push-receiving counterpart at all — building one would be new Layer 11 surface, not a
+  wiring fix. Also confirmed redundant with what already runs: the orchestrator already pulls
+  `crisis_active` directly off the returned packet, and Layer 11's own SC-2 scan already runs in
+  parallel with the whole pipeline independent of any push. Wiring `alert_fn` would add no safety
+  value today — leave unwired; revisit only if Layer 11 ever grows an async intake worth feeding.
 - **SC-1 and SC-3 each call `llm_fn` separately** — two LLM calls per turn, not the single shared
   small-model call §14.2 describes. Not a correctness bug (both calls work), but a latency/cost
   gap relative to the documented design. Would need `packet_builder.py` restructured so one LLM
-  response feeds both classifiers.
-- **BES (Background Emotional State) inputs are never forwarded.** `episodic_memories`,
-  `active_stressors`, `psychological_model` all default to empty/`None` in
-  `api/assembly.py::classify` — consistent with Layer 2's finding that the User World Model and
-  real episodic-memory querying are inert live, so there's nothing real to forward yet. Closes
-  automatically once Layer 2's UWM gap does.
-- **`relationship_depth` and `advice_frustration_count` are never forwarded**, despite
-  `PostgresRelationshipStore` (Layer 4/5) having real session/message counts that could derive a
-  `relationship_depth` proxy today (`relationship_provider` already exists — this is a small
-  adapter, similar in shape to Layer 1's temporal-profile fix).
+  response feeds both classifiers. [2026-08-07: explicitly deferred by the user — real
+  engineering work (prompt/parse contracts for both classifiers, partial-failure degradation),
+  not a quick wiring fix.]
+- **[done, 2026-08-07]** BES (Background Emotional State) inputs — `episodic_memories` and
+  `active_stressors` now forwarded live in `api/assembly.py::classify`
+  (`memory_store.active_episodic(user_id)` / `uwm.life_context.active_stressors`), now that
+  Layer 2's UWM/episodic write path is real. A serious bug was caught and fixed in the same pass:
+  the first version crashed on every turn with real episodic data (naive vs. tz-aware datetime
+  subtraction inside `compute_background_state`'s `_recent()`), silently swallowed by `_safe()`
+  down to `insufficient_data` — see `docs/layer-3-architecture.md` §18. `psychological_model`
+  stays unforwarded (`None`) — out of the UWM narrow-slice's scope (Layer 2 §23), not a Layer 3
+  gap.
+- **`relationship_depth` and `advice_frustration_count` are still never forwarded.** [investigated
+  2026-08-07, blocked] `relationship_depth`'s natural source is `RelationshipState.tie_strength`
+  — but confirmed that field is never actually updated live: `PostgresRelationshipStore.record_turn`
+  (`infra/db/relationship_store.py`) advances message/session counters and stage but never calls
+  `relationship_manager.compute_relationship_state`/`update_tie_strength`, so `tie_strength` stays
+  pinned at `0.0` forever in production. Forwarding it as-is would just forward a constant zero —
+  the same class of bug this pass exists to catch, not fix. The real fix is a Layer 4 gap (wire
+  `record_turn` to actually compute tie-strength deltas per session), tracked here for whoever
+  picks up Layer 4's remaining backlog. `advice_frustration_count` has no real source anywhere in
+  the codebase — inventing one from `unsolicited_advice_tolerance` (a differently-shaped EMA
+  preference score, not a count) would be exactly the "reimplement rather than wire to the real
+  module" anti-pattern CLAUDE.md warns against; needs a real tracked counter (Layer 4/5 feature
+  work) before this can close.
 - **`composite_prior`'s prior-adjustment branch is forwarded but still unreachable.** Verified
   directly: with Layer 1's `implicit_intensity` pinned at 0.10, `composite_prior` cannot exceed
   ~0.39, below `integrate_prior`'s `> 0.6` gate. Reopens once Layer 1's implicit-signal gap

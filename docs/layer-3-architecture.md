@@ -1335,10 +1335,41 @@ This branch stays dormant until Layer 1's implicit-signal gap (`docs/POLISH_BACK
 Layer 11) is never wired — crisis safety is unaffected (see above) but the specific "immediate
 async notification" behavior §3.6 and §16.3 describe doesn't happen; `llm_fn` is called twice
 per turn (once each for SC-1 and SC-3) rather than the single shared call §14.2 describes;
-`episodic_memories`/`active_stressors`/`psychological_model` are never forwarded to the
-Background Emotional State tracker (consistent with Layer 2's finding that the User World Model
-and episodic-memory-based BES inputs are inert live); `relationship_depth` and
-`advice_frustration_count` are never forwarded either.
+`relationship_depth` and `advice_frustration_count` are never forwarded either.
+
+## 18. BES inputs wired live (Phase 3 polish pass, follow-up, 2026-08-07)
+
+Layer 2's UWM/episodic-memory work (§22-24 of the Layer 2 doc) unblocked the BES gap this
+document's §17 flagged as dormant. `api/assembly.py::classify` now forwards:
+
+- **`episodic_memories`** — `memory_store.active_episodic(user_id)`, the same store `recall`
+  already uses; drives the 14-day valence trend (§4.2).
+- **`active_stressors`** — `uwm.life_context.active_stressors` off the same `uwm_provider`
+  Layer 2's persona directive uses; the UWM's `Stressor` dataclass is exactly the shape
+  `compute_stressor_load` expects, so no adapter/translation was needed.
+
+**Not forwarded:** `psychological_model` stays `None` — the UWM narrow-slice scope decision
+(Layer 2 §23) deliberately excluded `psychological_model` from extraction, so there is nothing
+real to forward yet; this closes automatically if that scope is ever revisited.
+
+**Bug found and fixed in review:** the first version of this wiring passed real, timezone-aware
+`EpisodicMemory.created_at` values (stamped `datetime.now(timezone.utc)` by
+`make_state_update_writer`) into `compute_background_state`, whose own `now` default is naive
+(`datetime.utcnow()`). `_recent()`'s `(now - m.created_at).days` then raises
+`TypeError: can't subtract offset-naive and offset-aware datetimes` on every turn once any real
+episodic memory exists — caught by `_safe()`'s blanket exception handling, so the BES silently
+degraded to `insufficient_data` with zero visible error. Caught via
+`test_real_layer3_wiring_forwards_episodic_memories_to_background_state`, which failed with
+`stressor_load=0.0`/`bes_label=insufficient_data` despite 3 real, strongly negative episodes.
+Fixed by having `classify` pass an explicit `now=datetime.now(timezone.utc)` into
+`build_emotion_intent_packet` — narrowly scoped to this call site rather than changing
+`background_state.py`'s own default, since the naive-`datetime.utcnow()` pattern is shared by
+several other layers (5, 10, 12) and reconciling it project-wide is out of scope here.
+
+**Decision, not a gap:** SC-1/SC-3's two-LLM-calls-per-turn restructuring (§14.2's single shared
+call) was explicitly deferred to the backlog rather than implemented this pass — real
+engineering work (prompt/parse contracts for both classifiers, partial-failure degradation
+semantics), not a wiring fix, and both calls work correctly today.
 
 ---
 

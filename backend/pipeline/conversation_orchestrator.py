@@ -42,7 +42,7 @@ class PipelineSteps:
     perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id) -> input_packet
     recall: Optional[Callable] = None           # L2  (user_id, input_packet) -> list[memory]
     cold_start: Optional[Callable] = None       # L13 (user_id, message) -> directives | None
-    classify: Optional[Callable] = None         # L3  (message, input_packet, recalled) -> EI
+    classify: Optional[Callable] = None         # L3  (user_id, message, input_packet, recalled) -> EI
     safety_scan: Optional[Callable] = None      # L11 SC-2 (user_id, message, input_packet) -> CA
     build_persona: Optional[Callable] = None    # L4  (ctx) -> persona_packet
     tool_use: Optional[Callable] = None         # L8  (ctx) -> ToolTurnOutcome | None
@@ -166,7 +166,7 @@ class ConversationOrchestrator:
             self._apply_cold_start_overlay(ctx)
 
             # ── Layer 3: emotion + intent classification, mode resolution ───
-            ctx.emotion_intent = s.classify(message, ctx.input_packet, ctx.recalled_memories)
+            ctx.emotion_intent = s.classify(user_id, message, ctx.input_packet, ctx.recalled_memories)
             ctx.conversation_mode = getattr(ctx.emotion_intent, "conversation_mode", "casual")
             ctx.layers_run.append("layer3_reasoning")
 

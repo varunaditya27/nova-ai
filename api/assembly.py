@@ -241,17 +241,45 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 primary_intent="chitchat", secondary_intent=None, intent_confidence=0.3,
                 needs_advice=False)
 
-    def classify(message, input_packet, recalled):
+    def classify(user_id, message, input_packet, recalled):
         # Forward the Layer 1 signals that are real in production (Phase 1/2 audits). NOT
         # implicit_intensity: Layer 1 pins it at exactly 0.10 live (no client behavioral data
         # yet), and the neutral-skip heuristic's gate is `< 0.1` — forwarding it would disable
         # that gate on every single turn. See docs/POLISH_BACKLOG.md.
+        #
+        # BES inputs (§4): now real, since Layer 2's UWM/episodic-memory work landed.
+        # episodic_memories drives the 14-day valence trend; active_stressors comes straight off
+        # the UWM's life_context (same Stressor schema compute_stressor_load expects — no
+        # translation needed). psychological_model is NOT forwarded: the UWM narrow-slice scope
+        # decision excluded it (still unextracted, would only ever be None).
+        episodic_memories = []
+        active_stressors = []
+        try:
+            episodic_memories = memory_store.active_episodic(user_id)
+        except Exception:
+            logger.exception("BES episodic lookup failed; classifying without valence trend")
+        if uwm_provider is not None:
+            try:
+                uwm = uwm_provider(user_id)
+                if uwm is not None:
+                    active_stressors = uwm.life_context.active_stressors
+            except Exception:
+                logger.exception("BES stressor lookup failed; classifying without stressor load")
         return build_emotion_intent_packet(
             message,
             circadian_band=getattr(input_packet, "circadian_band", "afternoon"),
             composite_prior=getattr(input_packet, "composite_emotional_prior", 0.0) or 0.0,
             prior_confidence=getattr(input_packet, "prior_confidence", 0.0) or 0.0,
             signal_mismatch_flag=getattr(input_packet, "signal_mismatch", False),
+            episodic_memories=episodic_memories,
+            active_stressors=active_stressors,
+            # Explicit tz-aware `now`: compute_background_state's own default is naive
+            # (`datetime.utcnow()`), but real EpisodicMemory.created_at is stamped tz-aware
+            # (see make_state_update_writer) -- without this, comparing the two inside
+            # `_recent()` raises on every turn once real episodic data exists, and the BES
+            # silently degrades to insufficient_data (caught via
+            # test_real_layer3_wiring_forwards_episodic_memories_to_background_state).
+            now=datetime.now(timezone.utc),
             llm_fn=_json_classifier)
 
     def safety_scan(user_id, message, input_packet):
