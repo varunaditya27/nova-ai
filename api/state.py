@@ -30,6 +30,12 @@ from infra.db.safety_store import PostgresSafetyLog
 from infra.db.onboarding_store import PostgresOnboardingStore
 from infra.db.relationship_store import PostgresRelationshipStore
 from infra.db.proactive_store import PostgresProactiveQueue
+from infra.db.social_store import PostgresSocialStore
+from backend.layer5_relationship import (
+    resolve_entity, infer_relationship_from_context, create_node, extract_events,
+    is_tentative_match,
+)
+from backend.layer5_relationship.schemas import RelationshipType, SocialGraph
 from backend.layer7_goals.schemas import GoalStatus
 from api.assembly import build_pipeline_steps
 from api.proactive_gen import goal_checkin_item
@@ -166,23 +172,24 @@ def _link_narrative_chains(store, user_id, new_episodes: list, now: datetime) ->
 
 
 def _extract_uwm_signals(client, message: str) -> dict:
-    """LLM extraction of User World Model signals from one message — profile facts, people
-    mentioned, and active life situations/stressors (§7's schema, narrowed: communication_model
-    is deliberately excluded here, see backend/layer2_memory/uwm_updater.py's docstring). Returns
-    ``{}`` (a no-op for the merge step) when there's no client or the call/parse fails — matches
-    the best-effort fallback shape used throughout this module (§15)."""
+    """LLM extraction of User World Model signals from one message — profile facts and active
+    life situations/stressors (§7's schema, narrowed: communication_model is deliberately
+    excluded here, see backend/layer2_memory/uwm_updater.py's docstring). NOT people: Layer 5's
+    social-graph extraction (_extract_social_mentions, below) is the one place that resolves
+    person mentions now — its result is projected onto UWM.relationship_graph.people by
+    make_social_writer, rather than this call asking the LLM the same question a second time
+    (see docs/layer-5-architecture.md's live-wiring notes). Returns ``{}`` (a no-op for the
+    merge step) when there's no client or the call/parse fails — matches the best-effort
+    fallback shape used throughout this module (§15)."""
     if client is None or not message:
         return {}
     prompt = (
         "Read this message from a user talking to their AI companion. Return ONLY JSON with up "
-        "to 4 keys, including only what this message actually states or clearly implies -- omit "
+        "to 3 keys, including only what this message actually states or clearly implies -- omit "
         "a key entirely if there's nothing to report, never guess or invent:\n"
         "\"profile\": object with any of preferred_name, pronouns, current_life_stage, "
         "field_of_study_or_work, institution_or_employer, career_goals_summary, "
         "likely_living_situation (strings) that this message reveals about the user themself;\n"
-        "\"people\": list of {\"name\", \"relationship_tier\" (e.g. family/friend/partner/"
-        "colleague), \"traits\": [short strings]} for specific people (not the user) named in "
-        "this message;\n"
         "\"situations\": list of {\"description\", \"category\", \"emotional_weight\" (0-1)} for "
         "ongoing life situations mentioned (a project, a move, an illness, etc.);\n"
         "\"stressors\": list of {\"description\", \"category\", \"intensity\" (0-1)} for things "
@@ -195,8 +202,132 @@ def _extract_uwm_signals(client, message: str) -> dict:
         return {}
 
 
+def _extract_social_mentions(client, message: str) -> list[dict]:
+    """LLM extraction of named third-party people mentioned in one message — the one place
+    person mentions are resolved now (see _extract_uwm_signals above). Returns a short context
+    snippet per mention for social_graph.infer_relationship_from_context/resolve_entity to work
+    from, rather than asking the LLM to classify the relationship type itself — that's the real
+    SC-1 function's job, this call only surfaces raw mentions."""
+    if client is None or not message:
+        return []
+    prompt = (
+        "Read this message from a user talking to their AI companion. Return ONLY JSON: "
+        "{\"mentions\": [{\"name\", \"context\"}]} for each specific, named third party (not the "
+        "user, not Nova) the message talks about -- a first name, nickname, or relationship term "
+        "used as a name (\"my sister\") counts. \"context\" is a short quote from the message "
+        "around that mention (for figuring out the relationship type from wording like "
+        "\"my sister\" or \"my coworker\"). Omit anyone not specifically named/referenced -- never "
+        "invent people. If no one is mentioned, return {\"mentions\": []}.\n\nMessage:\n\n"
+        + message[:4000])
+    try:
+        from infra.llm.json_extract import extract_json
+        data = json.loads(extract_json(client.complete(prompt)))
+        mentions = data.get("mentions") if isinstance(data, dict) else None
+        return [m for m in mentions if isinstance(m, dict) and m.get("name")] if mentions else []
+    except Exception:
+        return []
+
+
+# Layer 5's richer RelationshipType -> the loose free-text tier PersonNode.relationship_tier
+# expects (§7's UWM schema predates Layer 5's richer taxonomy; this is a lossy display mapping,
+# not a second classification -- the real classification is infer_relationship_from_context's).
+_RELATIONSHIP_TIER_MAP = {
+    RelationshipType.FAMILY_IMMEDIATE.value: "family",
+    RelationshipType.FAMILY_EXTENDED.value: "family",
+    RelationshipType.ROMANTIC_PARTNER.value: "partner",
+    RelationshipType.CLOSE_FRIEND.value: "friend",
+    RelationshipType.FRIEND.value: "friend",
+    RelationshipType.ONLINE_FRIEND.value: "friend",
+    RelationshipType.COLLEAGUE.value: "colleague",
+    RelationshipType.PEER_PROFESSIONAL.value: "colleague",
+    RelationshipType.MANAGER.value: "authority",
+    RelationshipType.AUTHORITY_FIGURE.value: "authority",
+    RelationshipType.MENTOR.value: "mentor",
+    RelationshipType.PEER_ACADEMIC.value: "peer",
+}
+
+
+def _person_projection(node) -> dict:
+    """SocialNode -> the {name, relationship_tier, traits} shape uwm_updater._merge_people
+    expects — the projection that makes Layer 5 the source of truth for UWM.relationship_graph
+    (see docs/layer-5-architecture.md's live-wiring notes)."""
+    return {"name": node.display_name,
+           "relationship_tier": _RELATIONSHIP_TIER_MAP.get(node.relationship_type, "unclear"),
+           "traits": []}
+
+
+def make_social_writer(session_factory, llm_client) -> Callable:
+    """Post-turn Layer 5 writer: resolves named third-party mentions against the persisted
+    SocialGraph (creating/updating nodes via the real SC-1 functions), attributes a rule-based
+    interpersonal event to the mention when the turn names exactly one person (multi-person
+    turns are skipped rather than guessing which person an event is about — §13 principle 2,
+    "never inferred beyond what's stated"), and returns the touched-this-turn nodes so
+    make_state_update_writer's _uwm_updater can project them onto UWM.relationship_graph.people.
+    No edge creation: no real SC-1 function builds SocialEdges yet (see
+    docs/layer-5-architecture.md) -- inventing that logic here would be exactly the
+    reimplement-rather-than-wire-to-the-real-module anti-pattern CLAUDE.md warns against."""
+    store = PostgresSocialStore(session_factory)
+
+    def _write(user_id, session_key: str, message: str, now: datetime) -> list:
+        if not message:
+            return []
+        try:
+            graph = store.load_graph(user_id) or SocialGraph(user_id=str(user_id))
+            mentions = _extract_social_mentions(llm_client, message)
+            touched_ids: list[str] = []   # order-preserving; a turn can name the same person twice
+            for mention in mentions:
+                name = str(mention.get("name", "")).strip()
+                if not name:
+                    continue
+                context = mention.get("context") or message
+                person_id, confidence = resolve_entity(name, context, list(graph.nodes.values()))
+                # A tentative match (relationship-type-from-context only, [0.65, 0.80)) is not
+                # strong enough to auto-merge distinct people: two different named friends both
+                # match "friend" at exactly 0.70 confidence, and without this check the second
+                # mention silently merges into the first person's node. is_tentative_match is the
+                # real SC-1 signal for exactly this -- treat a tentative match as a new entity
+                # rather than a confirmed one (§3.4 describes tentative matches as "confirmed over
+                # later sessions", which would need a confirmation UI this app doesn't have yet).
+                if person_id is not None and is_tentative_match(confidence):
+                    person_id = None
+                if person_id is not None:
+                    node = graph.nodes[person_id]
+                    # A turn naming the same person twice ("Maya called, then Maya texted later")
+                    # must not double-count -- one turn is one mention-worth of signal, however
+                    # many times the LLM's extraction happened to repeat the name.
+                    if person_id not in touched_ids:
+                        node.mention_count += 1
+                        node.last_mentioned = now
+                    if name.lower() not in [a.lower() for a in node.name_aliases]:
+                        node.name_aliases.append(name)
+                else:
+                    rel_type = (infer_relationship_from_context(name, context)
+                               or RelationshipType.UNKNOWN.value)
+                    node = create_node(name, relationship_type=rel_type, now=now)
+                    graph.nodes[node.person_id] = node
+                    person_id = node.person_id
+                if person_id not in touched_ids:
+                    touched_ids.append(person_id)
+            touched = [graph.nodes[pid] for pid in touched_ids]
+            if mentions:
+                graph.user_id = str(user_id)
+                graph.version += 1
+                graph.last_updated = now
+                store.save_graph(graph)
+            if len(touched) == 1:
+                for event in extract_events(message, session_id=session_key,
+                                            person_id=touched[0].person_id, now=now):
+                    store.save_event(user_id, event)
+            return touched
+        except Exception:
+            logger.exception("social writer failed; UWM people projection skipped this turn")
+            return []
+    return _write
+
+
 def make_state_update_writer(store, embed_client, session_factory, threshold: float,
-                             vector_store=None, stm_store=None, summarizer_llm=None) -> Callable:
+                             vector_store=None, stm_store=None, summarizer_llm=None,
+                             social_writer_fn=None) -> Callable:
     """Post-turn writer that runs the real Layer-2 state_updater against Postgres.
 
     Upserts the Session turn count, accumulates this turn into the session's real (in-process,
@@ -283,8 +414,13 @@ def make_state_update_writer(store, embed_client, session_factory, threshold: fl
                     _link_narrative_chains(store, ctx.user_id, episodes, now)
                 return episodes
 
+            touched_people = (social_writer_fn(ctx.user_id, key, message, now)
+                             if social_writer_fn is not None else [])
+
             def _uwm_updater(existing_uwm):
                 extracted = _extract_uwm_signals(summarizer_llm, message)
+                if touched_people:
+                    extracted["people"] = [_person_projection(n) for n in touched_people]
                 return merge_uwm_update(existing_uwm, ctx.user_id, extracted, now)
 
             audit = PostgresAuditTrail(session_factory, ctx.user_id)
@@ -462,6 +598,32 @@ def make_identity_provider(session_factory) -> Callable:
         beliefs.sort(key=lambda b: b.centrality, reverse=True)
         return beliefs[:_TOP_N]
     return _provider
+
+
+def make_social_provider(session_factory) -> Callable:
+    """Read-side Layer 5 provider for the coaching-injection hook: the persisted SocialGraph,
+    recent events, and active (batch-detected) patterns for one user. Returns a graph/events/
+    patterns triple with sensible empty defaults (a fresh SocialGraph, no events, no patterns)
+    when nothing has been persisted yet -- detect_coaching_opportunity's own gate 1 already
+    degrades to "nothing to say" on empty inputs, so this provider doesn't need its own
+    cold-start branch."""
+    store = PostgresSocialStore(session_factory)
+
+    def _provider(user_id):
+        graph = store.load_graph(user_id) or SocialGraph(user_id=str(user_id))
+        return graph, store.recent_events(user_id), store.active_patterns(user_id)
+    return _provider
+
+
+def make_social_surface_writer(session_factory) -> Callable:
+    """Write side of the coaching-injection hook: marks a pattern surfaced the moment its
+    observation is actually delivered (not merely detected -- gate_2/3 can still defer it), so
+    gate_3_recency's repeat-block can actually fire on a later turn."""
+    store = PostgresSocialStore(session_factory)
+
+    def _mark(pattern_id):
+        store.mark_pattern_surfaced(pattern_id)
+    return _mark
 
 
 def _revise_belief_statement(client, belief, contradiction) -> str:
@@ -687,7 +849,9 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_message_writer(session_factory),
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
                                  vector_store=vector_store, stm_store=stm_store,
-                                 summarizer_llm=llm_clients["system1"]),
+                                 summarizer_llm=llm_clients["system1"],
+                                 social_writer_fn=make_social_writer(
+                                     session_factory, llm_clients["system1"])),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
@@ -707,6 +871,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         relationship_provider=make_relationship_provider(session_factory),
         uwm_provider=make_uwm_provider(session_factory),
         identity_provider=make_identity_provider(session_factory),
+        social_provider=make_social_provider(session_factory),
+        social_surface_writer=make_social_surface_writer(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)

@@ -120,6 +120,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          relationship_provider: Optional[Callable] = None,
                          uwm_provider: Optional[Callable] = None,
                          identity_provider: Optional[Callable] = None,
+                         social_provider: Optional[Callable] = None,
+                         social_surface_writer: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
@@ -137,7 +139,9 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         generate_semantic_draft, resolve_persona_state, calibrate_voice, detect_drift,
         refine_emotion, should_skip_refinement, compute_relationship_state,
     )
-    from backend.layer4_persona.schemas import PersonaPacket, SemanticDraft
+    from backend.layer4_persona.schemas import PersonaPacket, SemanticDraft, FinalResponsePacket
+    from backend.layer5_relationship import detect_coaching_opportunity, inject_observation
+    from backend.layer5_relationship.schemas import SocialGraph
     from backend.layer9_output import deliver as l9_deliver
     from backend.layer11_safety import evaluate, generate_crisis_response, run_all_checks
     from backend.layer11_safety.schemas import CrisisTier
@@ -542,6 +546,40 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             llm_fn=lambda p: system2.complete(p))
         return result.final_text
 
+    def social_coaching(ctx, response):
+        """SC-4 (coaching_detector) + SC-5 (coaching_modifier): a conservatively-gated social
+        observation, naturally appended to the already-generated response. detect_coaching_
+        opportunity is a real, self-contained 3-gate function (availability/timing/recency,
+        default silence) -- this adapter's only job is forwarding real inputs, not reimplementing
+        any gating logic. Degrades to a no-op (returns response unchanged) with no persisted
+        graph/events/patterns yet, which is the case for every account until the background
+        pattern job has run at least once."""
+        if social_provider is None:
+            return response
+        graph, events, patterns = social_provider(ctx.user_id)
+        ei = ctx.emotion_intent
+        opp = detect_coaching_opportunity(
+            patterns, events, graph or SocialGraph(user_id=str(ctx.user_id)),
+            conversation_mode=getattr(ctx, "conversation_mode", "casual"),
+            primary_emotion=ei.primary_emotion, background_state=ei.background_state,
+            relationship_stage=getattr(ctx.persona_packet.relationship_state, "stage", "new"),
+            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"))
+        if not opp.opportunity_detected:
+            return response
+        wrapped = FinalResponsePacket(final_text=response)
+        result = inject_observation(wrapped, opp, ctx.persona_packet.voice_parameters)
+        # Only mark surfaced when the observation was actually delivered this turn (not when
+        # inject_observation deferred it for lack of length headroom) -- otherwise gate_3_recency
+        # would start blocking a pattern the user never actually saw.
+        if result.social_coaching_injected and social_surface_writer is not None:
+            pattern = opp.triggering_pattern
+            if pattern is not None:
+                try:
+                    social_surface_writer(pattern.pattern_id)
+                except Exception:
+                    logger.exception("social surface writer failed; pattern stays unsurfaced")
+        return result.final_text
+
     def escalate(ctx, assessment):
         try:
             resp = generate_crisis_response(
@@ -609,5 +647,5 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     return PipelineSteps(
         perceive=perceive, recall=recall, classify=classify, cold_start=cold_start,
         safety_scan=safety_scan, build_persona=build_persona, tool_use=tool_use,
-        plan=plan, refine=refine, guardrails=guardrails, escalate=escalate,
-        deliver=deliver, state_update=state_update)
+        plan=plan, refine=refine, social_coaching=social_coaching, guardrails=guardrails,
+        escalate=escalate, deliver=deliver, state_update=state_update)

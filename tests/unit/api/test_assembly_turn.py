@@ -644,3 +644,97 @@ def test_real_layer4_wiring_voice_parameters_differ_by_relationship_stage():
         RelationshipState(stage="close", total_sessions=150, total_messages_exchanged=2000))
 
     assert new_stage != close_stage
+
+
+def test_real_layer5_wiring_coaching_observation_reaches_delivered_response():
+    """Layer 5 had zero production callers at all. This proves the coaching-injection hook
+    end to end through the REAL orchestrator: a persisted, unsurfaced SocialPattern (as the
+    background job would produce) reaches detect_coaching_opportunity's real 3-gate model via
+    social_provider, passes every gate, and coaching_modifier.inject_observation actually
+    appends its observation to the delivered text -- not a mocked step anywhere in the chain."""
+    import json
+    from datetime import datetime, timezone
+    from infra.db import make_engine, make_session_factory, init_db
+    from infra.db.social_store import PostgresSocialStore
+    from backend.layer4_persona.schemas import RelationshipState
+    from backend.layer5_relationship.schemas import SocialPattern, SocialPatternType, PatternScope
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    social_store = PostgresSocialStore(factory)
+    social_store.save_patterns("local-user", [SocialPattern(
+        pattern_type=SocialPatternType.RECURRING_CONFLICT_TOPIC.value,
+        scope=PatternScope.INTRA_RELATIONSHIP.value,
+        pattern_confidence=0.9, pattern_strength=0.8, has_been_surfaced=False, is_active=True,
+        plain_language_description="conflict with a coworker has come up a few times",
+    )])
+
+    class NeutralLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            return self._reply
+
+    from api.state import make_social_provider, make_social_surface_writer
+
+    llm = NeutralLLM()
+    rel = RelationshipState(stage="developing", total_sessions=20, total_messages_exchanged=150)
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 relationship_provider=lambda uid: rel,
+                                 social_provider=make_social_provider(factory),
+                                 social_surface_writer=make_social_surface_writer(factory))
+    out = ConversationOrchestrator(steps).run_turn("local-user", "just having a normal day")
+
+    assert out.conversation_mode == "casual"   # sanity: within the topic-adjacent gate
+    assert "conflict with a coworker" in out.response_text
+
+
+def test_real_layer5_wiring_gate_3_recency_blocks_a_repeat_of_the_same_observation():
+    """Without the surface-writer wiring, gate_1_availability would re-select the same
+    unsurfaced pattern on every qualifying turn forever -- the coaching observation would repeat
+    every single time. Proves social_surface_writer actually marks the pattern surfaced after
+    the FIRST delivery, so gate_3_recency (which reads has_been_surfaced/last_observed) blocks
+    the SECOND turn's repeat of the exact same observation."""
+    import json
+    from infra.db import make_engine, make_session_factory, init_db
+    from infra.db.social_store import PostgresSocialStore
+    from backend.layer4_persona.schemas import RelationshipState
+    from backend.layer5_relationship.schemas import SocialPattern, SocialPatternType, PatternScope
+    from api.state import make_social_provider, make_social_surface_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    social_store = PostgresSocialStore(factory)
+    social_store.save_patterns("local-user", [SocialPattern(
+        pattern_type=SocialPatternType.RECURRING_CONFLICT_TOPIC.value,
+        scope=PatternScope.INTRA_RELATIONSHIP.value,
+        pattern_confidence=0.9, pattern_strength=0.8, has_been_surfaced=False, is_active=True,
+        plain_language_description="conflict with a coworker has come up a few times",
+    )])
+
+    class NeutralLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            return self._reply
+
+    llm = NeutralLLM()
+    rel = RelationshipState(stage="developing", total_sessions=20, total_messages_exchanged=150)
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 relationship_provider=lambda uid: rel,
+                                 social_provider=make_social_provider(factory),
+                                 social_surface_writer=make_social_surface_writer(factory))
+
+    first = ConversationOrchestrator(steps).run_turn("local-user", "just having a normal day")
+    second = ConversationOrchestrator(steps).run_turn("local-user", "another ordinary day today")
+
+    assert "conflict with a coworker" in first.response_text
+    assert "conflict with a coworker" not in second.response_text

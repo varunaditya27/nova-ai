@@ -48,6 +48,7 @@ class PipelineSteps:
     tool_use: Optional[Callable] = None         # L8  (ctx) -> ToolTurnOutcome | None
     plan: Optional[Callable] = None             # L4a (ctx) -> draft
     refine: Optional[Callable] = None           # L4b (ctx, draft) -> refined
+    social_coaching: Optional[Callable] = None  # L5 SC-4/5 (ctx, response) -> response
     guardrails: Optional[Callable] = None       # L11 SC-1 (ctx, response) -> result
     escalate: Optional[Callable] = None         # L11 SC-3 (ctx, crisis) -> crisis response
     deliver: Optional[Callable] = None          # L9  (ctx, response, crisis_mode_active) -> out
@@ -239,6 +240,7 @@ class ConversationOrchestrator:
         else:
             run_system2(ctx, self.steps)
         ctx.layers_run.append("layer4_persona")
+        self._run_social_coaching(ctx)
         self._run_guardrails(ctx)
 
     def _handle_tool_use(self, ctx: TurnContext) -> bool:
@@ -257,6 +259,19 @@ class ConversationOrchestrator:
         ctx.response_text = getattr(outcome, "response_text", "") or ctx.response_text
         ctx.layers_run.append("layer8_tools")
         return True
+
+    def _run_social_coaching(self, ctx: TurnContext) -> None:
+        """Layer 5 SC-4/5: a conservatively-gated coaching observation, naturally appended to
+        the already-generated response (never replaces it, §11 hard rule). Runs before SC-1
+        Ethical Guardrails so guardrails always gets the last word on the delivered text,
+        including any coaching-modified version of it."""
+        if self.steps.social_coaching is None:
+            return
+        try:
+            ctx.response_text = self.steps.social_coaching(ctx, ctx.response_text) or ctx.response_text
+            ctx.layers_run.append("layer5_relationship")
+        except Exception:
+            logger.exception("social coaching failed; delivering the ungated response")
 
     def _run_guardrails(self, ctx: TurnContext) -> None:
         """Layer 11 SC-1: post-generation ethical guardrails (runs before Layer 9 delivers)."""

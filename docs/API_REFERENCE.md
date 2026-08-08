@@ -381,7 +381,8 @@ Response: `{ "stored": bool, "delta_id": string }`
 ### `POST /admin/jobs/{name}` → `JobRunOut`
 Run a background job on demand (single-user, no auth). `404` for an unknown job, `500` on failure.
 Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
-**`longitudinal_summary`**, **`pattern_detection`**.
+**`longitudinal_summary`**, **`pattern_detection`**, **`social_pattern_detection`**,
+**`dependency_monitor`**.
 ```
 { "job": string, "result": { … job-specific summary … } }
 ```

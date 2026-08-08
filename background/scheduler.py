@@ -16,6 +16,7 @@ from background import (
     memory_consolidation_job,
     pattern_detection_job,
     proactive_check_job,
+    social_pattern_job,
 )
 
 logger = logging.getLogger("nova.jobs")
@@ -24,6 +25,7 @@ JOBS = {
     "memory_consolidation": memory_consolidation_job.run,
     "proactive_check": proactive_check_job.run,
     "pattern_detection": pattern_detection_job.run,
+    "social_pattern_detection": social_pattern_job.run,
     "integrity_check": integrity_check_job.run,
     "longitudinal_summary": longitudinal_summary_job.run,
     "dependency_monitor": dependency_monitor_job.run,
@@ -67,6 +69,8 @@ def start_scheduler(app_state):
                   hours=cfg.get("integrity_check_hours", 24), id="integrity_check")
     sched.add_job(_wrap("pattern_detection"), "interval",
                   days=cfg.get("pattern_detection_days", 7), id="pattern_detection")
+    sched.add_job(_wrap("social_pattern_detection"), "interval",
+                  days=cfg.get("social_pattern_detection_days", 7), id="social_pattern_detection")
     sched.add_job(_wrap("longitudinal_summary"), "interval",
                   days=cfg.get("longitudinal_summary_days", 7), id="longitudinal_summary")
     sched.add_job(_wrap("dependency_monitor"), "interval",

@@ -247,29 +247,56 @@ point to hang a small adapter fix on (unlike Layer 4, which at least had a paral
 path to forward signals into). Full detail: `docs/layer-5-architecture.md` §15. This is one
 feature to build, in dependency order:
 
-- **No persistence.** `infra/db/models.py` has no tables for `SocialGraph`/`SocialNode`/
-  `SocialEdge`/`SocialEvent`/`SocialPattern`. Needed before anything else — SC-1 through SC-3
-  are stateful across sessions by design (§13 principle 1: "social context is longitudinal, not
-  per-message").
-- **No orchestrator hook.** `backend.pipeline.PipelineSteps` has no Layer 5 entry point;
-  `TurnContext` carries no social graph / event history / active patterns. Needs a new hook
-  (analogous to `build_persona`/`plan`) that runs after Layer 4 produces the `FinalResponsePacket`
-  and calls `build_social_intelligence_packet`.
-- **No per-turn entity/event extraction call site.** `social_graph.resolve_entity` and
-  `event_tracker.detect_events_rule_based`/`extract_events` are ready to call on each user
-  message but nothing calls them — this is what would populate the persistence layer above.
-- **No pattern-detection background job.** SC-3's `detect_patterns` is a pure function designed
-  to run "every 5 sessions" (§5.4) as a batch job; `background/scheduler.py`'s `JOBS` registry
-  (currently 6 entries) has no seventh entry for it.
-- **UWM social-context write-back is unreachable.** `build_social_context_update` (§9) computes
-  the `SocialContextUpdate` that Layer 2's UWM should store — moot until the above exist, and
-  further blocked on Layer 2's own finding (audited 2026-08-04) that the UWM is never created
-  for any real user at all.
-
-Suggested build order given the above dependencies: persistence → per-turn extraction (writes
-only) → orchestrator hook for the coaching-injection read path → background pattern-detection
-job. Each step is independently shippable and testable against the existing, already-correct
-`backend/layer5_relationship/` module.
+- **[done, 2026-08-08]** Persistence — `social_graph`/`social_event`/`social_pattern` tables
+  (`infra/db/models/social.py`, `infra/db/social_store.py`/`social_serde.py`). No `SocialEdge`
+  persistence: no real SC-1 function builds edges yet, so nothing invented one — `SocialGraph.edges`
+  stays empty until Layer 5 itself grows a real edge-management function. No Alembic revision —
+  same as `NarrativeChain` shipped earlier the same day (baseline migration's `create_all` is the
+  only path this project currently exercises).
+- **[done, 2026-08-08]** Orchestrator hook — a new `PipelineSteps.social_coaching(ctx, response)`
+  hook runs post-generation, pre-guardrails, in both System 1 and System 2. Forwards real inputs
+  into the real, unmodified `detect_coaching_opportunity`/`inject_observation` — see
+  `docs/layer-5-architecture.md` §16.3.
+- **[done, 2026-08-08]** Per-turn entity/event extraction — `api/state.py::make_social_writer`,
+  a new post-turn writer. One LLM call surfaces mentions; `resolve_entity`/`create_node`/
+  `extract_events` do the real resolution/attribution work. See §16.2 and §16.5 (four bugs caught
+  and fixed in review, each with a regression test: a naive/aware datetime crash identical in
+  shape to Layer 3's BES bug, silent merging of distinct same-relationship-type people, a
+  permanently-inert recency gate, and same-turn double-counting of a repeated mention).
+- **[done, 2026-08-08]** Background pattern-detection job — `background/social_pattern_job.py`,
+  registered as `social_pattern_detection` (`background/scheduler.py`'s `JOBS`, now 7 entries),
+  fixed weekly interval (see below). Re-identifies patterns across runs by `(pattern_type,
+  person_ids_involved)` so `has_been_surfaced` history survives and duplicates don't accumulate
+  — a bug caught and fixed in review, see §16.5 point 3/§16.4.
+- **UWM social-context write-back was resolved differently than originally scoped.**
+  `build_social_context_update` (§9's full `SocialContextUpdate`) is still unreachable, but the
+  underlying goal — Layer 5 informing the UWM — is now live via a narrower path: Layer 5's
+  per-turn extraction directly projects onto `UWM.relationship_graph.people` (see §16.2), and
+  became the *sole* source of that projection, replacing Layer 2's own independent people-LLM-call
+  (an explicit product decision to avoid two divergent extraction pipelines both guessing "who did
+  the user mention"). The richer `SocialContextUpdate` (active conflicts, support-network health,
+  engagement trend) is still not built or wired — real feature work if wanted later.
+- **New gaps surfaced by wiring this layer for real** (not present in the original audit, since
+  nothing exercised the module's actual behavior against real data before):
+  - `event_tracker.extract_events`' rule-based pass stores `summary = " ".join(text.split())[:200]`
+    — near-verbatim user message text, not a compressed extracted description. Contradicts the
+    module's own §10 Constraint 3 ("neutral summary... never the raw conversation text"). Latent
+    while the layer had no caller; now a real on-disk surface via `make_social_writer`. Not fixed
+    (would mean rewriting `event_tracker.py`'s summary logic, out of scope for this pass) — needs
+    its own task if the raw-text storage is unacceptable for the eventual on-device encryption
+    story (Layer 12).
+  - Rejecting tentative (0.70-confidence) entity matches to avoid merging distinct people (§16.5
+    point 2) means a person referred to by relationship term rather than name across turns ("my
+    sister Maya" then later just "my sister") can create a duplicate node instead of resolving to
+    the same one. §3.4's tentative-match confirmation mechanism (surfacing an ambiguous match for
+    the user to confirm) doesn't exist in this app — would need a UI surface, not just a backend
+    change.
+  - SC-4's `PATTERN_REFLECTION` coaching type (the most common one, per `_PATTERN_TO_COACHING`)
+    always uses `DeliveryMode.AS_QUESTION` — genuinely live and tested end-to-end this pass — but
+    the `INLINE`/`STRENGTH_ACKNOWLEDGMENT`/`SUPPORT_NETWORK_NUDGE` coaching types (from
+    `build_opportunity_from_conflict`/`build_support_network_nudge`) were not exercised by an
+    end-to-end test; they're real, unmodified functions but worth a follow-up test pass if this
+    area gets touched again.
 
 ---
 

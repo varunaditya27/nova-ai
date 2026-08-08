@@ -249,7 +249,15 @@ def test_writer_links_two_episodes_that_share_an_extracted_entity():
 def test_writer_creates_and_merges_the_user_world_model_from_extracted_signals():
     """Closes 'UWM is never created for any real user': the post-turn writer now extracts
     profile/people/situation signals via the injected LLM and merges them into a real,
-    persisted UserWorldModel -- on the very first turn, with no pre-existing row."""
+    persisted UserWorldModel -- on the very first turn, with no pre-existing row.
+
+    NOTE on "people": this test runs with no social_writer_fn, so it exercises the fallback
+    path only -- _extract_uwm_signals no longer asks the LLM about people at all (see its
+    docstring), but a raw LLM response containing a "people" key is still merged verbatim when
+    nothing from Layer 5 overrides it (degrade-gracefully, not silently drop real signal). In
+    live production social_writer_fn is always wired (see build_app_state), so the people list
+    actually reaching the UWM comes from Layer 5's real SocialGraph resolution instead -- see
+    test_social_writer_creates_a_node_and_projects_it_onto_the_uwm_through_the_real_stores."""
     engine = make_engine("sqlite+pysqlite:///:memory:")
     init_db(engine)
     factory = make_session_factory(engine)
@@ -273,6 +281,180 @@ def test_writer_creates_and_merges_the_user_world_model_from_extracted_signals()
     assert uwm.profile.preferred_name == "Sam"
     assert uwm.profile.field_of_study_or_work == "nursing"
     assert [p.name for p in uwm.relationship_graph.people] == ["Maya"]
+
+
+def test_social_writer_creates_a_node_and_projects_it_onto_the_uwm_through_the_real_stores():
+    """Layer 5 was correct, tested, and had zero production callers -- no persistence, no
+    per-turn extraction, no orchestrator hook. This closes the persistence + extraction half:
+    a named third party is resolved into a real SocialGraph node (SC-1's real resolve_entity/
+    create_node, not reimplemented logic), persisted, and projected onto
+    UWM.relationship_graph.people -- proving Layer 5 is now the one place person mentions are
+    resolved (not a second, independent UWM extraction call)."""
+    from api.state import make_social_writer
+    from infra.db.social_store import PostgresSocialStore
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    store = PostgresMemoryStore(factory)
+    social_store = PostgresSocialStore(factory)
+
+    class MentionLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "named third party" in prompt:
+                return '{"mentions": [{"name": "Maya", "context": "my sister Maya"}]}'
+            return '{}'   # UWM's own profile/situations/stressors call: nothing to report
+
+    class C(Ctx):
+        message = "My sister Maya called me today and it was really nice to catch up."
+        response_text = "That sounds lovely."
+
+    llm = MentionLLM()
+    write = make_state_update_writer(store, FakeLLM(), factory, threshold=0.1,
+                                     summarizer_llm=llm,
+                                     social_writer_fn=make_social_writer(factory, llm))
+    write(C())
+
+    graph = social_store.load_graph("local-user")
+    assert graph is not None
+    assert len(graph.nodes) == 1
+    node = next(iter(graph.nodes.values()))
+    assert node.display_name == "Maya"
+    assert node.relationship_type == "family_immediate"   # inferred from "sister" in context
+    assert node.mention_count == 1
+
+    uwm = store.load_uwm("local-user")
+    people = uwm.relationship_graph.people
+    assert [p.name for p in people] == ["Maya"]
+    assert people[0].relationship_tier == "family"   # projected via _RELATIONSHIP_TIER_MAP
+
+
+def test_social_writer_increments_mention_count_on_a_repeat_mention_instead_of_duplicating():
+    """A second turn naming the same person must resolve to the SAME node (SC-1's
+    resolve_entity alias matching), not create a duplicate -- proves the writer round-trips
+    through the persisted graph correctly across turns, not just within one."""
+    from api.state import make_social_writer
+    from infra.db.social_store import PostgresSocialStore
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    store = PostgresMemoryStore(factory)
+    social_store = PostgresSocialStore(factory)
+
+    class MentionLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "named third party" in prompt:
+                return '{"mentions": [{"name": "Maya", "context": "my friend Maya"}]}'
+            return '{}'
+
+    llm = MentionLLM()
+    social_writer = make_social_writer(factory, llm)
+
+    class C1(Ctx):
+        message = "My friend Maya and I hung out."
+        response_text = "Nice!"
+
+    class C2(Ctx):
+        message = "Maya texted me again today."
+        response_text = "That's great."
+
+    write = make_state_update_writer(store, FakeLLM(), factory, threshold=0.1,
+                                     summarizer_llm=llm, social_writer_fn=social_writer)
+    write(C1())
+    write(C2())
+
+    graph = social_store.load_graph("local-user")
+    assert len(graph.nodes) == 1
+    node = next(iter(graph.nodes.values()))
+    assert node.mention_count == 2
+
+
+def test_social_writer_does_not_merge_two_different_people_who_share_a_relationship_type():
+    """resolve_entity's relationship-type-from-context match sits at exactly 0.70 confidence --
+    a *tentative* match (is_tentative_match's [0.65, 0.80) range), not a confirmed one. Without
+    treating a tentative match as a new entity, a second friend named in a later turn would
+    silently resolve onto the first friend's node (same relationship_type = "friend" match)."""
+    from api.state import make_social_writer
+    from infra.db.social_store import PostgresSocialStore
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    store = PostgresMemoryStore(factory)
+    social_store = PostgresSocialStore(factory)
+
+    class MentionLLM(FakeLLM):
+        def __init__(self, name):
+            self._name = name
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "named third party" in prompt:
+                return f'{{"mentions": [{{"name": "{self._name}", "context": "my friend {self._name}"}}]}}'
+            return '{}'
+        def embed(self, texts):
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
+    social_writer_maya = make_social_writer(factory, MentionLLM("Maya"))
+    social_writer_alex = make_social_writer(factory, MentionLLM("Alex"))
+
+    class C1(Ctx):
+        message = "My friend Maya and I hung out."
+        response_text = "Nice!"
+
+    class C2(Ctx):
+        message = "My friend Alex came over too."
+        response_text = "Sounds fun."
+
+    make_state_update_writer(store, FakeLLM(), factory, threshold=0.1,
+                             summarizer_llm=MentionLLM("Maya"),
+                             social_writer_fn=social_writer_maya)(C1())
+    make_state_update_writer(store, FakeLLM(), factory, threshold=0.1,
+                             summarizer_llm=MentionLLM("Alex"),
+                             social_writer_fn=social_writer_alex)(C2())
+
+    graph = social_store.load_graph("local-user")
+    assert len(graph.nodes) == 2
+    assert {n.display_name for n in graph.nodes.values()} == {"Maya", "Alex"}
+
+
+def test_social_writer_does_not_double_count_the_same_person_mentioned_twice_in_one_turn():
+    """A turn naming the same person twice ("Maya called, then Maya texted later") must count as
+    one mention-worth of signal, not two -- and must still be treated as a single-person turn so
+    event attribution (which only fires for exactly one resolved person) isn't skipped."""
+    from api.state import make_social_writer
+    from infra.db.social_store import PostgresSocialStore
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    store = PostgresMemoryStore(factory)
+    social_store = PostgresSocialStore(factory)
+
+    class MentionLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "named third party" in prompt:
+                return ('{"mentions": [{"name": "Maya", "context": "my friend Maya called"}, '
+                        '{"name": "Maya", "context": "Maya texted later"}]}')
+            return '{}'
+
+    llm = MentionLLM()
+    write = make_state_update_writer(store, FakeLLM(), factory, threshold=0.1,
+                                     summarizer_llm=llm,
+                                     social_writer_fn=make_social_writer(factory, llm))
+
+    class C(Ctx):
+        message = "My friend Maya called, then Maya texted later."
+        response_text = "Sounds like a full day!"
+
+    write(C())
+
+    graph = social_store.load_graph("local-user")
+    assert len(graph.nodes) == 1
+    node = next(iter(graph.nodes.values()))
+    assert node.mention_count == 1   # one turn, not two, even though the name appeared twice
+
+    uwm = store.load_uwm("local-user")
+    assert len(uwm.relationship_graph.people) == 1   # UWM projection also not double-counted
 
 
 def test_identity_writer_accumulates_evidence_and_updates_a_belief_through_the_real_store():

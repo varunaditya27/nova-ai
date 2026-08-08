@@ -99,6 +99,68 @@ def test_pattern_job_runs():
     assert "patterns" in out and out["episodes"] == 1
 
 
+def test_social_pattern_job_detects_a_recurring_conflict_and_persists_it():
+    """Layer 5's SC-3 (pattern_recognizer.detect_patterns) had zero production callers -- no
+    background job ran it against real persisted data. Seeds a real SocialGraph node + three
+    same-topic conflict events (the real event-attribution shape make_social_writer produces),
+    runs the real job, and confirms the detected pattern round-trips through
+    PostgresSocialStore -- so the live coaching-injection hook can see it on the next turn."""
+    from datetime import datetime, timedelta, timezone
+    from infra.db.social_store import PostgresSocialStore
+    from backend.layer5_relationship.schemas import SocialEvent, SocialEventType, SocialGraph, SocialNode
+
+    st = _state()
+    store = PostgresSocialStore(st.session_factory)
+    node = SocialNode(display_name="Sam")
+    store.save_graph(SocialGraph(user_id="u1", nodes={node.person_id: node}, version=1))
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        store.save_event("u1", SocialEvent(
+            person_id=node.person_id, event_type=SocialEventType.CONFLICT_ONSET.value,
+            summary="disagreement about money again", extraction_confidence=0.8,
+            reported_timestamp=now - timedelta(days=(3 - i) * 15)))
+
+    out = scheduler.run_job(st, "social_pattern_detection")
+    assert out["nodes"] == 1 and out["events"] == 3 and out["patterns"] >= 1
+
+    active = store.active_patterns("u1")
+    assert any(p.pattern_type == "recurring_conflict_topic" for p in active)
+
+
+def test_social_pattern_job_does_not_duplicate_the_same_pattern_across_runs():
+    """detect_patterns is a pure function -- it mints a fresh pattern_id every call, with no
+    memory of prior runs. Without re-identifying a still-active pattern by (type, people) across
+    weekly runs, the same recurring conflict would duplicate into a new, unsurfaced row every
+    single week -- inflating the active-pattern count forever and defeating gate_3_recency's
+    repeat-block (each new row starts with has_been_surfaced=False all over again)."""
+    from datetime import datetime, timedelta, timezone
+    from infra.db.social_store import PostgresSocialStore
+    from backend.layer5_relationship.schemas import SocialEvent, SocialEventType, SocialGraph, SocialNode
+
+    st = _state()
+    store = PostgresSocialStore(st.session_factory)
+    node = SocialNode(display_name="Sam")
+    store.save_graph(SocialGraph(user_id="u1", nodes={node.person_id: node}, version=1))
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        store.save_event("u1", SocialEvent(
+            person_id=node.person_id, event_type=SocialEventType.CONFLICT_ONSET.value,
+            summary="disagreement about money again", extraction_confidence=0.8,
+            reported_timestamp=now - timedelta(days=(3 - i) * 15)))
+
+    scheduler.run_job(st, "social_pattern_detection")
+    first_run_id = next(p.pattern_id for p in store.active_patterns("u1")
+                        if p.pattern_type == "recurring_conflict_topic")
+    store.mark_pattern_surfaced(first_run_id)
+
+    scheduler.run_job(st, "social_pattern_detection")
+    active = [p for p in store.active_patterns("u1") if p.pattern_type == "recurring_conflict_topic"]
+
+    assert len(active) == 1                       # no duplicate row
+    assert active[0].pattern_id == first_run_id    # same identity carried across runs
+    assert active[0].has_been_surfaced is True     # surfaced history preserved, not reset
+
+
 def test_episodic_records_reads_real_emotion_vector_not_content_basis_valence():
     """_adapters.episodic_records used to read a field, `content_basis_valence`, that doesn't
     exist on EpisodicMemory (that name belongs to Layer 6's ProactiveItem) -- emotional_intensity
@@ -190,5 +252,5 @@ def test_dependency_monitor_job_zero_score_with_no_signals():
     assert result["tier"] == "healthy"
 
 
-def test_job_registry_has_six_jobs():
-    assert len(scheduler.JOBS) == 6
+def test_job_registry_has_seven_jobs():
+    assert len(scheduler.JOBS) == 7

@@ -1795,14 +1795,17 @@ actually enforces them (§6.5), this store doesn't add new enforcement.
 
 ### 24.5 Cost note: post-turn LLM call count
 
-Between this section and §23, `session_writer`'s post-turn chain now makes up to 4 sequential LLM
+Between this section and §23, `session_writer`'s post-turn chain now makes up to 5 sequential LLM
 calls on top of Layer 3's per-turn classifier call and (on a promoted turn) episodic
-summarization: goal extraction (pre-existing), UWM signal extraction (§23), identity contradiction
-detection, and — only when a contradiction actually crosses threshold — the belief-rewrite call
-above. `POST /chat` is synchronous and `run_turn` awaits the full write path before returning, so
-the user's request latency includes all of them. Acceptable for this app (local, single-user,
-`system1` is the fast local model for all of these), but worth knowing before assuming `/chat`
-latency is dominated by generation alone.
+summarization: goal extraction (pre-existing), Layer 5's person-mention extraction (`api/state.py::
+make_social_writer`, `docs/layer-5-architecture.md` §16.2 — the one place person mentions are
+resolved now, replacing what used to be UWM signal extraction's own "people" ask), UWM signal
+extraction (profile/situations/stressors only, §23), identity contradiction detection, and — only
+when a contradiction actually crosses threshold — the belief-rewrite call above. `POST /chat` is
+synchronous and `run_turn` awaits the full write path before returning, so the user's request
+latency includes all of them. Acceptable for this app (local, single-user, `system1` is the fast
+local model for all of these), but worth knowing before assuming `/chat` latency is dominated by
+generation alone.
 
 ---
 
