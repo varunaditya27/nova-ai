@@ -1682,14 +1682,16 @@ repeats) and a session-scoped one-question limit.
   `can_surface()`. The reimplementation is *stricter*, not looser (a permanent per-session
   boolean rate limit vs. the spec's `EARLY_PERIOD_SESSIONS = 14`-scoped one, and it doesn't
   distinguish priority-2 items at the 0.80 distress threshold), so this is a design divergence
-  worth reconciling, not a safety gap.
+  worth reconciling, not a safety gap. **Reconciled — see §14.1.**
 - **`PassiveElicitationEngine`** (all 8 extractors — vocabulary register, emotional style, topic
   approach, disclosure comfort, named people, life context, urgency, communication style) has
-  zero production callers. None of Nova's "infer before asking" philosophy runs live.
+  zero production callers. None of Nova's "infer before asking" philosophy runs live. **Wired —
+  see §14.2.**
 - **`ColdStartContextBuilder`/`make_initial_state`** (§5.1's `InitialState`, personality-vector
   drift, semantic-fact seeding) has zero callers. Production cold-start state is just
   `PostgresOnboardingStore`'s flat `{session_index, counted_session_keys}` — a session counter,
   not the rich, progressively-populated `InitialState` the rest of the spec is built around.
+  **Wired — see §14.2.**
 - **`GraduationEvaluator`** (7 required criteria: sessions, exchanges, handle known, life phase
   known, comm-style established, emotional baseline calibrated, 2+ topic areas) has zero callers.
   Production graduation is `PostgresOnboardingStore.record_turn`'s bare `session_index >=
@@ -1698,7 +1700,8 @@ repeats) and a session-scoped one-question limit.
   `GraduationEvaluator` checks (`user_handle`, `life_phase`, `communication_style_profile`,
   `emotional_baseline_calibrated`, `primary_topic_areas`) are populated exclusively by
   `ColdStartContextBuilder`, which nothing calls. The spec'd graduation criteria are not just
-  unwired, they are unreachable in the current system.
+  unwired, they are unreachable in the current system. **Wired, with the session-counter path kept
+  as a fallback — see §14.3-§14.4.**
 - **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY`** has zero callers, as the
   "Live integration update" note above already flagged — confirmed here with a full grep across
   `api/`, `infra/`, `background/`. No feature in Nova is gated or introduced via this mechanism.
@@ -1716,10 +1719,92 @@ model's prompt for that one turn and then **discarded** — `PostgresOnboardingS
 .record_elicitation` persists only the inference-target name (so the question is never re-asked),
 never the user's actual reply. Confirmed by grep: no code path in `api/` or `infra/db/
 onboarding_store.py` ever writes `user_handle` or `life_phase` anywhere. Nova asks "what should I
-call you?" once per user, and never learns the answer. This is the single highest-value gap in
-this layer — logged in `docs/POLISH_BACKLOG.md`.
+call you?" once per user, and never learns the answer. This was the single highest-value gap in
+this layer — **fixed, see §14.2.**
 
-See `docs/POLISH_BACKLOG.md` for the larger structural items (capturing elicitation answers,
-wiring passive extraction, and — the largest one — deciding whether to build production up to the
-real `InitialState`/`GraduationEvaluator`/`FeaturePacingController` machinery or to formally
-retire it in favor of the lighter session-counter approach that's actually running).
+See `docs/POLISH_BACKLOG.md` for the larger structural items — **all resolved in the follow-up
+below, except `FeaturePacingController`, which stays unwired: there is still no feature anywhere
+in Nova that needs pacing/gating, so there is nothing for it to wire to.**
+
+## 14. Passive elicitation + real graduation wired (follow-up, 2026-08-09)
+
+Scoped explicitly with the user before building — this is comparable in size to the Layer 5/10
+builds. `ColdStartEngine` itself turned out to be a complete, correct, already-tested in-memory
+coordinator with nowhere to persist its state across turns/restarts — the fix was persistence and
+a real per-turn caller, not new coordination logic.
+
+### 14.1 Elicitation surfacing reconciled
+
+`api/elicitation.py::select_elicitation` previously reimplemented a single, looser inline gate.
+It now runs the same two real gates `ColdStartEngine.on_message` does, in the same order:
+`ElicitationQueue.next_surfaceable_item` finds the highest-priority candidate whose trigger fired,
+then `ElicitationSurfacingPolicy.can_surface` (fuller two-tier register check + the real rate
+limit) makes the final call — `elicitation_count_this_session` is derived from the existing
+`asked_this_session` boolean rather than adding new counter state. `detect_triggers`
+(`api/elicitation.py`'s own regex-based trigger detection) is kept as-is: it's not a
+reimplementation of anything in `backend/layer13_onboarding/` — no module there does text-based
+trigger detection at all; they all expect a caller to have already produced `active_triggers`.
+
+### 14.2 Passive elicitation wired — answers now captured
+
+New `infra/db/initial_state_store.py::PostgresInitialStateStore` persists a real `InitialState`
+per user (JSONB, singleton row, same shape as `RelationshipState`/`FormatProfile`). New
+`api/state.py::make_cold_start_writer` (post-turn, joins the writer chain after
+`make_onboarding_writer`) runs the real `PassiveElicitationEngine.extract` +
+`ColdStartContextBuilder.process_message` → `InitialState.apply_update` against it every turn
+while `cold_start_active`. This closes the layer's single highest-value gap directly:
+`ColdStartContextBuilder` already regex-matches a stated name ("I'm Priya") into `user_handle` —
+Nova asking "what should I call you?" now actually has somewhere for the answer to land, the very
+next time the user states their name in any message, not only as a direct reply to that question.
+`session_history` is read from the real `PostgresMessageStore` (this session's prior user
+messages), not reconstructed or invented.
+
+**Bug caught in the same pass**: `InitialState.named_relationships` was a bare `list` (no
+`[NamedPersonSignal]` parameter) — the same serde-breaking pattern fixed in Layers 7/9/10 this
+session. Fixed before it was ever exercised against a real Postgres round-trip.
+
+Proven by `tests/unit/api/test_state.py::
+test_cold_start_writer_captures_user_handle_from_a_real_message`.
+
+### 14.3 Two ungrounded graduation criteria — resolved without inventing new extraction logic
+
+`GraduationEvaluator` requires `emotional_baseline_calibrated` and `primary_topic_areas` (2+), but
+**no code path anywhere in Layer 13 ever populates either field** — `ColdStartContextBuilder.
+process_message` never produces those keys. This meant `should_graduate` could never become `True`
+through any live path, even with everything else wired. Rather than inventing new NLP/extraction
+logic for these (which nothing in the spec grounds precisely), both are derived from signals
+already computed elsewhere:
+
+- `emotional_baseline_calibrated`: `True` once `PassiveElicitationEngine`'s own emotional-style
+  extractor reports `confidence >= 0.8` — that confidence is already a real signal, scaled by
+  session history length (reaches 1.0 at 10+ messages); no new heuristic invented.
+- `primary_topic_areas`: the count of distinct `topic_tags` across the user's real, persisted
+  episodic memories (Layer 2 already tags every episode) — reusing real upstream data rather than
+  building a new topic classifier.
+
+### 14.4 Graduation now genuinely evaluates, with a safety-net fallback kept
+
+`make_cold_start_writer` runs `GraduationEvaluator().evaluate(state)` every turn and, when
+`should_graduate`, calls a new `PostgresOnboardingStore.graduate_now()` to end cold start
+immediately — ahead of `make_onboarding_writer`'s bare session-counter schedule, which is
+deliberately **kept as a fallback**, not replaced: if a genuinely terse user never triggers enough
+real signal to satisfy every criterion, they still graduate at `graduation_sessions` rather than
+staying stuck in cold start forever. Both paths write to the same `cold_start_active` flag, so
+whichever fires first wins.
+
+Proven end to end by `tests/unit/api/test_state.py::
+test_cold_start_writer_graduates_early_when_real_criteria_are_all_met` (a fully-populated
+`InitialState` graduates the moment the last required criterion — `total_exchange_count >= 20` —
+is crossed, ahead of the 50-session fallback threshold used in that test) and
+`test_cold_start_writer_calibrates_emotional_baseline_and_stops_after_graduation` (the writer is a
+genuine no-op once `cold_start_active` is `False` — never resurrects a graduated user).
+
+### 14.5 Still correctly unwired
+
+`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` — no feature in Nova is gated or
+introduced via this mechanism, and building one just to give this a caller would be scope
+invention, not a wiring fix. `ColdStartEngine`'s own `activate_proactivity_engine`/
+`activate_longitudinal_full_mode`/`trigger_first_chapter_creation` hooks remain logging-only
+stubs, unchanged — the real activation of those systems already happens elsewhere, gated on the
+same `cold_start_active` flag (e.g. `make_proactive_writer` already checks it directly), so these
+hooks were never load-bearing to begin with.

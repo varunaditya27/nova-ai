@@ -10,6 +10,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any, Callable, Optional
 
 from config import load_config
@@ -950,6 +951,77 @@ def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callabl
     return _write
 
 
+def make_cold_start_writer(session_factory, graduation_sessions: int) -> Callable:
+    """Post-turn: Layer 13 SC-1 passive elicitation + SC-2 real graduation evaluation. Runs the
+    real PassiveElicitationEngine/ColdStartContextBuilder/GraduationEvaluator (previously zero
+    production callers -- ColdStartEngine itself is a complete, correct in-memory coordinator with
+    nowhere to persist its state across turns) against a persisted InitialState. Two of
+    GraduationEvaluator's required criteria have no real extractor anywhere in Layer 13
+    (emotional_baseline_calibrated, primary_topic_areas) -- both are derived here from signals
+    Layer 2/13 already compute elsewhere rather than inventing new extraction logic:
+    emotional_baseline_calibrated from the passive engine's own emotional-style confidence ramp
+    (already scaled by history length), primary_topic_areas from Layer 2's real episodic
+    topic_tags. The bare session-counter graduation in make_onboarding_writer stays as a fallback
+    so a terse user is never permanently stuck in cold start; this writer can graduate earlier."""
+    def _write(ctx) -> None:
+        try:
+            onboarding = PostgresOnboardingStore(session_factory, ctx.user_id, graduation_sessions)
+            if not onboarding.state().get("cold_start_active"):
+                return
+            from backend.layer13_onboarding.passive_elicitation import PassiveElicitationEngine
+            from backend.layer13_onboarding.context_constructor import ColdStartContextBuilder
+            from backend.layer13_onboarding.graduation_evaluator import GraduationEvaluator
+            from infra.db.initial_state_store import PostgresInitialStateStore
+            from infra.db.message_store import PostgresMessageStore
+
+            message = getattr(ctx, "message", "") or ""
+            if not message:
+                return
+            session_key = getattr(ctx, "session_id", "") or "default"
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+
+            state_store = PostgresInitialStateStore(session_factory, ctx.user_id)
+            state = state_store.load()
+            state.cold_start_session_count = onboarding.state().get("session_index", 0) or 1
+            state.total_exchange_count += 1
+
+            msg_store = PostgresMessageStore(session_factory, ctx.user_id)
+            session_history = [
+                SimpleNamespace(user_message=m["content"]) for m in msg_store.history(limit=50)
+                if m.get("session_key") == session_key and m.get("role") == "user"
+            ]
+            session_history.reverse()   # oldest first, matching how the extractors expect history
+
+            engine = PassiveElicitationEngine()
+            signals = engine.extract(
+                message=message, message_index=state.total_exchange_count - 1,
+                session_number=state.cold_start_session_count, timestamp=now,
+                session_history=session_history)
+            update = ColdStartContextBuilder(engine).process_message(
+                message=message, message_index=state.total_exchange_count - 1,
+                session_number=state.cold_start_session_count, timestamp=now,
+                initial_state=state, session_history=session_history)
+            state.apply_update(update)
+
+            if signals.emotional_expression_style.confidence >= 0.8:
+                state.emotional_baseline_calibrated = True
+
+            memory_store = PostgresMemoryStore(session_factory)
+            tags = {t for ep in memory_store.active_episodic(ctx.user_id)
+                   for t in (getattr(ep, "topic_tags", None) or [])}
+            if len(tags) >= len(state.primary_topic_areas or []):
+                state.primary_topic_areas = sorted(tags)
+
+            state_store.save(state)
+
+            result = GraduationEvaluator().evaluate(state)
+            if result.should_graduate:
+                onboarding.graduate_now()
+        except Exception:
+            logger.exception("cold-start writer failed; turn already delivered")
+    return _write
+
+
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
     # Each layerN.yaml overlay is optional (skipped if absent) and merges over defaults.yaml;
@@ -989,6 +1061,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
+        make_cold_start_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory),
         make_proactive_writer(session_factory, grad_sessions),
         make_identity_writer(session_factory, llm_clients["system1"]),

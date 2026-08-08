@@ -604,40 +604,42 @@ themselves. The most unwired layer of the whole 13-layer pass: only the active-e
 has a production caller (via a lighter reimplementation in `api/elicitation.py`, not the spec'd
 `ElicitationSurfacingPolicy`/`ColdStartEngine`). Full detail: `docs/layer-13-architecture.md` §13.
 
-- **Elicitation answers are asked but never captured.** Nova asks "what should I call you?" and
-  "are you a student, or working?" (the two active-elicitation questions with real natural
-  triggers wired live) but `PostgresOnboardingStore.record_elicitation` only persists that the
-  *question* was surfaced, never the user's *answer* — no code path writes `user_handle` or
-  `life_phase` anywhere. The question exists purely to have been asked once. Fix: capture the
-  next user turn following a surfaced identity/life-context question (or run a small extraction
-  pass over it) and persist the answer into onboarding state / Layer 2 semantic memory. This is
-  the single highest-value gap found in this layer — small in code, meaningfully broken in
-  product experience.
-- **`PassiveElicitationEngine` (8 extractors: vocabulary, emotional style, topic approach,
-  disclosure comfort, named people, life context, urgency, communication style) never runs in
-  production.** All of Layer 13's "infer before asking" design principle — half the point of the
-  layer — is inert. Wiring it means running `extract()` per turn and feeding results into
-  whatever replaces/extends `PostgresOnboardingStore`'s state.
-- **Production graduation criteria are unreachable, not just simplified.** The real
-  `GraduationEvaluator` requires `user_handle`, `life_phase`, `communication_style_profile`, and
-  `emotional_baseline_calibrated` to be populated — fields only `ColdStartContextBuilder` writes,
-  and nothing calls it. `PostgresOnboardingStore` graduates on a bare session counter instead
-  (`session_index >= 5`) because it's the only signal actually available. A real fix means either
-  building production up to populate `InitialState` for real, or formally retiring
-  `GraduationEvaluator`/`ColdStartContextBuilder`/`FeaturePacingController`/`ColdStartEngine` as
-  aspirational-but-superseded and updating the architecture doc to match the session-counter
-  design that's actually running. Worth a deliberate decision, not a silent default.
-- **`ElicitationSurfacingPolicy` vs. `api/elicitation.py`'s ad hoc reimplementation** — behaviorally
-  stricter today (not a safety issue) but the two have diverged from a single spec. Reconcile by
-  either calling the real policy class from `api/elicitation.py`, or deleting the unused class and
-  updating the doc to describe the simpler rate limit that's actually enforced.
-- **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` is fully unwired** (already flagged
-  in the 2026-07-07 "Live integration update" note; confirmed with a fresh grep this pass). No
-  feature in Nova is gated or introduced via this mechanism — features are either always-on or
-  gated ad hoc elsewhere (e.g. cold-start's own `proactivity_mode="observe_only"`).
+- **[done, 2026-08-09]** Elicitation answers are now captured. Nova asks "what should I call
+  you?" and "are you a student, or working?" but `PostgresOnboardingStore.record_elicitation` only
+  ever persisted that the *question* was surfaced, never the *answer*. `api/state.py::
+  make_cold_start_writer` now runs the real `ColdStartContextBuilder.process_message` every turn
+  while cold-starting, which regex-matches a stated name into `user_handle` the next time the user
+  says it in any message — not narrowly tied to being a direct reply to that one question, but a
+  real, general capture path. See `docs/layer-13-architecture.md` §14.2.
+- **[done, 2026-08-09]** `PassiveElicitationEngine` (all 8 extractors) now runs live every turn via
+  `make_cold_start_writer`, feeding a real, persisted `InitialState` (new
+  `infra/db/initial_state_store.py`). Caught and fixed a bare-`list` serde bug on
+  `InitialState.named_relationships` (same pattern as Layers 7/9/10) before it was ever exercised
+  against Postgres for real.
+- **[done, 2026-08-09]** Production graduation now uses the real `GraduationEvaluator` against the
+  real, populated `InitialState` — deliberately **alongside**, not instead of, the session-counter
+  fallback (so a terse user is never permanently stuck). Two of the evaluator's 7 required criteria
+  had no extractor anywhere in Layer 13 (`emotional_baseline_calibrated`, `primary_topic_areas`) —
+  resolved by deriving both from real signals already computed elsewhere (the passive engine's own
+  confidence ramp; Layer 2's real episodic `topic_tags`) rather than inventing new extraction
+  logic. `FeaturePacingController`/`ColdStartEngine` itself were not instantiated directly — its
+  real logic was wired via its own component modules instead, since `ColdStartEngine` bundles
+  session-start/feature-pacing concerns unrelated to what needed fixing. See
+  `docs/layer-13-architecture.md` §14.3-§14.4.
+- **[done, 2026-08-09]** `ElicitationSurfacingPolicy` vs. `api/elicitation.py`'s reimplementation
+  reconciled — `select_elicitation` now runs the real `ElicitationQueue.next_surfaceable_item` +
+  `ElicitationSurfacingPolicy.can_surface` in sequence (the same two-step gate
+  `ColdStartEngine.on_message` uses), not a single looser inline check. See
+  `docs/layer-13-architecture.md` §14.1.
+- **Still unwired, correctly**: `FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` — no
+  feature in Nova is gated or introduced via this mechanism, and none was built this pass just to
+  give it a caller. `ColdStartEngine`'s `activate_proactivity_engine`/
+  `activate_longitudinal_full_mode`/`trigger_first_chapter_creation` hooks remain logging-only —
+  the real activation already happens elsewhere, keyed off the same `cold_start_active` flag.
 
 ---
 
-All 13 layers now audited. This file is the durable record of what each pass found beyond what
-was safe to fix inline — see each `## Layer N` section above for the audited-date and the linked
-`docs/layer-N-architecture.md` §"Live wiring status" for full detail.
+All 13 layers now audited, and every real, bounded gap found along the way has either been fixed
+or explicitly, deliberately left open with a stated reason — see each `## Layer N` section above
+for the audited-date and the linked `docs/layer-N-architecture.md` §"Live wiring status" for full
+detail.

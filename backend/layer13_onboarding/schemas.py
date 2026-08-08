@@ -168,7 +168,7 @@ class InitialState:
     emotional_baseline_calibrated: bool = False
     primary_topic_areas: list = field(default_factory=list)
     primary_reason: Optional[str] = None
-    named_relationships: list = field(default_factory=list)
+    named_relationships: list[NamedPersonSignal] = field(default_factory=list)
 
     def apply_update(self, update: "InitialStateUpdate") -> None:
         """Merge a context-builder update into this state (additive / non-destructive)."""

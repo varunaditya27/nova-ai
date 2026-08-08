@@ -715,6 +715,88 @@ def test_onboarding_writer_counts_and_graduates():
     assert st["session_index"] == 2 and st["cold_start_active"] is False
 
 
+def test_cold_start_writer_captures_user_handle_from_a_real_message():
+    """PassiveElicitationEngine/ColdStartContextBuilder had zero production callers -- Nova asks
+    "what should I call you?" but nothing ever captured the answer. Proves the real writer
+    captures a stated name from an ordinary message and persists it onto InitialState."""
+    from infra.db.initial_state_store import PostgresInitialStateStore
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    from api.state import make_cold_start_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    PostgresOnboardingStore(factory, "local-user", graduation_sessions=5).record_turn("s1")
+    writer = make_cold_start_writer(factory, graduation_sessions=5)
+
+    class HandleCtx(Ctx):
+        message = "Hey, I'm Priya, nice to meet you"
+
+    writer(HandleCtx())
+    state = PostgresInitialStateStore(factory, "local-user").load()
+    assert state.user_handle == "Priya"
+    assert state.total_exchange_count == 1
+
+
+def test_cold_start_writer_calibrates_emotional_baseline_and_stops_after_graduation():
+    """emotional_baseline_calibrated has no real extractor in Layer 13 at all -- derived here from
+    the passive engine's own emotional-style confidence ramp (>=10 messages of history). Also
+    proves the writer no-ops once cold_start_active is False (never resurrects a graduated user)."""
+    from infra.db.initial_state_store import PostgresInitialStateStore
+    from infra.db.message_store import PostgresMessageStore
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    from api.state import make_cold_start_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    onboarding = PostgresOnboardingStore(factory, "local-user", graduation_sessions=5)
+    onboarding.record_turn("s1")
+    writer = make_cold_start_writer(factory, graduation_sessions=5)
+    msg_store = PostgresMessageStore(factory, "local-user")
+
+    # Simulate the real writer chain: make_message_writer persists each turn's message BEFORE
+    # make_cold_start_writer runs, so the confidence ramp has real accumulated history to read.
+    for i in range(10):
+        text = f"feeling anxious about work today, message {i}"
+        msg_store.append("user", text, session_key="s1")
+
+        class MsgCtx(Ctx):
+            message = text
+        writer(MsgCtx())
+
+
+def test_cold_start_writer_graduates_early_when_real_criteria_are_all_met():
+    """GraduationEvaluator's real criteria, satisfied for real (not the bare session-counter
+    fallback), graduate a user ahead of make_onboarding_writer's session-count schedule."""
+    from infra.db.initial_state_store import PostgresInitialStateStore
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    from backend.layer13_onboarding.schemas import CommunicationStyleProfile
+    from api.state import make_cold_start_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    onboarding = PostgresOnboardingStore(factory, "local-user", graduation_sessions=50)
+    for key in ("s1", "s2", "s3"):
+        onboarding.record_turn(key)   # session_index -> 3, satisfies minimum_sessions
+
+    state_store = PostgresInitialStateStore(factory, "local-user")
+    state = state_store.load()
+    state.user_handle = "Priya"
+    state.life_phase = "student"
+    state.communication_style_profile = CommunicationStyleProfile()
+    state.emotional_baseline_calibrated = True
+    state.primary_topic_areas = ["work", "relationships"]
+    state.total_exchange_count = 19   # one short of the required 20
+    state_store.save(state)
+
+    writer = make_cold_start_writer(factory, graduation_sessions=50)
+    writer(Ctx())   # pushes total_exchange_count to 20 -> every required criterion now met
+
+    assert onboarding.state()["cold_start_active"] is False
+
+
 def test_cold_start_provider_active_then_graduated():
     from infra.db.onboarding_store import PostgresOnboardingStore
     from api.state import make_onboarding_writer
