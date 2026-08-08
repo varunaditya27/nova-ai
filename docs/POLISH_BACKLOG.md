@@ -559,20 +559,33 @@ but real bugs in shared code all the same):
   no cascade stores were wired (the only way the live route calls it today) — reads as "checked,
   found nothing" when the truth is "not checked". Fixed to say so.
 
+**[corrected, 2026-08-09] Not actually two divergent sync implementations.** The original framing
+below was a misdiagnosis, investigated and corrected rather than "reconciled": `SyncCoordinator`
+(`backend/layer12_privacy/sync_coordinator.py`) is genuinely client-side code — it needs a
+device-held `sync_key` the server must never see, by the zero-knowledge design's own definition —
+so it has no server caller *by design*, not by neglect. `PostgresSyncStore` is correctly the only
+thing this backend-only repo's server could ever call. No code changed; the docs did. See
+`docs/layer-12-architecture.md` §15.1.
+
+**[done, 2026-08-09]** `dry_run_deletion`'s cascade checks are now genuinely wired into
+`DELETE /memory/{id}` (semantic + longitudinal), surfacing two real field-mismatch bugs that would
+have crashed on first real use: the semantic check read fields that don't exist on Layer 2's real
+`SemanticMemory` (`derived_from_episodes`/`fact_id`/`fact_text` → `supporting_episode_ids`/
+`memory_id`/`statement`), and the longitudinal check read `backing_episode_ids` on `WeeklySummary`
+— a field that only exists on the unrelated `RetrospectivePacket`. A `UUID`-vs-`str` type
+mismatch in the membership check was also found and fixed. `execute_deletion` itself still only
+mutates the primary episodic store; deciding what cascade-store *mutation* should mean is a real
+product decision, not made here. Personality-vector cascade stays permanently unreported — no
+such store exists anywhere in this codebase. See `docs/layer-12-architecture.md` §15.2.
+
 Larger, real feature work (not fixed inline):
 - **SC-1 (encryption-at-rest) is entirely undeployed.** The stdlib-honest PBKDF2/HKDF/HMAC
   construction in `encryption_manager.py` genuinely round-trips and detects tampering in tests,
   but nothing in `api/`/`infra/` ever calls it — Postgres/SQLite data is stored in plaintext at
   the DB layer today. Same for `integrity_verifier.py`'s Merkle-tree tamper detection (superseded
-  in practice by the two independent SHA-256 hash chains in `infra/db/audit_trail.py` and
-  `infra/db/privacy_audit.py`, both live). Deploying real at-rest encryption is a deployment-infra
-  project, not a code-polish fix.
-- **Two divergent, non-interoperable sync implementations exist.** `backend/layer12_privacy/
-  sync_coordinator.py` (SyncDelta/ConflictResolutionPolicy, spec-accurate) and `infra/db/
-  sync_store.py::PostgresSyncStore` (the one `api/routes/sync.py` actually uses — a simpler blind
-  relay keyed by monotonic row id, no per-type conflict resolution). They were likely built at
-  different times against the same spec. Needs a decision: retire the unused one, or migrate
-  `api/routes/sync.py` onto it and add the conflict-resolution logic the current store lacks.
+  in practice by the three independent SHA-256 hash chains in `infra/db/audit_trail.py`,
+  `infra/db/safety_record_store.py`, and `infra/db/privacy_audit.py`, all live). Deploying real
+  at-rest encryption is a deployment-infra project, not a code-polish fix.
 - **SC-3's richer audit/correction views have no UI or route.** `MemoryAuditView` (7 sections),
   `AuditQueryEngine` (5 query intents), and the 6 `MemoryCorrectionType` operations are unused —
   `GET /memory/audit` returns a much flatter episodic/semantic list built ad hoc in
