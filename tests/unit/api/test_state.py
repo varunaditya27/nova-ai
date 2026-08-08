@@ -595,6 +595,46 @@ def test_goal_writer_persists_extracted_goal():
     assert any(g.title == "run a 5k" for g in active)
 
 
+def test_goal_writer_decomposes_a_new_goal_into_a_dated_milestone():
+    """SC-5 (goal_decomposer) had zero production callers -- every goal created through the live
+    pipeline had milestones=[] and deadline=None, so Layer 6's goal_checkin_item intake never
+    produced a real candidate (docs/POLISH_BACKLOG.md's Layer 7 entry). This proves the fix
+    through the real writer: a newly created goal is decomposed, its milestone's ISO target_date
+    is parsed by the real decompose_goal, and api/proactive_gen.py::goal_checkin_item (already
+    live, called every turn) can build a real GOAL_CHECK_IN item from it."""
+    from infra.db.goal_store import PostgresGoalStore
+    from api.state import make_goal_writer
+    from api.proactive_gen import goal_checkin_item
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class GoalLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "goal planning specialist" in prompt:
+                return ('{"milestones": [{"title": "run 1k without stopping", '
+                        '"description": "first checkpoint", '
+                        '"target_date": "2026-09-01T00:00:00+00:00", "progress_weight": 1.0}], '
+                        '"habits": []}')
+            return '{"goal_detected": true, "new_goal": {"inferred_title": "run a 5k", "confidence": 0.8}}'
+
+    class GoalCtx(Ctx):
+        message = "I want to run a 5k next month"
+        now = datetime(2026, 8, 1, tzinfo=timezone.utc)
+
+    make_goal_writer(factory, GoalLLM(), FakeLLM())(GoalCtx())
+    store = PostgresGoalStore(factory, "local-user")
+    active = store.load_by_status(["active"])
+    goal = next(g for g in active if g.title == "run a 5k")
+    assert len(goal.milestones) == 1
+    assert goal.milestones[0].target_date is not None
+
+    item = goal_checkin_item(goal, now=datetime(2026, 8, 1, tzinfo=timezone.utc))
+    assert item is not None
+    assert "run 1k without stopping" in item.content_basis or "first checkpoint" in item.content_basis
+
+
 def test_safety_writer_records_crisis_and_skips_none():
     from types import SimpleNamespace
     from infra.db.safety_store import PostgresSafetyLog

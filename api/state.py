@@ -23,7 +23,7 @@ from backend.layer2_memory import (
 )
 from backend.layer2_memory.embedding import cosine_similarity
 from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector, ShortTermMemoryBuffer
-from backend.layer7_goals import run_goal_pipeline
+from backend.layer7_goals import run_goal_pipeline, decompose_goal
 from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
@@ -474,10 +474,19 @@ def make_message_writer(session_factory) -> Callable:
 
 
 def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
-    """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres."""
+    """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres, then
+    SC-5-decompose any newly created goal into milestones/habits (architecture doc §7). Without
+    this, every goal created through the live pipeline has milestones=[] and deadline=None, which
+    is why Layer 6's goal_checkin_item intake never produced a real candidate -- see
+    docs/POLISH_BACKLOG.md's Layer 7 entry. decompose_goal's own JSON parsing already handles an
+    ISO target_date per milestone, so no separate natural-language date parser is needed."""
     def _extractor_llm(prompt):
         from infra.llm.json_extract import extract_json
         return extract_json(system1_client.complete(prompt))   # clean fenced/prose JSON for the extractor
+
+    def _decomposer_llm(prompt):
+        from infra.llm.json_extract import extract_json
+        return extract_json(system1_client.complete(prompt))
 
     def _sim(a, b):
         return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
@@ -485,11 +494,20 @@ def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
     def _write(ctx) -> None:
         try:
             store = PostgresGoalStore(session_factory, ctx.user_id)
-            run_goal_pipeline(
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            output = run_goal_pipeline(
                 getattr(ctx, "message", "") or "", goal_store=store,
                 message_id=getattr(ctx, "session_id", "") or "",
-                extractor_llm_fn=_extractor_llm, similarity_fn=_sim,
-                now=getattr(ctx, "now", None) or datetime.now(timezone.utc))
+                extractor_llm_fn=_extractor_llm, similarity_fn=_sim, now=now)
+            for goal_id in output.new_goals_created:
+                goal = store.get(goal_id)
+                if goal is None:
+                    continue
+                milestones, habits = decompose_goal(goal, llm_fn=_decomposer_llm, now=now)
+                if milestones or habits:
+                    goal.milestones = milestones
+                    goal.habits = habits
+                    store.update_goal(goal)
         except Exception:
             logger.exception("goal writer failed; turn already delivered")
     return _write

@@ -83,6 +83,34 @@ def test_new_goal_extracted_and_stored():
     assert any(g.title == "Learn guitar" for g in store.goals)
 
 
+def test_new_goal_threads_deadline_and_metric_fields_from_extraction():
+    """The extractor's has_explicit_deadline/deadline_description/has_explicit_metric/
+    metric_description were computed but silently dropped at Goal(...) construction -- a real
+    data-loss bug (docs/POLISH_BACKLOG.md's Layer 7 entry). Without deadline_description reaching
+    the goal, SC-5's decomposition prompt always saw "open-ended" instead of the user's stated
+    deadline."""
+    store = GoalStore([])
+
+    def extractor(prompt):
+        return {"goal_detected": True, "is_update": False,
+                "new_goal": {"inferred_title": "run a 5k", "inferred_domain": "health",
+                             "inferred_direction": "achieve_outcome", "confidence": 0.85,
+                             "raw_statement": "I want to run a 5k by next month",
+                             "has_explicit_deadline": True, "deadline_description": "next month",
+                             "has_explicit_metric": True, "metric_description": "5 kilometers"}}
+
+    out = engine.run_goal_pipeline(
+        "I want to run a 5k by next month", store, emotional_state=EmotionClassification(),
+        conversation_mode="goal_planning", relationship_stage="developing",
+        similarity_fn=lambda a, b: 0.0, extractor_llm_fn=extractor, now=NOW)
+    assert len(out.new_goals_created) == 1
+    goal = store.get(out.new_goals_created[0])
+    assert goal.deadline_description == "next month"
+    assert goal.deadline_is_inferred is False
+    assert goal.has_metric is True
+    assert goal.metric_description == "5 kilometers"
+
+
 # ── §10 hard rule: never block on internal error ─────────────────────────────
 def test_never_blocks_on_store_error():
     class BrokenStore(GoalStore):

@@ -1197,4 +1197,48 @@ it means the feature is now much quieter in practice than CLAUDE.md previously i
   `None` on every turn. The goal→proactive intake is wired correctly; it just has no real input to
   act on yet.
 
+## 14. SC-5 wired + the deadline/metric field-drop fixed (follow-up, 2026-08-09)
+
+Both §13.2 gaps closed, without needing natural-language date parsing:
+
+- **`engine.py`'s `Goal(...)` construction now threads `deadline_description`,
+  `deadline_is_inferred` (`not has_explicit_deadline`), `has_metric`, and `metric_description`
+  from the extractor's already-computed fields** — they were extracted and simply dropped at
+  construction. Proven by `tests/unit/test_layer7_engine.py::
+  test_new_goal_threads_deadline_and_metric_fields_from_extraction`. `Goal.deadline` (a parsed
+  `datetime`) is still never populated — no natural-language date parser exists anywhere in this
+  codebase, and building one is out of scope for a wiring pass — but `deadline_description` now
+  reaching the goal also makes SC-5's decomposition prompt (`build_decomposition_prompt`, which
+  reads `goal.deadline_description`) actually see the user's stated deadline instead of always
+  "open-ended."
+- **SC-5 (`decompose_goal`) is now called from `api/state.py::make_goal_writer`** for every goal
+  `run_goal_pipeline` newly creates this turn: the goal is reloaded from the store, decomposed via
+  an LLM call (JSON milestones with `target_date`/`progress_weight` + habits, per
+  `build_decomposition_prompt`), and `goal.milestones`/`goal.habits` are persisted back.
+  `decompose_goal`'s own `_parse_date` already accepts an ISO `target_date` string from the LLM —
+  no separate date-parsing component was needed, since the decomposition LLM call can be asked to
+  return an ISO date directly (unlike the free-text `deadline_description` from the *extraction*
+  call, which SC-1's prompt never asked to be structured).
+- **Found in the process, fixed as a one-line schema bug**: `Goal.milestones`/`Goal.habits` were
+  declared as bare `list` (with a `# list[Milestone]` comment) rather than `list[Milestone]`. The
+  shared `infra/db/memory_serde.from_jsonable` reconstructs nested dataclasses only from a real
+  parameterized generic — with the bare annotation, a reloaded goal's milestones silently
+  round-tripped as plain `dict`s instead of `Milestone` objects, which `goal_checkin_item`'s
+  `getattr(ms, "target_date", None)` would have silently read as `None` on every dict (the
+  fallback default hides the mismatch instead of raising). Fixed to `list[Milestone]`/
+  `list[Habit]` — `Goal.signal_events` on the very next line already used the correct pattern, so
+  this was an isolated oversight, not a systemic one.
+
+Proven end to end (extraction → decomposition → persisted `Milestone.target_date` → Layer 6's
+`goal_checkin_item` builds a real item) by
+`tests/unit/api/test_state.py::test_goal_writer_decomposes_a_new_goal_into_a_dated_milestone`.
+This closes the Layer 6 correction noted in §13.2 and `docs/POLISH_BACKLOG.md`'s Layer 6 entry —
+`goal_checkin_item` can now produce real candidates for goals the decomposition LLM gives a dated
+milestone to. `Layer7Output.milestones_decomposed` (a summary/audit field) is not populated by
+this pass — cosmetic, not load-bearing, left as `[]`. `register_milestones_with_layer6` (an
+alternate, earlier Layer-6-handoff path, distinct from `goal_checkin_item`'s independent per-turn
+walk) remains uncalled — redundant with `goal_checkin_item`, which already covers the same
+milestones every turn via `make_proactive_writer`; not wired to avoid two divergent paths writing
+the same `GOAL_CHECK_IN` item.
+
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*

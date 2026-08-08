@@ -344,7 +344,9 @@ detail: `docs/layer-6-architecture.md` §15.
 a milestone or deadline date on the goal; Layer 7's live extraction path never sets either (SC-5
 unwired, and the extractor only returns a free-text deadline description, never a parsed date).
 The intake wiring itself is correct — it simply has no populated input yet. See the Layer 7 entry
-below.
+below. **[resolved, 2026-08-09]**: Layer 7's SC-5 is now wired and gives goals real dated
+milestones — see `docs/layer-7-architecture.md` §14. `goal_checkin_item` produces real candidates
+today for any goal the decomposition LLM assigns a milestone date to.
 
 **Correction (2026-08-04, from the Layer 1 timezone follow-up):** `evaluate_timing_gate`'s daily
 cap (`ctx.proactive_messages_sent_today >= 1`) reads a pre-computed field on `UserTimingContext` —
@@ -376,16 +378,16 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
   actually reaches the prompt. Reconciling this needs the goal pipeline's SC-2/3/4 read path to
   run pre-generation for the current turn — a pipeline-ordering question (Layer 2's "read-only
   during inference" invariant is exactly why writers run post-turn today), not a small fix.
-- **SC-5 (Goal Decomposer) is unwired; goals never get milestones or a parsed deadline.**
-  `decompose_goal`, `register_milestones_with_layer6`, and `check_milestone_completion` have no
-  production callers. Compounding this, `engine.py`'s live `Goal(...)` construction doesn't even
-  thread the extractor's `deadline_description` through (and the extractor never returns a parsed
-  date in the first place — no natural-language date parsing exists anywhere in the codebase).
-  Net effect: every goal created through the live pipeline has `milestones=[]` and
-  `deadline=None`, which is why Layer 6's `goal_checkin_item` intake (documented in the Layer 6
-  entry above) never actually produces a candidate — see the correction note there. Fixing this
-  needs (a) SC-5 wired to a real caller and (b) either date-parsing for `deadline_description` or
-  accepting that only milestone-based check-ins will ever fire.
+- **[done, 2026-08-09]** SC-5 (Goal Decomposer) wired — `api/state.py::make_goal_writer` calls
+  `decompose_goal` for each newly created goal and persists the resulting milestones/habits;
+  `engine.py`'s `Goal(...)` construction now also threads `deadline_description`/
+  `deadline_is_inferred`/`has_metric`/`metric_description` through from extraction (previously
+  silently dropped). `Goal.milestones`/`Goal.habits`' bare-`list` schema annotation (a serde bug
+  that silently round-tripped them as dicts, not `Milestone`/`Habit` objects) was caught and fixed
+  in the same pass. `Goal.deadline` (a parsed date) still never populates — no NL date parser
+  exists — but milestone `target_date` (LLM-returned as ISO, parsed by `decompose_goal`'s existing
+  `_parse_date`) closes the practical gap: `goal_checkin_item` can now produce real candidates.
+  See `docs/layer-7-architecture.md` §14.
 
 ---
 
