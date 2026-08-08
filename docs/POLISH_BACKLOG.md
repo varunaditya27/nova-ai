@@ -199,24 +199,27 @@ signal-forwarding gaps in that path were fixed this phase (recalled memories, ad
 circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
 `docs/layer-4-architecture.md` §16 for full detail. What's left is real feature work, not wiring:
 
-- **`refine()` doesn't call the real `emotion_refiner.refine_emotion`.** `api/assembly.py`'s
-  `refine()` sends a fixed ad hoc prompt to the LLM instead of the tested SC-6 implementation —
-  no five-condition skip policy, no factual-preservation validation/reinsertion, no voice
-  parameters or empathy hypothesis threaded in. Not a drop-in fix: the orchestrator
-  (`conversation_orchestrator.py`) sets `ctx.refined = True` unconditionally whenever `refine()`
-  runs at all, so wiring the real skip policy would make that field a lie without also touching
-  the orchestrator's contract — and the Phase-3 regression test asserts `out.refined is True`.
-  Needs a coordinated change across `conversation_orchestrator.py` and `api/assembly.py`, not a
-  same-shape adapter fix.
-- **SC-1 (persona_resolver), SC-3 (tone_calibrator), SC-4 (drift_detector) never run live.**
-  `build_persona()` hand-assembles a `PersonaPacket()` missing `persona_state`,
-  `voice_parameters`, and `drift_check_result` entirely. This is an identity-consistency gap, not
-  a safety hole (Layer 11 SC-1 Ethical Guardrails still runs post-generation on every response),
-  but the four §11 "identity under pressure" rules — no capitulation to social pressure, no
-  claimed qualia, no validating harmful beliefs, no abandoning character on request — do not fire
-  pre-generation as designed. SC-3 wiring is coupled to this: voice parameters are inert until
-  SC-5/SC-6 are updated to consume them, so this and the `refine()` item above should land
-  together.
+- **[done, 2026-08-08]** `refine()` now calls the real `emotion_refiner.refine_emotion` — full
+  five-condition skip policy, factual-preservation validation/reinsertion, voice parameters and
+  persona packet threaded in. The feared `ctx.refined` contract break didn't materialize: kept
+  its existing "the refinement stage ran this turn" meaning (unaffected by the skip policy),
+  rather than conflating it with `RefinementOutput.refinement_applied` ("the text was actually
+  rewritten") — see `docs/layer-4-architecture.md` §17.4.
+- **[done, 2026-08-08]** SC-1 (persona_resolver), SC-3 (tone_calibrator), SC-4 (drift_detector) now
+  run live in `build_persona()`/`plan()`, with a caveat: **SC-1's real inputs are, in practice,
+  build-time constants.** `persona_resolver.load_core_anchors` accepts `identity_memory_entries`
+  but its own body never reads it (declared "forward-compatibility", not a bug introduced here) —
+  so `PersonaState` is identical across every user/turn except mode-dependent `humor_allowed` and
+  `known_sensitivities` (always `[]`, needs `psychological_model`). Identity Memory still reaches
+  the prompt via `_identity_directive` (a separate path, Layer 2 §24), just not through
+  `PersonaState`. SC-4's Check 3 (sycophantic capitulation) is permanently inert — no
+  cross-turn Nova-stance history is tracked anywhere; Checks 1/2 work fully. Full detail:
+  `docs/layer-4-architecture.md` §17.
+- **A real gap found while wiring the above:** `infra/db/relationship_store.py::record_turn`
+  advanced `RelationshipState`'s counters/stage but never stamped the stage-derived behavioral
+  gates (`memory_reference_policy` etc, §4.4) — fixed by having `build_persona` call
+  `compute_relationship_state(persisted=rel)` (idempotent over the persisted counters, no
+  `communication_model` passed — see the item below).
 - **`build_final_response_packet` wiring collides with System 1/2 routing.** The orchestrator's
   `_run_system1`/`_run_system2` hooks decide whether the Emotion Refiner runs at all (System 1
   skips it structurally); `build_final_response_packet` makes that same decision internally via
@@ -225,11 +228,13 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
 - **`RelationshipState.compute_relationship_state`'s style-calibration overwrite is a latent
   trap.** `_apply_style_calibration` unconditionally overwrites the four EMA-learned
   communication-style params (`response_length_preference`, etc.) from a coarse one-shot
-  `communication_model` derivation whenever a `communication_model` is passed in. Currently inert
-  live because Layer 2's UWM is never populated (`communication_model` is always `None` — see the
-  Layer 2 entry above), but whoever eventually wires SC-2 into the live path needs to either drop
-  this overwrite or make it additive, or it will silently discard the learned EMA values from
-  `style_learning.py` every turn.
+  `communication_model` derivation whenever a `communication_model` is passed in. `build_persona`
+  now calls `compute_relationship_state` live (2026-08-08, see above) but deliberately passes
+  `communication_model=None` to sidestep this trap by construction — `communication_model` is
+  always `None` anyway (Layer 2's UWM narrow-slice never extracts one). Whoever eventually wires
+  that extraction needs to either drop this overwrite or make it additive first, or it will
+  silently discard the learned EMA values from `style_learning.py` every turn the moment
+  `communication_model` starts being populated and someone naively threads it through.
 
 ---
 

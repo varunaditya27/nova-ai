@@ -1310,6 +1310,85 @@ wholesale, and wiring SC-1/SC-3/SC-4 (persona_resolver, tone_calibrator, drift_d
 features, not small adapters — see the backlog for why each is bigger than a drop-in forward and
 what it's blocked on.
 
+## 17. SC-1/3/4/6 wired live (Phase 4 polish pass, follow-up, 2026-08-08)
+
+§16.3's premise turned out to be only half right: `build_final_response_packet` wholesale is
+genuinely blocked (its internal System 1/2 skip decision collides with the orchestrator's own
+routing — left open, see below), but SC-1 (`resolve_persona_state`), SC-3 (`calibrate_voice`),
+SC-4 (`detect_drift`), and SC-6 (`refine_emotion`) turned out to have every real input already
+available on `ctx` by this point in the session (identity beliefs from Layer 2, `RelationshipState`
+from Layer 4/5, `background_state` from Layer 3's now-live BES, the semantic draft itself) — wired
+as same-shape adapter calls in `api/assembly.py`, not new feature work.
+
+### 17.1 What's wired
+
+- **`build_persona()`** now calls `resolve_persona_state(identity_memory_entries=..., session_context=...)`
+  for real and stores the result on `PersonaPacket.persona_state`; calls `calibrate_voice(...)` with
+  the real conversation mode, circadian band, relationship state, persona state, and background
+  state, storing the result on `PersonaPacket.voice_parameters`.
+- **`plan()`** runs `detect_drift` twice: once before generation (Checks 2/3, which read only the
+  user message/history) so a role-abandonment directive reaches the planner prompt on **every**
+  turn including System 1 (most turns — see 17.3), and once after (Check 1, fabricated emotion in
+  the actual draft), stored on `PersonaPacket.drift_check_result` for `refine()`.
+- **`refine()`** now calls the real `emotion_refiner.refine_emotion` — the actual five-condition
+  skip policy (`should_skip_refinement`), factual-preservation validation against the draft's
+  `key_claims`, and claim reinsertion — instead of a fixed `"Rephrase this warmly..."` prompt with
+  no factual guarantee at all. Proven by a test where the refiner-stage LLM drops a declarative
+  sentence outright and the final delivered text still contains it (reinserted).
+- **`build_persona()`** also now calls `compute_relationship_state(persisted=rel)` (no
+  `communication_model` passed) instead of using the raw persisted `RelationshipState` — see 17.2.
+
+### 17.2 A gap found along the way: stage gates were never stamped
+
+`infra/db/relationship_store.py::record_turn` advances message/session counters and the
+qualitative `stage` string, but never ran `_apply_stage_gates` — so `memory_reference_policy`,
+`self_disclosure_ceiling`, `follow_up_question_ceiling`, and `direct_noticing_allowed` sat at
+their dataclass defaults (`"none"`, `"surface"`, `1`, `False`) regardless of how deep the
+relationship actually was, silently defeating `calibrate_voice`'s stage-register step
+(`_apply_stage_register`) and `generate_semantic_draft`'s memory-reference-policy line. Fixed by
+calling `compute_relationship_state(persisted=rel)` in `build_persona` — it's deterministic and
+idempotent over the persisted counters (recomputes the same `stage`), so this is a pure gate-stamp,
+not a behavior change to the counters themselves. `communication_model` is deliberately never
+passed: doing so would let `_apply_style_calibration` overwrite the EMA-learned params
+`style_learning.py` already owns live — see the still-open Layer 4 backlog item on this exact trap.
+`PersonaPacket.memory_reference_policy` (a separate top-level field `generate_semantic_draft`'s
+prompt reads directly) is now set from the stamped gate.
+
+### 17.3 Two qualifiers that keep this claim honest
+
+- **SC-1 does not yet make Nova's persisted self-model influence her expression.**
+  `persona_resolver.load_core_anchors(identity_memory_entries=...)` accepts the identity beliefs
+  parameter but its own docstring says it's accepted "for forward-compatibility" and the body
+  never reads it — it always returns the same build-time anchor constants. So `resolve_persona_state`
+  runs for real on the real call path (SC-1 "is live" in that sense), but `PersonaState` comes out
+  identical for every user and every turn except `known_sensitivities` (always `[]` — needs
+  `psychological_model`, out of the UWM narrow-slice scope) and mode-dependent `humor_allowed`.
+  Identity Memory still reaches the prompt — via `_identity_directive` (§24 of the Layer 2 doc),
+  a separate path — just not through `PersonaState`. Not fixed here: inventing anchor-merge logic
+  inside `load_core_anchors` would be exactly the "reimplement rather than wire to the real module"
+  anti-pattern CLAUDE.md warns against; that module's own author left this as declared future work.
+- **SC-4 Check 3 (sycophantic capitulation) is permanently inert.** It needs
+  `nova_recent_positions` (≥3 tracked stances across turns) and nothing in the codebase tracks
+  Nova's stance history across turns. Checks 1 (fabricated emotion) and 2 (role abandonment) work
+  fully without it.
+
+### 17.4 `ctx.refined` no longer means "text was rewritten"
+
+Before this pass, `refine()` always called the LLM and returned its output, so
+`ctx.refined = True` (set unconditionally by `run_system2`) and "the Emotion Refiner ran" were the
+same fact. Now `refine_emotion`'s own skip policy can return the draft **unchanged**
+(`RefinementOutput.refinement_applied = False`) even on a System 2 turn (e.g. a neutral exchange
+that still routed to System 2 for another reason). `ctx.refined` was kept as "the refinement stage
+was invoked this turn" (unaffected — matches the existing Phase-3 regression test asserting
+`out.refined is True`), not "the text changed"; `refinement_applied` is available on the
+`RefinementOutput` if a future caller needs the finer-grained fact but isn't currently surfaced
+on `ctx`.
+
+### 17.5 Still not fixed, tracked in `docs/POLISH_BACKLOG.md`
+
+`build_final_response_packet` wholesale — its internal System 1/2 skip decision would collide with
+the orchestrator's own routing, a design question, not a wiring fix.
+
 ### Live integration update (2026-07-07) — per-user persona-param learning
 
 The four communication-style calibration params (`formality_preference`,

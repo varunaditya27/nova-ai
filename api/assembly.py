@@ -132,9 +132,12 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     from backend.layer2_memory import memory_arbiter
     from backend.layer2_memory.schemas import ConversationMode, EmotionVector
     from backend.layer3_reasoning import build_emotion_intent_packet
-    from backend.layer3_reasoning.schemas import LLMClassificationOutput
-    from backend.layer4_persona import generate_semantic_draft
-    from backend.layer4_persona.schemas import PersonaPacket
+    from backend.layer3_reasoning.schemas import LLMClassificationOutput, BackgroundEmotionalState
+    from backend.layer4_persona import (
+        generate_semantic_draft, resolve_persona_state, calibrate_voice, detect_drift,
+        refine_emotion, should_skip_refinement, compute_relationship_state,
+    )
+    from backend.layer4_persona.schemas import PersonaPacket, SemanticDraft
     from backend.layer9_output import deliver as l9_deliver
     from backend.layer11_safety import evaluate, generate_crisis_response, run_all_checks
     from backend.layer11_safety.schemas import CrisisTier
@@ -328,6 +331,14 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         traits = "; ".join(b.statement for b in mutable)
         return f"This reflects who you (Nova) genuinely are: {traits}. Let it show, don't recite it."
 
+    _MEMORY_POLICY_NOTE = {
+        "none": "do not reference specific past conversations at all.",
+        "soft": "you may vaguely gesture at past context (\"I remember you mentioned something "
+               "like this\") but not cite specific episodes.",
+        "episodic": "you may reference specific past episodes directly.",
+        "full": "you may reference specific episodes and broader patterns you've noticed.",
+    }
+
     def build_persona(ctx):
         """Per-user Layer-4/5 persona packet: loads the persisted relationship state and turns the
         qualitative stage into a plain-language familiarity directive for the planner prompt."""
@@ -336,6 +347,15 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             try:
                 rel = relationship_provider(ctx.user_id)
                 if rel is not None:
+                    # record_turn (infra/db/relationship_store.py) advances counters + stage but
+                    # never stamps the stage-derived behavioral gates (self_disclosure_ceiling,
+                    # memory_reference_policy, follow_up_question_ceiling, direct_noticing_allowed)
+                    # -- compute_relationship_state does that deterministically from the persisted
+                    # state (architecture doc §4.4). No communication_model passed: it's always
+                    # None live (Layer 2's UWM narrow slice never extracts one), and passing one
+                    # would let _apply_style_calibration overwrite the EMA-learned params
+                    # style_learning.py already owns (see docs/POLISH_BACKLOG.md's Layer 4 entry).
+                    rel = compute_relationship_state(persisted=rel)
                     packet.relationship_state = rel
                     stage = getattr(rel, "stage", "new")
                     msgs = getattr(rel, "total_messages_exchanged", 0)
@@ -344,6 +364,9 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         f"You and the user are at the '{stage}' stage of a long-term relationship "
                         f"({msgs} messages across {sessions} sessions). Match that familiarity — "
                         f"warmer and more casual as it deepens; do not over-familiarize when new.")
+                    packet.memory_reference_policy = (
+                        f"Memory reference policy for this stage: '{rel.memory_reference_policy}' "
+                        f"— {_MEMORY_POLICY_NOTE.get(rel.memory_reference_policy, '')}")
                     # Fold in the per-user learned communication style (Layer 4/5 persona learning).
                     try:
                         from backend.layer4_persona.style_learning import persona_style_directive
@@ -361,13 +384,46 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                     packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
             except Exception:
                 logger.exception("UWM provider failed; persona without world-model context")
+        identity_beliefs = []
         if identity_provider is not None:
             try:
-                directive = _identity_directive(identity_provider(ctx.user_id))
+                identity_beliefs = identity_provider(ctx.user_id) or []
+                directive = _identity_directive(identity_beliefs)
                 if directive:
                     packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
             except Exception:
                 logger.exception("identity provider failed; persona without self-model context")
+
+        # SC-1 (persona_resolver) + SC-3 (tone_calibrator): real functions, real inputs — identity
+        # beliefs above, the relationship state already loaded, and Layer 3's background_state
+        # (now live, see docs/layer-3-architecture.md §18). psychological_model/communication_model
+        # stay None: the UWM narrow-slice scope (Layer 2 §23) deliberately never extracts either,
+        # so there's nothing real to pass yet.
+        try:
+            persona_state = resolve_persona_state(
+                identity_memory_entries=identity_beliefs,
+                session_context={"conversation_mode": getattr(ctx, "conversation_mode", "casual")})
+            packet.persona_state = persona_state
+            constraints = ["Never fabricate emotions or feelings Nova doesn't have.",
+                          "Never be sycophantic — disagree when warranted.",
+                          "Don't catastrophize."]
+            if persona_state.known_sensitivities:
+                constraints.append(
+                    "Known sensitivities: " + ", ".join(persona_state.known_sensitivities) + ".")
+            packet.constraint_instruction = " ".join(constraints)
+        except Exception:
+            logger.exception("persona_resolver failed; using default PersonaState")
+            persona_state = packet.persona_state
+
+        try:
+            packet.voice_parameters = calibrate_voice(
+                conversation_mode=getattr(ctx, "conversation_mode", "casual"),
+                circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+                relationship_state=packet.relationship_state, persona_state=persona_state,
+                background_state=getattr(ctx.emotion_intent, "background_state", None)
+                                 or BackgroundEmotionalState())
+        except Exception:
+            logger.exception("tone_calibrator failed; using default VoiceParameters")
         return packet
 
     # Layer 7 §6.3 hard blocks: never reference goals in these modes, or before the
@@ -407,8 +463,25 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
 
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
-        directive = " ".join(d for d in (_goal_directive(ctx), _elicitation_directive(ctx)) if d)
         ei = ctx.emotion_intent
+        # SC-4 (drift_detector), pass 1 — role-abandonment (Check 2) and sycophantic-capitulation
+        # (Check 3) read only user_message/history, not the draft, so they can and must run
+        # BEFORE generation: a role-abandonment request must be refused gracefully by the draft
+        # itself, on System 1 turns too (most turns route there) — not silently discarded because
+        # only refine() (System 2 only) used to see the directive. `nova_recent_positions` is
+        # always [] (no cross-turn stance history tracked yet), so Check 3 never fires in
+        # practice; Check 2 works fully without it.
+        pre_drift = None
+        try:
+            pre_drift = detect_drift(
+                pending_draft_intent="", user_message=ctx.message,
+                persona_state=ctx.persona_packet.persona_state, nova_recent_positions=[])
+        except Exception:
+            logger.exception("drift_detector (pre-draft) failed; proceeding without a drift check")
+        drift_directive = (pre_drift.planner_directive
+                          if pre_drift and pre_drift.drift_detected else None)
+        directive = " ".join(d for d in (
+            _goal_directive(ctx), _elicitation_directive(ctx), drift_directive) if d)
         # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
         # ctx — previously dropped, so the planner never actually grounded responses in
         # recalled memories despite Layer 2 computing them every turn. See POLISH_BACKLOG.md.
@@ -420,10 +493,54 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             recalled_memories=ctx.recalled_memories,
             circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
             llm_fn=lambda p: client.complete(p))
+        # SC-4 pass 2 — re-check against the real draft text so Check 1 (fabricated emotion in
+        # the draft) can fire too; stored for refine() (System 2 only) to fold into its own
+        # prompt. This is NOT a union with pass 1: detect_drift checks in a fixed priority order
+        # (fabrication, then abandonment, then capitulation) and returns on the first hit, so if
+        # the draft happens to also trip Check 1 (e.g. contains "I feel"), pass 2's result
+        # overwrites pass 1's abandonment finding here even though pass 1's directive already
+        # reached the planner prompt above and shaped the draft. What's stored on
+        # drift_check_result is "what refine() should react to", not a running log of every
+        # check that fired this turn.
+        try:
+            ctx.persona_packet.drift_check_result = detect_drift(
+                pending_draft_intent=draft.text, user_message=ctx.message,
+                persona_state=ctx.persona_packet.persona_state, nova_recent_positions=[])
+        except Exception:
+            logger.exception("drift_detector (post-draft) failed; proceeding without a drift check")
+        ctx.semantic_draft_obj = draft
         return draft.text
 
     def refine(ctx, draft):
-        return system2.complete("Rephrase this warmly without changing any facts:\n\n" + draft)
+        """SC-6 (real emotion_refiner.refine_emotion), not an ad hoc rephrase prompt. `draft` here
+        is the plain string plan() returned (the orchestrator's contract); the full SemanticDraft
+        (with key_claims, needed for factual-preservation validation) was stashed on ctx by plan()
+        just above -- falls back to a claims-less draft if plan() wasn't the real one (e.g. a test
+        double), same defensive shape as every other provider lookup in this module."""
+        ei = ctx.emotion_intent
+        draft_obj = getattr(ctx, "semantic_draft_obj", None) or SemanticDraft(text=draft)
+        skip = should_skip_refinement(
+            primary_label=getattr(ei.primary_emotion, "primary_label", "neutral"),
+            bes_label=getattr(ei.background_state, "bes_label", "insufficient_data"),
+            mismatch_detected=getattr(ei.mismatch, "mismatch_detected", False),
+            primary_intent=getattr(ei.intent, "primary_intent", "casual_chat"),
+            crisis_active=getattr(ei, "crisis_active", False))
+        posture = ei.emotional_posture_instruction
+        drift = getattr(ctx.persona_packet, "drift_check_result", None)
+        if drift is not None and getattr(drift, "drift_detected", False) and drift.planner_directive:
+            posture = f"{posture} {drift.planner_directive}"
+        result = refine_emotion(
+            draft_obj, skip=skip, voice_parameters=ctx.persona_packet.voice_parameters,
+            emotional_posture_instruction=posture, persona_packet=ctx.persona_packet,
+            primary_emotion_label=getattr(ei.primary_emotion, "primary_label", "neutral"),
+            bes_label_description=(getattr(ei.background_state, "trend_note", None)
+                                   or getattr(ei.background_state, "bes_label", "")),
+            primary_feeling=getattr(ei.empathy_hypothesis, "primary_feeling", ""),
+            primary_need=getattr(ei.empathy_hypothesis, "primary_need", ""),
+            mismatch_instruction=(getattr(ei, "mismatch_response_posture", "") or ""
+                                  if getattr(ei.mismatch, "mismatch_detected", False) else ""),
+            llm_fn=lambda p: system2.complete(p))
+        return result.final_text
 
     def escalate(ctx, assessment):
         try:
