@@ -1217,18 +1217,24 @@ A new optional `PipelineSteps.social_coaching(ctx, response) -> response` hook r
 `_generate_normal` right after generation (both System 1 and System 2), before SC-1 Ethical
 Guardrails — so guardrails always gets the final say over the delivered text, coaching-modified
 or not. `api/assembly.py::social_coaching` forwards real inputs (persisted graph/events/patterns
-via a new `social_provider`, `ctx.emotion_intent`'s primary emotion + background state,
-`ctx.persona_packet.relationship_state.stage`) into the real, self-contained
-`detect_coaching_opportunity` — its 3-gate model (availability/timing/recency, default silence)
-is not reimplemented at the call site, only forwarded to. A real opportunity is handed to the
-real `coaching_modifier.inject_observation`, wrapping `ctx.response_text` in a minimal
-`FinalResponsePacket` (same adapter pattern as Layer 4's `SemanticDraft(text=draft)` fallback)
-since the thin `api/assembly.py` path was deliberately never migrated onto Layer 4's full
-`FinalResponsePacket` orchestration (Layer 4 §17.5).
+via a new `social_provider`, `ctx.emotion_intent`, `ctx.persona_packet.relationship_state.stage`,
+`ctx.persona_packet.voice_parameters`) into the real Layer 5 orchestrator itself —
+`packet_builder.build_social_intelligence_packet` — rather than calling
+`detect_coaching_opportunity`/`inject_observation` directly. **Corrected 2026-08-09**: the first
+version of this wiring (the initial Layer 5 build) called those two functions directly, which
+worked for the inline-delivery path but silently skipped two things the real orchestrator already
+does: regenerating `PATTERN_REFLECTION`/`CONFLICT_NAVIGATION` observation text through an LLM
+(`observation_llm_fn`, wired to `system1.complete`) instead of using the pattern's raw
+`plain_language_description` verbatim, and populating `proactive_coaching_queue` for a deferred
+opportunity — which is what makes the Layer 6 handoff (16.6 below) possible at all. This is
+exactly the "wire to the real module, don't reimplement it" trap CLAUDE.md calls out: the real,
+fuller orchestrator already existed with zero callers; the adapter should have called it from the
+start instead of re-deriving a subset of its sequencing.
 
-Cold start is safe by construction: `detect_coaching_opportunity`'s gate 1 already returns "no
-opportunity" on an empty graph/events/patterns, which is every account's state until the
-background job (16.4) has run at least once.
+Cold start is safe by construction: `detect_coaching_opportunity`'s gate 1 (called internally by
+`build_social_intelligence_packet`) already returns "no opportunity" on an empty
+graph/events/patterns, which is every account's state until the background job (16.4) has run at
+least once.
 
 ### 16.4 Background job (`background/social_pattern_job.py`)
 
@@ -1284,6 +1290,15 @@ regression test proving the fix:
    list, incorrectly skipped event attribution for a turn that was unambiguously about one
    person. Fixed by deduplicating resolved `person_id`s before both the count-increment and the
    single-person check.
+
+### 16.6 §9.3 Layer 6 handoff wired (2026-08-09)
+
+A deferred `CoachingOpportunity` (gate 2/3 blocked, or `inject_observation` deferred it for lack
+of length headroom) is no longer just dropped. `api/state.py::make_proactive_coaching_writer`
+turns `packet.proactive_coaching_queue` entries into durable `ProactiveItem`s via Layer 6's real
+`on_deferred_coaching` intake contract and upserts them into `PostgresProactiveQueue`, so a
+pattern the user isn't ready to hear about right now becomes a real outreach candidate instead of
+silently vanishing. Full detail and the regression test: `docs/layer-6-architecture.md` §16.
 
 ---
 

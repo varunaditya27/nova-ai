@@ -253,9 +253,12 @@ feature to build, in dependency order:
   stays empty until Layer 5 itself grows a real edge-management function. No Alembic revision —
   same as `NarrativeChain` shipped earlier the same day (baseline migration's `create_all` is the
   only path this project currently exercises).
-- **[done, 2026-08-08]** Orchestrator hook — a new `PipelineSteps.social_coaching(ctx, response)`
-  hook runs post-generation, pre-guardrails, in both System 1 and System 2. Forwards real inputs
-  into the real, unmodified `detect_coaching_opportunity`/`inject_observation` — see
+- **[done, 2026-08-08, corrected 2026-08-09]** Orchestrator hook — a new
+  `PipelineSteps.social_coaching(ctx, response)` hook runs post-generation, pre-guardrails, in
+  both System 1 and System 2. Originally forwarded real inputs into `detect_coaching_opportunity`/
+  `inject_observation` directly; corrected to call the real, unmodified Layer 5 orchestrator
+  (`packet_builder.build_social_intelligence_packet`) instead, since that module already existed
+  with the LLM observation-regeneration step and the deferred-opportunity queue wired in — see
   `docs/layer-5-architecture.md` §16.3.
 - **[done, 2026-08-08]** Per-turn entity/event extraction — `api/state.py::make_social_writer`,
   a new post-turn writer. One LLM call surfaces mentions; `resolve_entity`/`create_node`/
@@ -329,6 +332,12 @@ detail: `docs/layer-6-architecture.md` §15.
   `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, unreachable until Layer 5
   itself gets wired (Phase 5 finding). These close automatically as their source layers do —
   nothing to do in Layer 6 itself.
+  - **[done, 2026-08-09]** `on_deferred_coaching` — now wired. Layer 5's follow-up build
+    (2026-08-08) made `proactive_coaching_queue` real; `api/state.py::make_proactive_coaching_writer`
+    turns a deferred opportunity into a durable `social_pattern_coaching` `ProactiveItem` via the
+    real intake contract. See `docs/layer-6-architecture.md` §16.
+  - `on_thread_due` and `on_post_distress_gap` remain blocked on Layer 1/2 respectively — no
+    change this pass.
 
 **Correction (2026-08-04, from the Layer 7 audit):** the goal→proactive intake described above as
 "the one live intake contract" produces **zero real candidates today**. `goal_checkin_item` needs

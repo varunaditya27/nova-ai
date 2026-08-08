@@ -676,6 +676,8 @@ def test_real_layer5_wiring_coaching_observation_reaches_delivered_response():
                 return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
                                    "confidence": 0.9, "crisis_flag": False,
                                    "primary_intent": "casual_chat"})
+            if "Generate a 1-2 sentence observation" in prompt:
+                return "I've noticed conflict with a coworker has come up a few times."
             return self._reply
 
     from api.state import make_social_provider, make_social_surface_writer
@@ -723,6 +725,8 @@ def test_real_layer5_wiring_gate_3_recency_blocks_a_repeat_of_the_same_observati
                 return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
                                    "confidence": 0.9, "crisis_flag": False,
                                    "primary_intent": "casual_chat"})
+            if "Generate a 1-2 sentence observation" in prompt:
+                return "I've noticed conflict with a coworker has come up a few times."
             return self._reply
 
     llm = NeutralLLM()
@@ -738,3 +742,57 @@ def test_real_layer5_wiring_gate_3_recency_blocks_a_repeat_of_the_same_observati
 
     assert "conflict with a coworker" in first.response_text
     assert "conflict with a coworker" not in second.response_text
+
+
+def test_real_layer5_wiring_deferred_coaching_reaches_the_layer6_proactive_queue():
+    """A coaching opportunity gate_2_timing blocks (relationship too new) isn't just dropped --
+    build_social_intelligence_packet returns it on proactive_coaching_queue, and the real
+    on_deferred_coaching intake contract (backend/layer6_proactivity/intake.py) turns it into a
+    durable SOCIAL_PATTERN_COACHING candidate any later /GET proactive poll would see."""
+    import json
+    from infra.db import make_engine, make_session_factory, init_db
+    from infra.db.social_store import PostgresSocialStore
+    from infra.db.proactive_store import PostgresProactiveQueue
+    from backend.layer4_persona.schemas import RelationshipState
+    from backend.layer5_relationship.schemas import SocialPattern, SocialPatternType, PatternScope
+    from api.state import (
+        make_social_provider, make_social_surface_writer, make_proactive_coaching_writer,
+    )
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    social_store = PostgresSocialStore(factory)
+    social_store.save_patterns("local-user", [SocialPattern(
+        pattern_type=SocialPatternType.RECURRING_CONFLICT_TOPIC.value,
+        scope=PatternScope.INTRA_RELATIONSHIP.value,
+        pattern_confidence=0.9, pattern_strength=0.8, has_been_surfaced=False, is_active=True,
+        plain_language_description="conflict with a coworker has come up a few times",
+    )])
+
+    class NeutralLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            return self._reply
+
+    llm = NeutralLLM()
+    # "new" relationship stage is gate_2_timing's hard block -- the opportunity is available
+    # (gate_1 passes) but not deliverable this turn, so it must be deferred, not discarded.
+    rel = RelationshipState(stage="new", total_sessions=1, total_messages_exchanged=2)
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 relationship_provider=lambda uid: rel,
+                                 social_provider=make_social_provider(factory),
+                                 social_surface_writer=make_social_surface_writer(factory),
+                                 proactive_coaching_writer=make_proactive_coaching_writer(factory))
+    out = ConversationOrchestrator(steps).run_turn("local-user", "just having a normal day")
+
+    assert "conflict with a coworker" not in out.response_text   # never delivered inline
+
+    queued = PostgresProactiveQueue(factory, "local-user").load()
+    assert len(queued) == 1
+    assert queued[0].item_type == "social_pattern_coaching"
+    assert queued[0].source_layer == "layer5"

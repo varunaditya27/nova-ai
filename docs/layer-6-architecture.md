@@ -1175,4 +1175,33 @@ Layer 6 entry point beyond the two above (`run_proactive_cycle`, `evaluate_timin
   layers: `on_thread_due` needs Layer 1's narrative-thread detector (still unbuilt per the Layer 1
   audit); `on_post_distress_gap` needs Layer 2 state-updater hooks not yet present;
   `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, which cannot exist until
-  Layer 5 itself is wired (Phase 5 finding — zero production callers).
+  Layer 5 itself is wired (Phase 5 finding — zero production callers). **`on_deferred_coaching` is
+  now wired — see §16 below**; `on_thread_due` and `on_post_distress_gap` remain blocked on Layer
+  1/2 as described.
+
+## 16. §9.3 intake wired (follow-up, 2026-08-09)
+
+Layer 5's full build (`docs/layer-5-architecture.md` §16) unblocked this. `api/assembly.py`'s
+`social_coaching` hook was rewired to call the real Layer 5 orchestrator
+(`build_social_intelligence_packet`) instead of a bare `detect_coaching_opportunity` +
+`inject_observation` pair — the orchestrator already computes `proactive_coaching_queue` (§8) for
+any opportunity gate 2 (timing) or gate 3 (recency) defers, exactly matching this contract's input.
+
+`api/state.py::make_proactive_coaching_writer` turns a deferred `CoachingOpportunity` into a
+`ProactiveItem` via the real `on_deferred_coaching(opportunity, person_display_name, now)` and
+upserts it into `PostgresProactiveQueue`, mirroring `make_proactive_writer`'s goal-check-in
+pattern: `item_id` is deterministically derived from the triggering pattern/event id, so
+re-deferring the same opportunity on a later turn upserts instead of duplicating. Wired into
+`build_pipeline_steps(proactive_coaching_writer=...)` in `build_app_state`.
+
+Proven end to end through the real orchestrator by
+`tests/unit/api/test_assembly_turn.py::test_real_layer5_wiring_deferred_coaching_reaches_the_layer6_proactive_queue`:
+a relationship stage of `"new"` hard-blocks gate 2 (timing), the pattern's observation never
+reaches the delivered response, and a `social_pattern_coaching` item lands in the real
+`PostgresProactiveQueue` for that user.
+
+**Still open, unchanged**: no delivery channel exists for SC-2..SC-5 (genuine infra work — a push
+surface, not a wiring gap); `GET /proactive` still returns ungated `content_basis`, including now
+for `social_pattern_coaching` items — the same caveat above applies, whoever builds the consumer
+must run `evaluate_timing_gate` server-side first, not render `content_basis` directly.
+`on_thread_due`/`on_post_distress_gap` remain blocked on Layer 1/2 respectively.

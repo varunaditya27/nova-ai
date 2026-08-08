@@ -626,6 +626,33 @@ def make_social_surface_writer(session_factory) -> Callable:
     return _mark
 
 
+def make_proactive_coaching_writer(session_factory) -> Callable:
+    """Layer 5 -> Layer 6 handoff: a coaching opportunity ``build_social_intelligence_packet``
+    deferred (timing/recency gate, or no length headroom this turn) becomes a durable
+    SOCIAL_PATTERN_COACHING candidate in the Layer-6 outreach queue, via the real
+    ``on_deferred_coaching`` intake contract -- so a pattern the user isn't ready to hear about
+    right now isn't just dropped. Deterministic item_id (keyed off the triggering pattern/event,
+    matching the goal-check-in idempotency pattern) so re-deferring the same opportunity upserts
+    instead of duplicating."""
+    from backend.layer6_proactivity.intake import on_deferred_coaching
+    social_store = PostgresSocialStore(session_factory)
+
+    def _write(user_id, opportunity, now=None) -> None:
+        now = now or datetime.now(timezone.utc)
+        display_name = None
+        if opportunity.triggering_person is not None:
+            graph = social_store.load_graph(user_id)
+            node = graph.nodes.get(opportunity.triggering_person) if graph else None
+            display_name = node.display_name if node else None
+        item = on_deferred_coaching(opportunity, person_display_name=display_name, now=now)
+        if opportunity.triggering_pattern is not None:
+            item.item_id = f"coaching-{opportunity.triggering_pattern.pattern_id}"
+        elif opportunity.triggering_event is not None:
+            item.item_id = f"coaching-{opportunity.triggering_event.event_id}"
+        PostgresProactiveQueue(session_factory, user_id).upsert(item)
+    return _write
+
+
 def _revise_belief_statement(client, belief, contradiction) -> str:
     """LLM rewrite of one identity belief's statement, given the evidence that contradicted it.
     Falls back to the belief's *unchanged* statement (never a placeholder like "[revised] X") on
@@ -873,6 +900,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         identity_provider=make_identity_provider(session_factory),
         social_provider=make_social_provider(session_factory),
         social_surface_writer=make_social_surface_writer(session_factory),
+        proactive_coaching_writer=make_proactive_coaching_writer(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)

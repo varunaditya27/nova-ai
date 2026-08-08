@@ -122,6 +122,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          identity_provider: Optional[Callable] = None,
                          social_provider: Optional[Callable] = None,
                          social_surface_writer: Optional[Callable] = None,
+                         proactive_coaching_writer: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
@@ -140,7 +141,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         refine_emotion, should_skip_refinement, compute_relationship_state,
     )
     from backend.layer4_persona.schemas import PersonaPacket, SemanticDraft, FinalResponsePacket
-    from backend.layer5_relationship import detect_coaching_opportunity, inject_observation
+    from backend.layer5_relationship import build_social_intelligence_packet
     from backend.layer5_relationship.schemas import SocialGraph
     from backend.layer9_output import deliver as l9_deliver
     from backend.layer11_safety import evaluate, generate_crisis_response, run_all_checks
@@ -547,38 +548,48 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return result.final_text
 
     def social_coaching(ctx, response):
-        """SC-4 (coaching_detector) + SC-5 (coaching_modifier): a conservatively-gated social
-        observation, naturally appended to the already-generated response. detect_coaching_
-        opportunity is a real, self-contained 3-gate function (availability/timing/recency,
-        default silence) -- this adapter's only job is forwarding real inputs, not reimplementing
-        any gating logic. Degrades to a no-op (returns response unchanged) with no persisted
-        graph/events/patterns yet, which is the case for every account until the background
-        pattern job has run at least once."""
+        """SC-4/SC-5, run through the real Layer-5 orchestrator (``build_social_intelligence_
+        packet``) instead of reimplementing its detect+inject sequencing here -- that orchestrator
+        also owns the LLM observation-regeneration step for PATTERN_REFLECTION/CONFLICT_NAVIGATION
+        and the deferred-to-Layer-6 handoff (§8/§9.3 of the architecture doc), which a bare
+        detect_coaching_opportunity + inject_observation pair does not. Degrades to a no-op with
+        no persisted graph/events/patterns yet, which is the case for every account until the
+        background pattern job has run at least once."""
         if social_provider is None:
             return response
         graph, events, patterns = social_provider(ctx.user_id)
         ei = ctx.emotion_intent
-        opp = detect_coaching_opportunity(
-            patterns, events, graph or SocialGraph(user_id=str(ctx.user_id)),
-            conversation_mode=getattr(ctx, "conversation_mode", "casual"),
-            primary_emotion=ei.primary_emotion, background_state=ei.background_state,
-            relationship_stage=getattr(ctx.persona_packet.relationship_state, "stage", "new"),
-            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"))
-        if not opp.opportunity_detected:
-            return response
         wrapped = FinalResponsePacket(final_text=response)
-        result = inject_observation(wrapped, opp, ctx.persona_packet.voice_parameters)
+        packet = build_social_intelligence_packet(
+            wrapped, ei,
+            social_graph=graph or SocialGraph(user_id=str(ctx.user_id)),
+            active_patterns=patterns, events_detected=events,
+            relationship_stage=getattr(ctx.persona_packet.relationship_state, "stage", "new"),
+            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+            voice_parameters=ctx.persona_packet.voice_parameters,
+            observation_llm_fn=lambda p: system1.complete(p))
         # Only mark surfaced when the observation was actually delivered this turn (not when
-        # inject_observation deferred it for lack of length headroom) -- otherwise gate_3_recency
-        # would start blocking a pattern the user never actually saw.
-        if result.social_coaching_injected and social_surface_writer is not None:
-            pattern = opp.triggering_pattern
+        # injection deferred it for lack of length headroom) -- otherwise gate_3_recency would
+        # start blocking a pattern the user never actually saw.
+        if packet.coaching_injected and social_surface_writer is not None:
+            pattern = packet.coaching_opportunity.triggering_pattern if packet.coaching_opportunity else None
             if pattern is not None:
                 try:
                     social_surface_writer(pattern.pattern_id)
                 except Exception:
                     logger.exception("social surface writer failed; pattern stays unsurfaced")
-        return result.final_text
+        # A deferred opportunity (timing/recency gate, or no length headroom) isn't just dropped --
+        # it becomes a durable Layer-6 SOCIAL_PATTERN_COACHING candidate (§9.3) so Nova can raise it
+        # later instead of losing it.
+        if packet.coaching_deferred and proactive_coaching_writer is not None:
+            for opp in packet.proactive_coaching_queue:
+                try:
+                    proactive_coaching_writer(ctx.user_id, opp)
+                except Exception:
+                    logger.exception("proactive coaching writer failed; opportunity not queued")
+        if packet.coaching_injected and packet.modified_response is not None:
+            return packet.modified_response.final_text
+        return response
 
     def escalate(ctx, assessment):
         try:
