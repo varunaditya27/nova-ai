@@ -3,6 +3,7 @@ pytest.importorskip("pydantic")
 
 from backend.pipeline import ConversationOrchestrator
 from backend.layer2_memory import InMemoryMemoryStore
+from backend.layer9_output import StreamTypingOverlay
 from api.assembly import build_pipeline_steps
 
 
@@ -359,6 +360,86 @@ def test_real_layer9_wiring_strips_markdown_on_high_intensity_turn():
     assert "- a bullet point" not in out.response_text
     assert "**" not in out.response_text
     assert "bold text" in out.response_text  # content preserved, only markup stripped
+
+
+def test_real_layer9_wiring_learns_shorter_preference_from_a_skimmed_long_response():
+    """UserFormatProfile had zero persistence -- every turn recomputed compute_format_spec's
+    length target from hardcoded defaults, never reflecting what update_format_profile actually
+    learns (architecture doc §6.6). This proves the cross-turn skim-detection signal through the
+    real writer/provider pair: turn 1 delivers a long response and its length is bookkept on the
+    persisted profile; turn 2's fast, short user reply is the "skimmed a long response" signal,
+    which shifts preferred_length shorter for turn 3's format_spec."""
+    import json
+    from infra.db import make_engine, make_session_factory, init_db
+    from api.state import make_format_profile_provider, make_format_profile_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class NeutralLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            return "x" * 500   # a long response, every turn
+
+    llm = NeutralLLM()
+    provider = make_format_profile_provider(factory)
+    writer = make_format_profile_writer(factory)
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 format_profile_provider=provider,
+                                 session_writer=writer)
+
+    before = provider("local-user")
+    assert before.preferred_length == "medium"
+
+    ConversationOrchestrator(steps).run_turn("local-user", "hey what's up")
+    mid = provider("local-user")
+    assert mid.last_response_length == 500   # bookkept for the next turn's comparison
+
+    # A short, fast reply to that 500-char response is exactly signal 2 (reply << Nova's length).
+    ConversationOrchestrator(steps).run_turn("local-user", "k")
+    after = provider("local-user")
+    assert after.preferred_length == "short"
+
+
+def test_real_layer9_wiring_thinking_pause_and_backchannel_reach_the_sse_stream():
+    """orchestrate_output() assembles a real thinking_pause/backchannel event sequence every turn,
+    but api/streaming.py rebuilt only per-token pacing from the final text -- the pre-response
+    events never reached the SSE client. Proves the real orchestrator's ctx.layer9_events survives
+    onto OrchestratedOutput and api/streaming.py::stream_turn replays it as extra frames, using a
+    crisis-adjacent high-arousal turn (thinking pause + acknowledgment backchannel both fire)."""
+    import json
+    from api.streaming import stream_turn
+
+    class HeavyLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "despair", "valence": -0.9, "arousal": 0.9,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "venting"})
+            return self._reply
+
+    llm = HeavyLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore())
+    orchestrator = ConversationOrchestrator(steps)
+
+    frames = list(stream_turn(
+        orchestrator, StreamTypingOverlay(), "local-user",
+        "I have been feeling really overwhelmed and quite sad lately, and honestly "
+        "nothing feels right anymore!"))
+    event_names = [f.split("\n", 1)[0].removeprefix("event: ") for f in frames]
+
+    assert "token" in event_names   # sanity: the stream still delivers the response
+    assert any(name in ("thinking_pause", "backchannel") for name in event_names)
+    # Ordering invariant: any pre-response frames precede the first token frame.
+    first_token_idx = event_names.index("token")
+    assert all(n in ("thinking_pause", "backchannel", "meta")
+              for n in event_names[:first_token_idx])
 
 
 def test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt():

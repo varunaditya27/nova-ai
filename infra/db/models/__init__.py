@@ -18,6 +18,7 @@ from infra.db.models.tools import ToolAction
 from infra.db.models.output_prefs import OutputPref
 from infra.db.models.onboarding import OnboardingState
 from infra.db.models.sync import SyncDelta
+from infra.db.models.format_profile import FormatProfile
 
 __all__ = [
     "Session", "ConversationMessage",
@@ -25,5 +26,5 @@ __all__ = [
     "NarrativeChain",
     "PersonaState", "RelationshipState", "Goal", "ProactiveItem", "SafetyEvent",
     "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
-    "SyncDelta", "SocialGraph", "SocialEvent", "SocialPattern",
+    "SyncDelta", "SocialGraph", "SocialEvent", "SocialPattern", "FormatProfile",
 ]

@@ -407,6 +407,11 @@ Full detail: `docs/layer-8-architecture.md`'s "Live wiring status" note.
   (`api/routes/tools.py` already documents the "process singleton" design). Worth revisiting only
   if the deployment model changes (multi-worker, frequent restarts).
 
+**Re-confirmed, 2026-08-09**: no code under `backend/layer8_tools/` or `api/routes/tools.py`
+changed since the audit (`git log --since=2026-08-04` on those paths is empty), no other layer's
+work this pass touched them, and the full suite (including all Layer 8 tests) is still green. No
+further action needed.
+
 ---
 
 ## Layer 9 — Output Delivery & Interaction Orchestration (audited 2026-08-04)
@@ -426,18 +431,12 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   why raw forwarding would have been wrong). Deliberately did not forward `circadian_band`,
   `semantic_draft`, `complexity_score`, `turn_type`, `urgency_level`, `voice_mode` — see below,
   their effects are currently inert.
-- **`OrchestratedOutput`'s event sequence and `UserFormatProfile` are both unconsumed/unwired.**
-  The typed event list (thinking pauses, backchannels, self-edit show/delete) that `deliver()`
-  assembles every turn has no consumer — `/chat/stream` builds its own separate
-  `StreamTypingOverlay` rather than replaying Layer 9's events, so `circadian_band` and
-  `semantic_draft` (which only affect that event list) would be dead weight to forward today.
-  `UserFormatProfile` — the learned per-user length/emoji/markdown-preference record central to
-  §6.5–6.6's "the system learns from how the user responds" principle — has no persistence store
-  and is never read or written anywhere in `api/`/`infra/`. Wiring either is real feature work:
-  the event-consumption gap needs a decision about whether `/chat/stream`'s bespoke overlay should
-  be replaced by Layer 9's own event sequence (they currently duplicate the same idea two ways),
-  and the format-profile gap needs a new DB table plus a post-turn writer, the same shape as
-  Layer 6/7's persistence gaps.
+- **[done, 2026-08-09]** `OrchestratedOutput`'s event sequence and `UserFormatProfile` are both
+  now wired. `UserFormatProfile` got a new `format_profile` table + writer/provider pair, feeding
+  the learned length preference back into `deliver()`'s length target. `/chat/stream` now replays
+  `thinking_pause`/`backchannel` events as new, additive SSE frames (existing `meta`/`token`/`done`
+  frames unchanged) — confirmed with the user that self-edit visual replay specifically is not a
+  real product need and was dropped from scope. See `docs/layer-9-architecture.md` §13.
 - **`turn_type`, `urgency_level`, `complexity_score`, `voice_mode` have no live source at all**,
   independent of the forwarding gap: `turn_type` (question/venting/request_advice/etc.) isn't
   computed anywhere in Layers 3-4 today; `urgency_level` doesn't exist on `EmotionIntentPacket`;

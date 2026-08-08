@@ -37,6 +37,8 @@ from backend.layer5_relationship import (
 )
 from backend.layer5_relationship.schemas import RelationshipType, SocialGraph
 from backend.layer7_goals.schemas import GoalStatus
+from infra.db.format_profile_store import PostgresFormatProfileStore
+from backend.layer9_output import update_format_profile, classify_format_feedback
 from api.assembly import build_pipeline_steps
 from api.proactive_gen import goal_checkin_item
 from api.reinforcement import used_memory_ids
@@ -671,6 +673,48 @@ def make_proactive_coaching_writer(session_factory) -> Callable:
     return _write
 
 
+def make_format_profile_provider(session_factory) -> Callable:
+    """Read-side Layer 9 provider for deliver(): the persisted UserFormatProfile so
+    compute_format_spec's length target actually reflects what's been learned, instead of every
+    turn re-deriving from UserFormatProfile()'s hardcoded defaults."""
+    def _provider(user_id):
+        return PostgresFormatProfileStore(session_factory, user_id).load()
+    return _provider
+
+
+def make_format_profile_writer(session_factory) -> Callable:
+    """Post-turn: fold this turn's engagement signals into the Layer-9 UserFormatProfile
+    (architecture doc §6.6). The 'user skimmed a long response' signal needs Nova's PREVIOUS
+    response length compared against THIS turn's user reply latency/length -- last_response_length
+    is bookkept directly on the profile (set at the end of this write) so no other store needs to
+    be queried for it. Latency reuses Layer 1's already-computed response_latency_ms rather than
+    re-deriving timing here. explicit_format_feedback is only passed through when
+    classify_format_feedback's own keyword gate actually matches, so ordinary turns don't pollute
+    explicit_format_feedback_events with None-preference noise."""
+    store_cls = PostgresFormatProfileStore
+
+    def _write(ctx) -> None:
+        try:
+            uid = ctx.user_id
+            store = store_cls(session_factory, uid)
+            profile = store.load()
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            latency_ms = getattr(ctx.input_packet, "response_latency_ms", None) or 0
+            prev_length = profile.last_response_length
+            feedback_text = message if classify_format_feedback(message) is not None else None
+            update_format_profile(
+                profile, nova_response_length=prev_length,
+                user_response_latency_ms=latency_ms, user_response_length=len(message),
+                explicit_format_feedback=feedback_text)
+            profile.last_response_length = len(getattr(ctx, "response_text", "") or "")
+            profile.last_response_at = now
+            store.save(profile)
+        except Exception:
+            logger.exception("format profile writer failed; turn already delivered")
+    return _write
+
+
 def _revise_belief_statement(client, belief, contradiction) -> str:
     """LLM rewrite of one identity belief's statement, given the evidence that contradicted it.
     Falls back to the belief's *unchanged* statement (never a placeholder like "[revised] X") on
@@ -902,7 +946,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_onboarding_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory),
         make_proactive_writer(session_factory, grad_sessions),
-        make_identity_writer(session_factory, llm_clients["system1"]))
+        make_identity_writer(session_factory, llm_clients["system1"]),
+        make_format_profile_writer(session_factory))
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
@@ -919,6 +964,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         social_provider=make_social_provider(session_factory),
         social_surface_writer=make_social_surface_writer(session_factory),
         proactive_coaching_writer=make_proactive_coaching_writer(session_factory),
+        format_profile_provider=make_format_profile_provider(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)

@@ -57,6 +57,7 @@ from backend.layer9_output.thinking_pause import (
 from backend.layer9_output.tts_backends.base_backend import TTSBackend
 from backend.layer9_output.tts_backends.kokoro_backend import KokoroBackend
 from backend.layer9_output.user_format_profile import (
+    classify_format_feedback,
     initialize_defaults,
     update_format_profile,
 )
@@ -90,6 +91,7 @@ __all__ = [
     "deliver", "orchestrate_output",
     # SC-4
     "compute_format_spec", "enforce_format_spec", "initialize_defaults", "update_format_profile",
+    "classify_format_feedback",
     # SC-1
     "compute_length_target", "compute_thinking_pause", "should_show_thinking_indicator",
     "plan_self_edit", "StreamTypingOverlay",

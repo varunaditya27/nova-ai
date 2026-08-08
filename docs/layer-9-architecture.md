@@ -1319,10 +1319,89 @@ rules). The as-built `format_adapter.py` does **not** have this bug — it uses 
 substitution, which it gets right (`_BOLD_RE.sub(r"\1", text)`). Confirmed by the new regression
 test, which exercises header/bullet/bold stripping together on real delivered text.
 
-**Not fixed, tracked in `docs/POLISH_BACKLOG.md`**: the `OrchestratedOutput` event sequence
-(thinking pauses, backchannels, self-edit show/delete events) and `format_spec_applied` are
-computed by `deliver()` every turn and never consumed by any client — `/chat/stream` builds its
-own, separate `StreamTypingOverlay` rather than replaying Layer 9's events. `UserFormatProfile`
-(the learned per-user length/emoji/markdown preferences, §6.5–6.6) has zero references anywhere in
+**Not fixed at the time, tracked in `docs/POLISH_BACKLOG.md`**: the `OrchestratedOutput` event
+sequence (thinking pauses, backchannels, self-edit show/delete events) and `format_spec_applied`
+were computed by `deliver()` every turn and never consumed by any client — `/chat/stream` built its
+own, separate `StreamTypingOverlay` call rather than replaying Layer 9's events. `UserFormatProfile`
+(the learned per-user length/emoji/markdown preferences, §6.5–6.6) had zero references anywhere in
 `api/` or `infra/` — no persistence, never read, never written; the entire "the system learns from
-how the user responds" design principle (§11.4) is inert live.
+how the user responds" design principle (§11.4) was inert live. **Both closed — see §13 below.**
+
+## 13. UserFormatProfile persistence + event replay (follow-up, 2026-08-09)
+
+Both gaps above are now wired. Two clarifying decisions were confirmed with the user before
+building (the correct one wasn't obvious from the module alone): where to source the previous
+turn's response length for the skim-detection signal, and how far to take the event-list
+reconciliation without risking already-shipped `/chat/stream` pacing behavior.
+
+### 13.1 `UserFormatProfile` persistence and the learning loop
+
+New `format_profile` table (`infra/db/models/format_profile.py`, one JSONB row per user, same
+shape as `SocialGraph`/`RelationshipState`), a `PostgresFormatProfileStore`
+(`infra/db/format_profile_store.py`), and `api/state.py::make_format_profile_writer` — a new entry
+in the post-turn writer chain (`build_app_state`).
+
+`update_format_profile`'s "did the user skim a long response" signal (§6.6) is inherently
+cross-turn: it compares Nova's *previous* response length against *this* turn's user reply
+latency/length. Rather than querying `PostgresMessageStore` for the prior assistant message every
+turn, `UserFormatProfile` grew two new bookkeeping fields — `last_response_length`/
+`last_response_at` — that the writer reads before computing this turn's signals and overwrites
+with this turn's own response length at the end, so the profile is self-contained (confirmed with
+the user as the preferred design over a message-store query). Latency reuses Layer 1's already-live
+`response_latency_ms` (`ctx.input_packet.response_latency_ms`) rather than re-deriving timing.
+`classify_format_feedback` is run as a pre-filter before passing `explicit_format_feedback` through
+to `update_format_profile`, so ordinary turns don't append a None-preference
+`FormatFeedbackEvent` on every single message — only turns whose text actually matches the
+module's own feedback keywords do.
+
+`api/state.py::make_format_profile_provider` feeds the persisted profile into
+`api/assembly.py::deliver()`'s `user_format_profile` argument, so `compute_format_spec`'s length
+target now reflects what's actually been learned instead of `UserFormatProfile()`'s hardcoded
+`medium` default on every turn.
+
+**Bug caught in the same pass**: `UserFormatProfile.explicit_format_feedback_events` was declared
+as bare `list` (with no `[FormatFeedbackEvent]` parameter) — the same serde-breaking pattern found
+and fixed in Layer 7's `Goal.milestones`/`Goal.habits` (`docs/layer-7-architecture.md` §14). Fixed
+to `list[FormatFeedbackEvent]`.
+
+Proven end to end through the real orchestrator + writer/provider pair by
+`tests/unit/api/test_assembly_turn.py::
+test_real_layer9_wiring_learns_shorter_preference_from_a_skimmed_long_response`: a 500-char
+response is bookkept on turn 1, a one-character reply on turn 2 shifts `preferred_length` from
+`medium` to `short` by turn 3's read.
+
+Deliberately not touched: `emoji_usage_rate`, `avg_user_message_length`, and
+`uses_slang_themselves` are schema fields `update_format_profile` itself never computes — that's a
+pre-existing gap in the Layer 9 module, not something invented here; wiring a caller to a function
+that doesn't yet do the computation would mean writing new business logic outside the module,
+which is exactly the kind of reimplementation this pass avoids.
+
+### 13.2 Event-sequence replay in `/chat/stream`
+
+Confirmed with the user: the self-edit show/delete visual replay isn't a real product need and
+was dropped from scope entirely — `deliver()` never forwards `semantic_draft`, so
+`self_edit_plan` stays `None` in this adapter regardless. Thinking-pause and backchannel replay
+were confirmed as wanted.
+
+`api/assembly.py::deliver()` now stashes the real `orchestrate_output()` event list on
+`ctx.layer9_events` (a plain side-effect on the mutable `TurnContext`, the same pattern Layer 4's
+`plan()` already uses for `ctx.semantic_draft_obj`). `TurnContext`/`OrchestratedOutput`
+(`backend/pipeline/conversation_orchestrator.py`) both grew a `layer9_events` field so it survives
+from the hook through `_to_output` to the caller. `api/streaming.py::stream_turn` replays any
+`thinking_pause`/`backchannel` events it finds there as new, additive SSE frames
+(`event: thinking_pause`, `event: backchannel`) emitted before the existing `token` stream begins
+— the existing `meta`/`token`/`done` frame contract is completely unchanged, so no existing
+consumer of `/chat/stream` is affected; a client that doesn't recognize the new frame names simply
+ignores them.
+
+Proven end to end by `tests/unit/api/test_assembly_turn.py::
+test_real_layer9_wiring_thinking_pause_and_backchannel_reach_the_sse_stream`, which runs a real
+high-emotional-intensity turn through the real orchestrator and `stream_turn`, and asserts a
+`thinking_pause` frame is emitted before the first `token` frame.
+
+**Still open**: `format_spec_applied` (structure/length-target metadata) still isn't forwarded to
+any client — no consumer has asked for it yet. `emoji_usage_rate`/`avg_user_message_length`/
+`uses_slang_themselves` remain uncomputed by the module itself (13.1). `circadian_band`,
+`complexity_score`, `turn_type`, `urgency_level`, `voice_mode` still aren't forwarded through
+`deliver()`'s adapter — `complexity_score`/`turn_type`/`urgency_level` still have no live source
+anywhere upstream (unchanged from the Phase 9 finding above).

@@ -123,6 +123,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          social_provider: Optional[Callable] = None,
                          social_surface_writer: Optional[Callable] = None,
                          proactive_coaching_writer: Optional[Callable] = None,
+                         format_profile_provider: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
@@ -637,18 +638,24 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             flags=[v.check_name for v in getattr(result, "violations", []) or []])
 
     def deliver(ctx, response, crisis_mode_active):
-        # Forward the two signals that actually change delivered text through this adapter
-        # (deliver() only returns final_message_text -- format_spec/micro-interactions/events are
-        # not yet consumed here, see POLISH_BACKLOG.md, so there's no point threading signals that
-        # only affect the discarded parts of Layer9Output).
+        # Forward the signals that change delivered text, plus the persisted UserFormatProfile
+        # (so compute_format_spec's length target reflects what's actually been learned) and the
+        # real event sequence orchestrate_output() assembles (thinking pause / backchannel timing)
+        # -- stashed on ctx for api/streaming.py to replay as extra SSE frames. Self-edit events
+        # are deliberately not forwarded anywhere: a visual show-then-delete replay isn't a real
+        # product requirement here.
         emotional_intensity = getattr(
             getattr(ctx.emotion_intent, "primary_emotion", None), "intensity", 0.0)
         stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
         relationship_stage = _LAYER9_STAGE_MAP.get(stage, "friend")
+        profile = format_profile_provider(ctx.user_id) if format_profile_provider is not None else None
         result = l9_deliver(response, ctx.conversation_mode,
                             crisis_mode_active=crisis_mode_active,
                             emotional_intensity=emotional_intensity,
-                            relationship_stage=relationship_stage)
+                            relationship_stage=relationship_stage,
+                            user_format_profile=profile)
+        orchestrated = getattr(result, "orchestrated_output", None)
+        ctx.layer9_events = list(getattr(orchestrated, "events", None) or [])
         return getattr(result, "final_message_text", None) or response
 
     def state_update(ctx):

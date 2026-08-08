@@ -79,6 +79,18 @@ def stream_turn(orchestrator, overlay, user_id: str, message: str, *, session_id
             "confabulation_guard": getattr(out, "confabulation_guard", False),
         })
 
+        # Replay Layer 9's real pre-response event sequence (thinking pause, backchannel bubbles)
+        # ahead of the token stream -- additive frames only; the existing meta/token/done contract
+        # is unchanged, so a client that doesn't recognize these simply ignores them. Self-edit
+        # (show/delete) events are deliberately excluded: no product need for a visual replay of it.
+        for event in getattr(out, "layer9_events", None) or []:
+            etype = getattr(event, "event_type", None)
+            if etype == "thinking_pause":
+                yield _sse("thinking_pause", {"duration_ms": int(getattr(event, "duration_ms", 0) or 0)})
+            elif etype == "backchannel":
+                yield _sse("backchannel", {"text": getattr(event, "text", "") or "",
+                                           "delay_ms": int(getattr(event, "delay_before_ms", 0) or 0)})
+
         text = getattr(out, "delivered", None) or getattr(out, "response_text", "") or ""
         prev = ""
         for token in _tokenize(text):
