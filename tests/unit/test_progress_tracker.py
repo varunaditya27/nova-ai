@@ -34,7 +34,9 @@ def _snapshot(emo=None, sessions=None, goals=None, eps=None):
 
 # ── Goal metrics (§5.2) ──────────────────────────────────────────────────────
 def test_achievement_rate():
-    s = _snapshot(goals=[_goal("achieved"), _goal("achieved"), _goal("abandoned")])
+    # "completed" is Layer 7's real GoalStatus terminal value (not "achieved" -- a prior mismatch
+    # here silently zeroed achievement_rate_lifetime for every real user; see POLISH_BACKLOG.md).
+    s = _snapshot(goals=[_goal("completed"), _goal("completed"), _goal("abandoned")])
     assert isinstance(s, ProgressSnapshot)
     assert abs(s.achievement_rate_lifetime - (2 / 3)) < 1e-9
     assert s.goals_achieved_lifetime == 2

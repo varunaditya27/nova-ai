@@ -124,8 +124,10 @@ def test_year_retrospective_higher_priority_than_week():
 
 # ── Year in Review (§6.4) ────────────────────────────────────────────────────
 def test_year_in_review_aggregates_goals():
+    # "completed" is Layer 7's real GoalStatus terminal value (not "achieved" -- see
+    # backend/layer10_longitudinal/retrospective.py's fix and docs/POLISH_BACKLOG.md).
     goals = [
-        _goal("Run a 10k", "achieved", date(2024, 2, 1), date(2024, 8, 1)),
+        _goal("Run a 10k", "completed", date(2024, 2, 1), date(2024, 8, 1)),
         _goal("Learn piano", "abandoned", date(2024, 3, 1), date(2024, 6, 1)),
         _goal("Save money", "active", date(2024, 5, 1)),
     ]

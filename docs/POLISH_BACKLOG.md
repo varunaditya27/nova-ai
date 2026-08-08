@@ -388,6 +388,22 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
   exists — but milestone `target_date` (LLM-returned as ISO, parsed by `decompose_goal`'s existing
   `_parse_date`) closes the practical gap: `goal_checkin_item` can now produce real candidates.
   See `docs/layer-7-architecture.md` §14.
+- **[done, 2026-08-09]** Goals never reached a terminal status live. Investigating Layer 10's
+  Year-in-Review `"achieved"`-string bug surfaced a deeper one: `update_progress_score` deliberately
+  leaves `.status` alone on a completed/abandoned signal ("status handled by the transition
+  rules"), but nothing in the live per-turn path (`run_goal_pipeline`) was ever applying that rule
+  — a goal stayed `"active"` forever no matter what the user said, and `status_changed_at` didn't
+  even exist as a field. Fixed: `Goal.status_changed_at` added; `run_goal_pipeline` now transitions
+  status + stamps the timestamp on a completed/abandoned signal. Two new regression tests assert on
+  `.status` directly (the old test only checked `progress_score`, which is exactly why this was
+  invisible). See `docs/layer-7-architecture.md` §15.
+- **New gap found, not fixed**: `progress_monitor.run_staleness_scan` (§5.6 — decays a goal's
+  status over time when the user simply stops mentioning it: `TENTATIVE`→`ARCHIVED`,
+  `ACTIVE`/`ON_TRACK`→`AT_RISK`, `AT_RISK`→`ABANDONED`) has **zero production callers**. Without
+  it, a goal can only reach a terminal state through an explicit completion/abandonment phrase
+  (now fixed above) — silent neglect never decays it. Needs a background-job-shaped caller (same
+  shape as `pattern_detection_job.py`), real separate feature work. See
+  `docs/layer-7-architecture.md` §15.
 
 ---
 
@@ -458,18 +474,35 @@ meant weekly summaries never had real emotional texture and the emotional-cycle 
 detector could never fire) — fixed by adding `background/_adapters.py::emotional_records`,
 deriving records from the same per-episode `emotion_vector` data already read elsewhere.
 
-- **Pattern detection results are computed and discarded.** `pattern_detection_job.py` runs
-  `detect_behavioral_patterns` weekly but never persists the output or feeds it to Layer 6 — the
-  job's own docstring already flags this as a follow-up. Needs a patterns table (none exists) and
-  a Layer 6 handoff, the same shape as Layer 6's other unwired intake contracts.
-- **`Layer10ContextPacket` never reaches Layer 4 or Layer 6.** This is the architectural point of
-  Layer 10 — "long-term narrative grounding" in every response (§8, §9) — and it doesn't happen:
-  `engine.assemble_context_packet` has zero production callers. Needs SC-1 (chapter synthesis)
-  and SC-5 (Life Calendar scheduler) to exist first, since the context packet is assembled from
-  their output; this is the biggest remaining feature gap in Layer 10, comparable in scope to
-  Layer 5's full unwired state.
-- **SC-4 (Retrospective Engine) is unwired.** No anniversary/milestone surfacing happens live —
-  needs the Life Calendar (SC-5) to schedule it, so it's blocked on the same gap as above.
+- **[done, 2026-08-09]** Pattern detection results are now persisted (`longitudinal_pattern`
+  table, re-identified across runs like Layer 5's social patterns) and handed off to Layer 6 via
+  a new `on_behavioral_pattern` intake function.
+- **[done, 2026-08-09]** `Layer10ContextPacket` now reaches Layer 4 every turn via
+  `api/state.py::make_longitudinal_provider` + `api/assembly.py::_longitudinal_directive`. SC-1
+  (chapter synthesis, `background/narrative_arc_job.py`) and SC-5 (Life Calendar,
+  `background/life_calendar_job.py`) were both built to make this possible. No `LifeEvent`
+  detector exists anywhere in the codebase (investigated, confirmed, out of scope for this pass —
+  see `docs/layer-10-architecture.md` §16.1) so chapter-boundary detection never fires; every user
+  has one ongoing chapter, which is an honest degradation the module already supported, not a new
+  stub.
+- **[done, 2026-08-09]** SC-4 (Retrospective Engine) now runs live from `life_calendar_job.py`:
+  a fired calendar entry that maps to a retrospective type generates and persists a real
+  `RetrospectivePacket` and hands it to Layer 6 via a new `on_retrospective_ready` intake
+  function; a fired entry that doesn't map to one (the relationship-day milestones SC-5 registers
+  for every user) goes through a third new intake function, `on_calendar_entry_due`, discovered
+  necessary mid-build since `_ENTRY_TO_RETRO` never mapped those types. See
+  `docs/layer-10-architecture.md` §16 and `docs/layer-6-architecture.md` §17 for the full design.
+- **Real bug found and fixed while wiring `compute_progress_snapshot` to real `Goal` objects for
+  the first time**: it counted achieved goals by `status == "achieved"`, but Layer 7's real
+  terminal `GoalStatus` value is `"completed"` — `goals_achieved_lifetime`/`achievement_rate_
+  lifetime` would have silently stayed 0 forever. Fixed in `progress_tracker.py`; the existing
+  unit test asserting against the wrong status string was fixed too.
+- **Still open**: Year in Review (`generate_year_in_review`) needs `Goal.status_changed_at`, a
+  field Layer 7's real `Goal` doesn't have — not wired this pass. `upcoming_goal_deadlines`/
+  `recent_life_event` on the assembled context packet aren't populated yet (real but smaller
+  follow-ups). Layer 6 SC-3 (Timing & Delivery Gate) is still unwired, so nothing yet *gates*
+  delivery of the new pattern/retrospective/milestone queue items using this context — they only
+  populate the queue, same caveat as every other Layer 6 intake contract.
 
 ---
 

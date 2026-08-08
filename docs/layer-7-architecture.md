@@ -1241,4 +1241,49 @@ walk) remains uncalled — redundant with `goal_checkin_item`, which already cov
 milestones every turn via `make_proactive_writer`; not wired to avoid two divergent paths writing
 the same `GOAL_CHECK_IN` item.
 
+## 15. Goals never actually reached a terminal status (follow-up, 2026-08-09)
+
+Discovered while fixing the `"achieved"` vs. `"completed"` status-string bug flagged as a Layer 10
+follow-up (`docs/layer-10-architecture.md` §16.2, §16.6): the real bug was one level deeper than a
+string mismatch. **No code in the live per-turn path ever set `Goal.status` to `"completed"` or
+`"abandoned"` at all.**
+
+`progress_monitor.update_progress_score` sets `progress_score = 1.0` on a `COMPLETED` signal but
+deliberately leaves `.status` untouched — its own comment says "status handled by the transition
+rules." But `run_goal_pipeline` (`engine.py`), the only live caller of `update_progress_score`,
+never applied any such rule; it just persisted the goal with the score updated and the status
+exactly as it was before (almost always `"active"`). A user saying "I finally finished my
+marathon goal!" would move `progress_score` to 1.0 and trigger a `CELEBRATE_COMPLETION` reference
+that same turn, but the goal itself stayed `status="active"` forever afterward, with `status_
+changed_at` never existing as a field to set in the first place. This was invisible to the
+existing test (`test_completion_celebrated_and_score_full`) because it only ever asserted on
+`progress_score`, never on `status`.
+
+**Fixed**: `Goal` gained a `status_changed_at: Optional[datetime]` field (set at creation too, for
+consistency — a goal's status did "change" to `active` the moment it was created).
+`run_goal_pipeline` now transitions `top.status` to `"completed"`/`"abandoned"` and stamps `status_
+changed_at` when `progress_signal.signal_type` is one of those two terminal values (their string
+values already match `GoalStatus`'s 1:1, so no new mapping was needed). Proven by two new tests
+in `tests/unit/test_layer7_engine.py`
+(`test_completion_signal_transitions_status_and_stamps_status_changed_at`,
+`test_abandonment_signal_transitions_status`) that assert on `.status`/`.status_changed_at`
+directly, closing the exact blind spot the old test had.
+
+This also fixes the actual root cause of `docs/layer-10-architecture.md` §16.6's Year in Review
+gap — `generate_year_in_review`'s `"achieved"` string (now fixed to `"completed"` in both
+`backend/layer10_longitudinal/retrospective.py` and `progress_tracker.py`) had nothing to match
+against anyway, since no goal ever reached that status. Both problems needed fixing together;
+fixing only the string would have left `achieved`/`goals_achieved` at 0 regardless.
+
+**Still open — found but not fixed this pass, logged properly rather than patched inline**:
+`progress_monitor.run_staleness_scan` (§5.6 — the staleness-driven decay path: `TENTATIVE`→
+`ARCHIVED` after 30 days untouched, `ACTIVE`/`ON_TRACK`→`AT_RISK` after 14 days, `AT_RISK`→
+`ABANDONED` after 30 more) **has zero production callers** (`grep -rn "run_staleness_scan"` outside
+`backend/layer7_goals/` and its own tests returns nothing). This is a real, previously-undocumented
+gap: without it, a goal the user simply stops mentioning never decays status on its own — it can
+only reach a terminal state through an explicit completion/abandonment phrase (now fixed above).
+Wiring it needs a background-job-shaped caller (a periodic sweep over all active goals, the same
+shape as `pattern_detection_job.py`/`life_calendar_job.py`), which is real, separate feature work —
+not something to fold silently into this fix. Tracked in `docs/POLISH_BACKLOG.md`.
+
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*

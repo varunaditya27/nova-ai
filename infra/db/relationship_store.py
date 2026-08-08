@@ -26,6 +26,13 @@ class PostgresRelationshipStore:
                 return RelationshipState()
             return from_jsonable(RelationshipState, dict(row.payload))
 
+    def first_session_date(self):
+        """The row's own creation timestamp -- the real 'day 1 with Nova' signal, set the moment
+        record_turn first ran for this user. Returns None if the relationship hasn't started yet."""
+        with session_scope(self._sf) as s:
+            row = s.query(m.RelationshipState).filter_by(user_id=self._user_id).one_or_none()
+            return row.created_at.date() if row is not None else None
+
     def save(self, state: RelationshipState) -> None:
         with session_scope(self._sf) as s:
             row = s.query(m.RelationshipState).filter_by(user_id=self._user_id).one_or_none()

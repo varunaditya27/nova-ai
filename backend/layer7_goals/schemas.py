@@ -220,6 +220,7 @@ class Goal:
     first_active_at: Optional[datetime] = None
 
     status: str = GoalStatus.TENTATIVE.value
+    status_changed_at: Optional[datetime] = None
     progress_score: float = 0.0
     progress_trend: str = "unknown"          # improving | stable | declining | unknown
     momentum_score: float = 0.0

@@ -44,6 +44,28 @@ def test_completion_celebrated_and_score_full():
     assert store.get("g1").progress_score == 1.0
 
 
+def test_completion_signal_transitions_status_and_stamps_status_changed_at():
+    """update_progress_score deliberately leaves .status alone on a COMPLETED/ABANDONED signal
+    ("status handled by the transition rules") -- but nothing else in the live per-turn path was
+    ever applying that rule, so a goal stayed status="active" forever no matter what the user
+    said. This also left status_changed_at permanently unset, which Layer 10's Year in Review
+    needs to attribute an achievement to the right year (docs/POLISH_BACKLOG.md)."""
+    store = GoalStore([_goal(score=0.4)])
+    out = _run(store, "I finally did it, finished my marathon goal!")
+    assert "g1" in out.goals_updated
+    updated = store.get("g1")
+    assert updated.status == GoalStatus.COMPLETED.value
+    assert updated.status_changed_at == NOW
+
+
+def test_abandonment_signal_transitions_status():
+    store = GoalStore([_goal(score=0.4)])
+    _run(store, "I'm giving up on the marathon goal, not worth it anymore")
+    updated = store.get("g1")
+    assert updated.status == GoalStatus.ABANDONED.value
+    assert updated.status_changed_at == NOW
+
+
 def test_progress_signal_updates_momentum_score():
     store = GoalStore([_goal(score=0.5)])
     out = _run(store, "I made progress and stuck to it this week")

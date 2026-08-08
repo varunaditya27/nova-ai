@@ -391,7 +391,7 @@ Response: `{ "stored": bool, "delta_id": string }`
 Run a background job on demand (single-user, no auth). `404` for an unknown job, `500` on failure.
 Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
 **`longitudinal_summary`**, **`pattern_detection`**, **`social_pattern_detection`**,
-**`dependency_monitor`**.
+**`dependency_monitor`**, **`narrative_arc`**, **`life_calendar`**.
 ```
 { "job": string, "result": { … job-specific summary … } }
 ```

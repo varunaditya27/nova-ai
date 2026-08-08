@@ -53,9 +53,12 @@ from backend.layer6_proactivity.response_tracker import (
     update_queue_from_response,
 )
 from backend.layer6_proactivity.intake import (
+    on_behavioral_pattern,
+    on_calendar_entry_due,
     on_deferred_coaching,
     on_goal_milestone_approaching,
     on_post_distress_gap,
+    on_retrospective_ready,
     on_thread_due,
 )
 from backend.layer6_proactivity.schemas import (
@@ -92,6 +95,9 @@ __all__ = [
     "on_post_distress_gap",
     "on_deferred_coaching",
     "on_goal_milestone_approaching",
+    "on_behavioral_pattern",
+    "on_retrospective_ready",
+    "on_calendar_entry_due",
     "ClassifiedInitiative",
     "GateDecision",
     "InitiativeType",

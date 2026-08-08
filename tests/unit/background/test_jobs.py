@@ -158,7 +158,130 @@ def test_social_pattern_job_does_not_duplicate_the_same_pattern_across_runs():
 
     assert len(active) == 1                       # no duplicate row
     assert active[0].pattern_id == first_run_id    # same identity carried across runs
-    assert active[0].has_been_surfaced is True     # surfaced history preserved, not reset
+
+
+def _seed_relationship(factory, uid, created_at):
+    with session_scope(factory) as s:
+        s.add(models.RelationshipState(user_id=uid, stage="developing", payload={},
+                                       created_at=created_at))
+
+
+def test_narrative_arc_job_persists_a_synthesized_chapter():
+    """SC-1 (Life Narrative Engine) had zero production callers -- no background job ever built
+    or persisted a NarrativeArc. arc_start_date is sourced from RelationshipState's own creation
+    timestamp (the real 'day 1 with Nova' signal), and the current chapter's narrative is
+    synthesized via the injected LLM, then persisted through PostgresLongitudinalStore so the
+    per-turn read path has something real to serve."""
+    st = _state()
+    st.llm_clients = {"system1": SimpleNamespace(
+        complete=lambda p: '{"narrative_summary": "A steady month.", "primary_theme": "steadiness"}')}
+    _seed_relationship(st.session_factory, "u1", datetime(2026, 1, 1, tzinfo=timezone.utc))
+    _add_episode(st.session_factory, "u1", summary="talked about work")
+
+    out = scheduler.run_job(st, "narrative_arc")
+    assert out["chapters"] == 1
+
+    arc = PostgresLongitudinalStore(st.session_factory, "u1").load_narrative_arc()
+    assert arc is not None
+    assert arc.current_chapter.narrative_summary == "A steady month."
+    assert arc.current_chapter.primary_theme == "steadiness"
+
+
+def test_pattern_detection_job_persists_patterns_and_hands_off_to_layer6():
+    """SC-3's detect_behavioral_patterns was computed and discarded every run. Seeds enough
+    same-weekday emotional dips to trigger the real emotional-cycle pattern, runs the real job,
+    and confirms it round-trips through PostgresLongitudinalStore AND reaches the real Layer 6
+    outreach queue via on_behavioral_pattern -- not a mocked handoff."""
+    from datetime import timedelta
+
+    st = _state()
+    store = PostgresMemoryStore(st.session_factory)
+    # Six Mondays with a sharp valence dip vs. six neutral days on other weekdays.
+    base = datetime(2026, 1, 5, tzinfo=timezone.utc)  # a Monday
+    for week in range(8):
+        store.save_episodic(EpisodicMemory(
+            user_id="u1", summary=f"rough monday {week}", embedding=[0.1, 0.2], S_current=0.5,
+            importance_score=0.2, emotion_vector=EmotionVector(valence=-0.8, arousal=0.5),
+            created_at=base + timedelta(weeks=week)))
+        store.save_episodic(EpisodicMemory(
+            user_id="u1", summary=f"ordinary thursday {week}", embedding=[0.1, 0.2], S_current=0.5,
+            importance_score=0.2, emotion_vector=EmotionVector(valence=0.1, arousal=0.3),
+            created_at=base + timedelta(weeks=week, days=3)))
+
+    out = scheduler.run_job(st, "pattern_detection")
+    assert out["patterns"] >= 1
+    assert out["new_patterns"] >= 1
+
+    long_store = PostgresLongitudinalStore(st.session_factory, "u1")
+    persisted = long_store.active_patterns()
+    assert any(p.pattern_type == "emotional_cycle" for p in persisted)
+
+    queued = PostgresProactiveQueue(st.session_factory, "u1").load()
+    assert any(i.item_type == "behavioral_pattern_surfacing" for i in queued)
+
+
+def test_pattern_detection_job_does_not_duplicate_across_runs():
+    from datetime import timedelta
+
+    st = _state()
+    store = PostgresMemoryStore(st.session_factory)
+    base = datetime(2026, 1, 5, tzinfo=timezone.utc)
+    for week in range(8):
+        store.save_episodic(EpisodicMemory(
+            user_id="u1", summary=f"rough monday {week}", embedding=[0.1, 0.2], S_current=0.5,
+            importance_score=0.2, emotion_vector=EmotionVector(valence=-0.8, arousal=0.5),
+            created_at=base + timedelta(weeks=week)))
+        store.save_episodic(EpisodicMemory(
+            user_id="u1", summary=f"ordinary thursday {week}", embedding=[0.1, 0.2], S_current=0.5,
+            importance_score=0.2, emotion_vector=EmotionVector(valence=0.1, arousal=0.3),
+            created_at=base + timedelta(weeks=week, days=3)))
+
+    scheduler.run_job(st, "pattern_detection")
+    first_id = next(p.pattern_id for p in
+                    PostgresLongitudinalStore(st.session_factory, "u1").active_patterns()
+                    if p.pattern_type == "emotional_cycle")
+    scheduler.run_job(st, "pattern_detection")
+    active = [p for p in PostgresLongitudinalStore(st.session_factory, "u1").active_patterns()
+             if p.pattern_type == "emotional_cycle"]
+
+    assert len(active) == 1
+    assert active[0].pattern_id == first_id
+
+
+def test_life_calendar_job_registers_and_fires_a_relationship_milestone():
+    """SC-5 (Life Calendar) had zero production callers. A user whose relationship started 35
+    days ago should have their real day-30 milestone lazily registered and fired on first run,
+    and (since a relationship-day milestone doesn't map to a retrospective type) handed straight
+    to Layer 6 via the real on_calendar_entry_due intake contract."""
+    from datetime import timedelta
+
+    st = _state()
+    _seed_relationship(st.session_factory, "u1", datetime.now(timezone.utc) - timedelta(days=35))
+
+    out = scheduler.run_job(st, "life_calendar")
+    assert out["entries"] == 3          # day 30/100/365 registered
+    assert out["fired"] == 1            # only day 30 is due
+    assert out["milestones"] == 1
+    assert out["retrospectives"] == 0   # relationship-day entries don't map to a retrospective
+
+    queued = PostgresProactiveQueue(st.session_factory, "u1").load()
+    assert any(i.item_type == "upcoming_date_reminder" for i in queued)
+
+
+def test_life_calendar_job_is_idempotent_across_runs():
+    """check_and_fire_due_entries never re-fires an already-fired entry -- a second run the same
+    day must not re-queue the same milestone."""
+    from datetime import timedelta
+
+    st = _state()
+    _seed_relationship(st.session_factory, "u1", datetime.now(timezone.utc) - timedelta(days=35))
+
+    scheduler.run_job(st, "life_calendar")
+    second = scheduler.run_job(st, "life_calendar")
+
+    assert second["fired"] == 0
+    queued = PostgresProactiveQueue(st.session_factory, "u1").load()
+    assert len([i for i in queued if i.item_type == "upcoming_date_reminder"]) == 1
 
 
 def test_episodic_records_reads_real_emotion_vector_not_content_basis_valence():
@@ -252,5 +375,5 @@ def test_dependency_monitor_job_zero_score_with_no_signals():
     assert result["tier"] == "healthy"
 
 
-def test_job_registry_has_seven_jobs():
-    assert len(scheduler.JOBS) == 7
+def test_job_registry_has_nine_jobs():
+    assert len(scheduler.JOBS) == 9

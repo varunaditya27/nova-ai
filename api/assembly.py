@@ -124,6 +124,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          social_surface_writer: Optional[Callable] = None,
                          proactive_coaching_writer: Optional[Callable] = None,
                          format_profile_provider: Optional[Callable] = None,
+                         longitudinal_provider: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
@@ -458,6 +459,32 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return (f"The user has an active goal: '{titles[0]}'. If it fits naturally, reference "
                 f"their progress or gently encourage them — never force it or lecture.")
 
+    def _longitudinal_directive(ctx) -> str:
+        """Layer 10 §8/§9: long-term narrative grounding, not an explicit topic to raise (unlike
+        the goal directive) -- so this only skips in crisis mode and when Layer 10's own
+        minimum_data_threshold_met says there isn't enough history yet, not by conversation mode."""
+        if longitudinal_provider is None:
+            return ""
+        if getattr(ctx, "conversation_mode", "casual") == "crisis":
+            return ""
+        try:
+            packet = longitudinal_provider(ctx.user_id, getattr(ctx, "now", None))
+        except Exception:
+            logger.exception("longitudinal provider failed; no narrative grounding this turn")
+            return ""
+        if packet is None or not getattr(packet, "minimum_data_threshold_met", False):
+            return ""
+        parts = []
+        if packet.current_chapter_summary:
+            parts.append(f"Nova has been present through a period best described as: "
+                        f"{packet.current_chapter_summary}")
+        if packet.running_growth_narrative:
+            parts.append(packet.running_growth_narrative)
+        if not parts:
+            return ""
+        return ("Background context on the user's longer story with Nova (use only for tone and "
+                "grounding, never quote or announce it directly): " + " ".join(parts))
+
     def _elicitation_directive(ctx) -> str:
         """Layer-13: weave a surfaced onboarding question in naturally (never front-loaded)."""
         item = getattr(ctx, "pending_elicitation", None)
@@ -487,7 +514,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         drift_directive = (pre_drift.planner_directive
                           if pre_drift and pre_drift.drift_detected else None)
         directive = " ".join(d for d in (
-            _goal_directive(ctx), _elicitation_directive(ctx), drift_directive) if d)
+            _goal_directive(ctx), _elicitation_directive(ctx), _longitudinal_directive(ctx),
+            drift_directive) if d)
         # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
         # ctx — previously dropped, so the planner never actually grounded responses in
         # recalled memories despite Layer 2 computing them every turn. See POLISH_BACKLOG.md.

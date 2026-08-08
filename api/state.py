@@ -39,6 +39,9 @@ from backend.layer5_relationship.schemas import RelationshipType, SocialGraph
 from backend.layer7_goals.schemas import GoalStatus
 from infra.db.format_profile_store import PostgresFormatProfileStore
 from backend.layer9_output import update_format_profile, classify_format_feedback
+from infra.db.longitudinal_store import PostgresLongitudinalStore
+from backend.layer10_longitudinal import assemble_context_packet
+from backend.layer10_longitudinal.progress_tracker import compute_progress_snapshot
 from api.assembly import build_pipeline_steps
 from api.proactive_gen import goal_checkin_item
 from api.reinforcement import used_memory_ids
@@ -715,6 +718,38 @@ def make_format_profile_writer(session_factory) -> Callable:
     return _write
 
 
+def make_longitudinal_provider(session_factory) -> Callable:
+    """Read-side Layer 10 provider for the planner directive: assembles the real
+    Layer10ContextPacket (§8) from persisted narrative arc / weekly summaries / retrospectives /
+    patterns, all cheap Postgres reads -- ProgressSnapshot is computed live (no LLM, deterministic)
+    rather than persisted separately, since nothing else needs it as a standalone artifact."""
+    def _provider(user_id, now=None):
+        now = now or datetime.now(timezone.utc)
+        long_store = PostgresLongitudinalStore(session_factory, user_id)
+        rel_store = PostgresRelationshipStore(session_factory, user_id)
+        first_session = rel_store.first_session_date()
+        days_since = (now.date() - first_session).days if first_session else 0
+
+        memory_store = PostgresMemoryStore(session_factory)
+        from background._adapters import emotional_records, episodic_records
+        emos = emotional_records(memory_store, user_id)
+        eps = episodic_records(memory_store, user_id)
+        goals = PostgresGoalStore(session_factory, user_id).load_by_status(
+            [s.value for s in GoalStatus])
+        progress = compute_progress_snapshot(user_id, now.date(), emos, [], goals, eps)
+
+        weeklies = long_store.summaries(period="weekly", limit=2)
+        current_week = weeklies[0] if weeklies else None
+        last_week = weeklies[1] if len(weeklies) > 1 else None
+
+        return assemble_context_packet(
+            user_id=str(user_id), narrative_arc=long_store.load_narrative_arc(),
+            progress_snapshot=progress, current_week_summary=current_week,
+            last_week_summary=last_week, pending_retrospectives=long_store.pending_retrospectives(),
+            active_patterns=long_store.active_patterns(), days_since_started=days_since, now=now)
+    return _provider
+
+
 def _revise_belief_statement(client, belief, contradiction) -> str:
     """LLM rewrite of one identity belief's statement, given the evidence that contradicted it.
     Falls back to the belief's *unchanged* statement (never a placeholder like "[revised] X") on
@@ -965,6 +1000,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         social_surface_writer=make_social_surface_writer(session_factory),
         proactive_coaching_writer=make_proactive_coaching_writer(session_factory),
         format_profile_provider=make_format_profile_provider(session_factory),
+        longitudinal_provider=make_longitudinal_provider(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)

@@ -1340,6 +1340,140 @@ Calendar), the pattern-detection → Layer 6 handoff, and the entire `Layer10Con
 Layer 4 read path (the doc's primary reason for Layer 10 to exist — "long-term narrative
 grounding" in every response) have zero production callers. This is real feature work: a
 persisted calendar/chapter schema, a scheduler loop, and an orchestrator hook, not a wiring gap.
+**All closed in the follow-up build below.**
+
+## 16. The full build — SC-1, SC-4, SC-5, pattern handoff, context-packet read path (follow-up, 2026-08-09)
+
+Closes every gap in §15.3. Scoped with the user up front since it's comparable in size to Layer
+5's full build (persistence + two new background jobs + a per-turn read provider), and it also
+extends Layer 6's own intake module — confirmed before writing any code.
+
+### 16.1 A real blocker investigated and designed around: no `LifeEvent` detector exists
+
+`build_narrative_arc`'s chapter-boundary detection needs `life_events: list[LifeEvent]`, but
+**no code anywhere in the codebase constructs a `LifeEvent`** (`grep -rl "LifeEvent(" --include
+"*.py"` outside tests returns nothing) — the module's own header comment claiming "LifeEvent is
+owned and detected by Layer 7" does not correspond to anything Layer 7 actually does. Building a
+real life-event detector (an NLP extraction pipeline on the scale of Layer 7's goal extractor or
+Layer 5's event tracker) was out of scope for this pass. Both `narrative_arc.py` and
+`life_calendar.py` degrade gracefully with `life_events=[]`: every user gets exactly one, ongoing
+chapter (no boundaries ever fire) and no life-event anniversaries are ever registered — a real,
+honest simplification, not a crash or a stub. `register_new_user`'s day-30/100/365 relationship
+milestones need no `LifeEvent` at all, so SC-5 is still fully functional without it.
+
+### 16.2 Persistence
+
+- **`NarrativeArc` reuses the existing `longitudinal_summary` table** (`period="narrative_arc"`,
+  a stable singleton `summary_id`) — its own docstring already said "weekly summary or narrative
+  chapter," built for exactly this and never used for it (`infra/db/longitudinal_store.py`).
+- **New tables**: `longitudinal_pattern` (`BehavioralPattern`, mirrors `SocialPattern`),
+  `life_calendar_entry` (`CalendarEntry`), `retrospective` (`RetrospectivePacket`) —
+  `infra/db/models/longitudinal.py`, extended `PostgresLongitudinalStore`.
+- **`arc_start_date` is sourced from `RelationshipState`'s own row `created_at`** — a new
+  `PostgresRelationshipStore.first_session_date()` method exposes it. This is the real "day 1 with
+  Nova" signal already in the DB (stamped the moment `record_turn` first ran for a user), avoiding
+  a redundant new "relationship started" field.
+- **Bug caught before it bit**: `NarrativeArc.chapters` and `LifeChapter.defining_moments` were
+  bare `list` (no `[LifeChapter]`/`[NarrativeMoment]` parameter) — the same serde-breaking pattern
+  fixed in Layers 7 and 9 this pass. Fixed before anything persisted through them for real.
+- **Real bug caught in `progress_tracker.py`/wired for the first time**: `compute_progress_
+  snapshot` counted achieved goals by `status == "achieved"`, but Layer 7's real terminal
+  `GoalStatus` value is `"completed"` — `goals_achieved_lifetime`/`achievement_rate_lifetime`
+  would have silently stayed 0 for every real user forever. This was always wrong; it only became
+  a live bug the moment this function was first fed real `Goal` objects (this pass). Fixed the
+  string match and the stub test that had been asserting against the wrong string too. (`abandoned`
+  already matched correctly.) `generate_year_in_review`'s equivalent achieved/abandoned counting
+  had the same string bug plus a deeper one — Layer 7's `Goal` had no `status_changed_at` field,
+  and (found on investigation) no goal ever reached a terminal status live at all. **Both fixed
+  as a follow-up, 2026-08-09** — see `docs/layer-7-architecture.md` §15 for the full finding
+  (`update_progress_score` intentionally left `.status` alone; nothing else was applying "the
+  transition rules" it deferred to). Year in Review itself still has no production caller (16.6)
+  — that data-completeness fix doesn't by itself give it one.
+
+### 16.3 Two new Layer 6 intake functions + one new `ProactiveItemType`
+
+`backend/layer6_proactivity/intake.py` previously had four upstream constructors (Layers 1, 2, 5,
+7); Layer 10 needed its own, since nothing else maps a `BehavioralPattern`/`RetrospectivePacket`/
+plain relationship-milestone `CalendarEntry` onto a `ProactiveItem`:
+
+- **`on_behavioral_pattern(pattern, now)`** — `BEHAVIORAL_PATTERN_SURFACING` (new
+  `ProactiveItemType` value), a gentle, low-urgency nudge.
+- **`on_retrospective_ready(retrospective, now)`** — `RETROSPECTIVE_REFLECTION` (new type),
+  priority nudged by the retrospective's own `surfacing_priority`, window sized off its
+  `surfacing_window_days`.
+- **`on_calendar_entry_due(entry, now)`** — reuses the existing `UPCOMING_DATE_REMINDER` type, for
+  a fired `CalendarEntry` that does **not** map to a retrospective (a pure relationship-day
+  celebration like "Day 30 with Nova" is a nudge, not a look-back). Discovered mid-build: the
+  *only* entries `register_new_user` creates (day 30/100/365) are exactly this case — `_ENTRY_TO_
+  RETRO` never maps them — so without this function every relationship milestone the calendar
+  registers would have silently gone nowhere.
+
+All three are precedented, same shape as the existing four, added `BASE_PRIORITY_BY_TYPE` entries
+(`backend/layer6_proactivity/queue_manager.py`).
+
+### 16.4 Two new background jobs
+
+- **`background/narrative_arc_job.py`** (weekly): rebuilds the arc fresh each run from persisted
+  episodes/emotional records (cheap and deterministic; `arc_start_date` never changes so this is
+  safely idempotent even though a fresh `LifeChapter.chapter_id` is minted each run — nothing keys
+  off chapter identity across runs), then re-synthesizes the current chapter's narrative via the
+  injected LLM (`system1`, same defensive `getattr(app_state, "llm_clients", None)` pattern as
+  `memory_consolidation_job.py`'s FCE generalizer — the only other job that calls an LLM).
+- **`pattern_detection_job.py`** (weekly, existing job extended): now persists detected patterns,
+  re-identifying against last run's active set by a stable key (`pattern_type` + the description's
+  text before its drifting numbers) so `has_been_surfaced` history survives instead of duplicating
+  every week — the exact same shape as Layer 5's `social_pattern_job.py` re-identification. Newly
+  active patterns are hand off through `on_behavioral_pattern` into the real proactive queue.
+- **`background/life_calendar_job.py`** (daily): lazily registers a user's relationship milestones
+  on first run (idempotent — only registers when no entries exist yet), fires due entries, and for
+  each fired entry either generates+persists a real `RetrospectivePacket` (via `generate_
+  retrospective`, sourced from real weekly summaries/goals/episodic records/live-computed
+  `ProgressSnapshot`) and hands it to Layer 6, or — for a plain milestone with no retrospective
+  mapping — hands the `CalendarEntry` itself to Layer 6 via `on_calendar_entry_due`.
+
+Registered in `background/scheduler.py`'s `JOBS` (now 9 entries) at `narrative_arc_days=7` /
+`life_calendar_days=1` (daily, since anniversaries are date-sensitive; the doc's literal "hourly"
+scheduling intent was scaled to this codebase's day-level job-cadence convention rather than
+adding new intra-day scheduling infrastructure for one job).
+
+### 16.5 `Layer10ContextPacket` → Layer 4 read path
+
+`api/state.py::make_longitudinal_provider` assembles a real packet per turn from cheap Postgres
+reads (`assemble_context_packet` itself is pure/fast; `ProgressSnapshot` is computed live rather
+than persisted separately, since nothing else needs it as a standalone artifact — no LLM call is
+on this path). `api/assembly.py::_longitudinal_directive` folds `current_chapter_summary`/
+`running_growth_narrative` into the planner's `response_instruction`, alongside the existing goal/
+elicitation/drift directives.
+
+**Gating differs from the goal directive on purpose**: §8/§9 frame this as background narrative
+*grounding* Layer 4 should always have available, not an explicit topic to raise the way a goal
+callout is — so it is not blocked by conversation mode or relationship stage the way `_goal_
+directive` is, only by crisis mode (obviously) and Layer 10's own `minimum_data_threshold_met`
+flag. The spec also frames this as a "session start" read, but nothing in this codebase's Layer
+4 injection has a session-boundary concept for directives (goals/elicitation are per-turn too) —
+this reads per-turn for consistency with the rest of `plan()`, not once per session.
+
+Proven end to end through the real orchestrator by `tests/unit/api/test_assembly_turn.py::
+test_real_layer10_wiring_narrative_grounding_reaches_the_planner_prompt`: a persisted chapter
+summary reaches the Semantic Planner prompt via the real provider, not a mock.
+
+### 16.6 Still not wired, honestly scoped out
+
+- **Year in Review** (`generate_year_in_review`) is still not called anywhere. Its data-completeness
+  blocker is fixed (`Goal.status_changed_at` now exists and gets stamped — Layer 7 follow-up,
+  2026-08-09, `docs/layer-7-architecture.md` §15), but nothing in this codebase decides *when* to
+  generate one (an annual trigger, presumably from `life_calendar_job.py` or a dedicated yearly
+  job) — that's a real scheduling decision, not made this pass.
+- **`LifeEvent` detection** (16.1) remains unbuilt — chapter boundaries and life-event
+  anniversaries stay inert until it exists. Every user has exactly one ongoing chapter.
+- **`Layer10ContextPacket` → Layer 6** is satisfied only in the narrow sense the doc's §9 table
+  describes (`pending_retrospectives`/`active_behavioral_patterns` feeding Layer 6's queue via
+  16.3/16.4's handoffs) — SC-3 (Timing & Delivery Gate) itself is still unwired (Layer 6's own
+  gap, `docs/POLISH_BACKLOG.md`), so nothing yet *gates* delivery using this context; it only
+  populates the queue.
+- **`upcoming_goal_deadlines`/`recent_life_event`** on the assembled packet are not populated
+  (`assemble_context_packet` accepts them as optional args; no caller sources them yet) — real but
+  smaller follow-ups.
 
 ---
 

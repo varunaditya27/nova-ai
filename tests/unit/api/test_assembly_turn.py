@@ -328,6 +328,53 @@ def test_real_layer7_goal_directive_blocked_in_emotional_support_and_shown_in_go
     assert not any("Run a 5K" in p for p in captured4), "goal referenced for a brand-new relationship"
 
 
+def test_real_layer10_wiring_narrative_grounding_reaches_the_planner_prompt():
+    """Layer10ContextPacket had zero production callers -- Layer 10's "long-term narrative
+    grounding" (architecture doc §8/§9) never reached generation despite the background jobs
+    computing real chapters/summaries. Seeds a real persisted NarrativeArc through the real
+    orchestrator + make_longitudinal_provider and confirms the chapter summary reaches the
+    Semantic Planner prompt."""
+    import json
+    from infra.db import make_engine, make_session_factory, init_db, session_scope
+    import infra.db.models as models
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from backend.layer10_longitudinal.schemas import NarrativeArc, LifeChapter
+    from api.state import make_longitudinal_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with session_scope(factory) as s:
+        s.add(models.RelationshipState(user_id="local-user", stage="developing", payload={}))
+    arc = NarrativeArc(user_id="local-user", arc_start_date=__import__("datetime").date(2026, 1, 1))
+    arc.current_chapter = LifeChapter(
+        title="A steady stretch", start_date=arc.arc_start_date, is_current=True,
+        narrative_summary="a season of steady, quiet progress at work.")
+    arc.chapters = [arc.current_chapter]
+    PostgresLongitudinalStore(factory, "local-user").save_narrative_arc(arc)
+
+    captured = []
+
+    class CapturingLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.1, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            if "Semantic Planner" in prompt:
+                captured.append(prompt)
+            return self._reply
+
+    llm = CapturingLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 longitudinal_provider=make_longitudinal_provider(factory))
+    ConversationOrchestrator(steps).run_turn("local-user", "hey, how's it going")
+
+    assert captured, "planner was never invoked"
+    assert any("steady, quiet progress at work" in p for p in captured)
+
+
 def test_real_layer9_wiring_strips_markdown_on_high_intensity_turn():
     """api/assembly.py's deliver() only forwarded conversation_mode + crisis_mode_active to the
     real Layer 9 deliver() -- emotional_intensity and relationship_stage (which drive format_spec's

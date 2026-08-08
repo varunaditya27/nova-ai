@@ -1205,3 +1205,15 @@ surface, not a wiring gap); `GET /proactive` still returns ungated `content_basi
 for `social_pattern_coaching` items — the same caveat above applies, whoever builds the consumer
 must run `evaluate_timing_gate` server-side first, not render `content_basis` directly.
 `on_thread_due`/`on_post_distress_gap` remain blocked on Layer 1/2 respectively.
+
+## 17. Three more intake functions for Layer 10 (follow-up, 2026-08-09)
+
+Layer 10's full build (`docs/layer-10-architecture.md` §16) added `on_behavioral_pattern`,
+`on_retrospective_ready`, and `on_calendar_entry_due` to `backend/layer6_proactivity/intake.py` —
+same shape as the four pre-existing constructors, plus two new `ProactiveItemType` values
+(`behavioral_pattern_surfacing`, `retrospective_reflection`) and their `BASE_PRIORITY_BY_TYPE`
+entries. `background/pattern_detection_job.py` and the new `background/life_calendar_job.py` are
+the only callers. See `docs/layer-10-architecture.md` §16.3-16.4 for the full design, including
+why `on_calendar_entry_due` exists separately from `on_retrospective_ready` (a relationship-day
+milestone is a celebration nudge, not a look-back retrospective — the two are semantically
+different even though both originate from a fired `CalendarEntry`).

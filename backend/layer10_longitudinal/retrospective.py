@@ -198,8 +198,10 @@ def generate_year_in_review(
     def _in_year(d):
         return d is not None and year_start <= d <= year_end
 
+    # Layer 7's real GoalStatus terminal value is "completed", not "achieved" -- see
+    # progress_tracker.py's compute_progress_snapshot for the same fix and why it matters.
     started = [g for g in goals if _in_year(_as_date(getattr(g, "created_at", None)))]
-    achieved = [g for g in goals if getattr(g, "status", "") == "achieved"
+    achieved = [g for g in goals if getattr(g, "status", "") == "completed"
                 and _in_year(_as_date(getattr(g, "status_changed_at", None)))]
     abandoned = [g for g in goals if getattr(g, "status", "") == "abandoned"
                  and _in_year(_as_date(getattr(g, "status_changed_at", None)))]

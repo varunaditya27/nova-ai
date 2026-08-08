@@ -59,6 +59,10 @@ class ProactiveItemType(str, Enum):
     RECURRING_CONCERN_CHECK = "recurring_concern_check"
     WELLBEING_CHECK = "wellbeing_check"
 
+    # Longitudinal (Layer 10)
+    BEHAVIORAL_PATTERN_SURFACING = "behavioral_pattern_surfacing"
+    RETROSPECTIVE_REFLECTION = "retrospective_reflection"
+
 
 class ItemStatus(str, Enum):
     PENDING = "pending"
