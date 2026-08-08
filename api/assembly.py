@@ -25,7 +25,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Callable, Optional
 
@@ -293,7 +293,23 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             llm_fn=_json_classifier)
 
     def safety_scan(user_id, message, input_packet):
-        signal = evaluate(message)
+        # SC-2's longitudinal layer (architecture doc §4.3 layer 3) needs episodic/emotional
+        # records, not an LLM -- previously never forwarded because safety_scan runs BEFORE
+        # Layer 2's recall completes (by design). memory_store.active_episodic is a raw store
+        # read, not the recall/scoring pipeline, so it's safe to call here too -- classify()
+        # already does exactly this for the same reason (BES inputs). Reusing Layer 10's own
+        # adapters converts the raw EpisodicMemory rows into the .date/.topics/.valence shape
+        # evaluate_longitudinal_pattern expects, instead of duplicating that conversion here.
+        episodic_memories, emotional_records_list = [], []
+        try:
+            from background._adapters import episodic_records, emotional_records
+            episodic_memories = episodic_records(memory_store, user_id, timezone_offset_hours)
+            emotional_records_list = emotional_records(memory_store, user_id, timezone_offset_hours)
+        except Exception:
+            logger.exception("SC-2 longitudinal lookup failed; evaluating lexical-only")
+        now_local = (datetime.now(timezone.utc) + timedelta(hours=timezone_offset_hours)).date()
+        signal = evaluate(message, episodic_memories=episodic_memories,
+                          emotional_records=emotional_records_list, now=now_local)
         tier = getattr(signal, "tier", CrisisTier.NONE.value)
         return _CrisisAssessment(is_crisis=tier in veto_tiers, tier=tier, signal=signal)
 

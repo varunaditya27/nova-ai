@@ -235,9 +235,11 @@ Permanently removes the goal row (user-scoped).
 ### `GET /memory/{memory_id}` → `MemoryOut` (`404` if absent or deleted)
 
 ### `GET /memory/integrity` → `IntegrityOut`
-Verifies both tamper-evident hash chains.
+Verifies all three tamper-evident hash chains (Layer 2 memory audit, Layer 11 safety record,
+Layer 12 privacy audit).
 ```
-{ "status": "INTACT" | "TAMPER_DETECTED", "audit_chain_ok": bool, "privacy_chain_ok": bool }
+{ "status": "INTACT" | "TAMPER_DETECTED", "audit_chain_ok": bool, "privacy_chain_ok": bool,
+  "safety_chain_ok": bool }
 ```
 
 ### `DELETE /memory/{memory_id}` → `MemoryDeletionOut`

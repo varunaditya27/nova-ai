@@ -497,12 +497,15 @@ deriving records from the same per-episode `emotion_vector` data already read el
   terminal `GoalStatus` value is `"completed"` — `goals_achieved_lifetime`/`achievement_rate_
   lifetime` would have silently stayed 0 forever. Fixed in `progress_tracker.py`; the existing
   unit test asserting against the wrong status string was fixed too.
-- **Still open**: Year in Review (`generate_year_in_review`) needs `Goal.status_changed_at`, a
-  field Layer 7's real `Goal` doesn't have — not wired this pass. `upcoming_goal_deadlines`/
-  `recent_life_event` on the assembled context packet aren't populated yet (real but smaller
-  follow-ups). Layer 6 SC-3 (Timing & Delivery Gate) is still unwired, so nothing yet *gates*
-  delivery of the new pattern/retrospective/milestone queue items using this context — they only
-  populate the queue, same caveat as every other Layer 6 intake contract.
+- **[done, 2026-08-09]** Year in Review's data-completeness blocker is fixed — `Goal.status_
+  changed_at` now exists and gets stamped (Layer 7 follow-up, `docs/layer-7-architecture.md` §15).
+  `generate_year_in_review` itself still has no production caller — nothing decides *when* to
+  generate one (an annual trigger), a separate scheduling decision not made this pass.
+- **Still open**: `upcoming_goal_deadlines`/`recent_life_event` on the assembled context packet
+  aren't populated yet (real but smaller follow-ups). Layer 6 SC-3 (Timing & Delivery Gate) is
+  still unwired, so nothing yet *gates* delivery of the new pattern/retrospective/milestone queue
+  items using this context — they only populate the queue, same caveat as every other Layer 6
+  intake contract.
 
 ---
 
@@ -514,22 +517,24 @@ every response, SC-2 crisis detection on every message, SC-3 escalation on the v
 dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-architecture.md`
 §15.
 
-- **SC-2's semantic + longitudinal detection layers never fire live — lexical-only in practice.**
-  `evaluate(message)` is called with no `semantic_fn` (no fine-tuned classifier deployed) and no
-  `episodic_memories`/`emotional_records` (SC-2 must run before Layer 2's recall completes, by
-  design, so there's no cheap forward — needs a dedicated, decoupled recent-episodes query). Not a
-  live safety hole (Layer 3's independent lexical crisis check still ORs into the same veto), but
-  the doc's three-layer defense-in-depth is really one layer live. Real feature work: deploy/inject
-  a semantic classifier, and add a lightweight episode query that doesn't depend on the main recall
-  path completing first.
-- **`SafetyRecord`'s tamper-evident hash chain (§8) is unused.** `PostgresSafetyLog` persists
-  crisis events as plain JSONB with no cryptographic chain — the "safety is a verifiable property"
-  design principle doesn't hold for the safety log today, even though Layer 2 and Layer 12 each
-  have their own working hash-chained audit trails. Fix: store `content_hash`/`previous_entry_hash`/
-  `chain_hash` in the existing JSONB payload (no migration needed) and read the previous row's
-  `chain_hash` before each write. Scoped, but real work — not a one-line forward.
-- **`region` is hardcoded to `"india"`** — one instance of the cross-cutting `config/layerN.yaml`
-  gap already tracked under Layer 1 (files are merged into config but never read by layer code).
+- **[done, 2026-08-09]** SC-2's longitudinal detection layer is now live —
+  `api/assembly.py::safety_scan` forwards `episodic_memories`/`emotional_records` (via Layer 10's
+  own `_adapters.py`, reused not reimplemented). The "must run before recall completes" concern
+  turned out not to block this: `memory_store.active_episodic` is a raw store read, not the
+  recall/scoring pipeline — `classify()` already relied on the same fact for BES. The semantic
+  layer remains correctly unwired: no fine-tuned classifier model exists to inject. See
+  `docs/layer-11-architecture.md` §16.1.
+- **[done, 2026-08-09]** `SafetyRecord`'s tamper-evident hash chain (§8) is now wired — a new
+  `safety_record_entry` table + `PostgresSafetyRecordStore` wraps the real, already-complete
+  `SafetyRecord.append()`/`.verify_chain()` (zero callers before this). `make_safety_writer`
+  appends a chained entry for every crisis turn; `GET /memory/integrity` and the `integrity_check`
+  job now verify three chains, not two. Only `crisis_signal_detected` entries flow through it —
+  §8's other entry types have no live call sites of their own yet. See
+  `docs/layer-11-architecture.md` §16.2.
+- **[done, 2026-08-09]** `region` now reads from the real, already-merged
+  `config['layer11']['escalation']['default_region']` instead of `build_pipeline_steps`'s
+  hardcoded `"india"` default standing in silently forever. See `docs/layer-11-architecture.md`
+  §16.3.
 
 ---
 

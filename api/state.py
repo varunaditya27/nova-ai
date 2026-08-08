@@ -27,6 +27,7 @@ from backend.layer7_goals import run_goal_pipeline, decompose_goal
 from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
+from infra.db.safety_record_store import PostgresSafetyRecordStore
 from infra.db.onboarding_store import PostgresOnboardingStore
 from infra.db.relationship_store import PostgresRelationshipStore
 from infra.db.proactive_store import PostgresProactiveQueue
@@ -519,7 +520,11 @@ def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
 
 
 def make_safety_writer(session_factory) -> Callable:
-    """Post-turn: append the turn's crisis assessment to the safety log (append-only; NONE skipped)."""
+    """Post-turn: append the turn's crisis assessment to the safety log (append-only; NONE skipped),
+    and to the tamper-evident SafetyRecord hash chain (§8) -- content_hash covers the actual
+    message+response text but only the SHA-256 digest is ever persisted, matching the access
+    policy's "metadata_only" content rule (a hash reveals nothing about the conversation itself,
+    it only lets a later audit prove nothing was altered)."""
     def _write(ctx) -> None:
         try:
             assessment = getattr(ctx, "crisis_assessment", None)
@@ -529,6 +534,11 @@ def make_safety_writer(session_factory) -> Callable:
             signal.user_id = signal.user_id or ctx.user_id
             signal.session_id = signal.session_id or getattr(ctx, "session_id", "") or ""
             PostgresSafetyLog(session_factory).record(signal)
+            now = getattr(ctx, "now", None)
+            content = f"{getattr(ctx, 'message', '') or ''}\n{getattr(ctx, 'response_text', '') or ''}"
+            PostgresSafetyRecordStore(session_factory, ctx.user_id).append(
+                "crisis_signal_detected", detail=f"tier={signal.tier}", tier=signal.tier,
+                session_id=signal.session_id, content=content, now=now)
         except Exception:
             logger.exception("safety writer failed; turn already delivered")
     return _write
@@ -1003,7 +1013,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         longitudinal_provider=make_longitudinal_provider(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
         vector_store=vector_store,
-        layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset)
+        layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset,
+        region=config.get("layer11", {}).get("escalation", {}).get("default_region", "india"))
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,

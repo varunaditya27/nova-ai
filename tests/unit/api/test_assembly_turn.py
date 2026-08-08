@@ -536,6 +536,45 @@ def test_real_layer3_wiring_crisis_flag_reaches_orchestrator_veto():
     assert out.conversation_mode == "crisis"
 
 
+def test_real_layer11_wiring_longitudinal_signal_reaches_the_veto_even_with_a_neutral_message():
+    """SC-2's longitudinal detection layer (architecture doc §4.3 layer 3) never received
+    episodic_memories/emotional_records because safety_scan runs before Layer 2's recall
+    completes -- but memory_store.active_episodic is a raw store read, not the recall/scoring
+    pipeline, so it's safe to call there too (classify() already does this for BES). Seeds a real
+    escalating-distress pattern (crisis-tagged topics, declining valence) with a lexically and
+    semantically neutral CURRENT message, and proves the real orchestrator still vetoes on the
+    longitudinal signal alone -- not the message's own lexical content."""
+    import json
+    from datetime import datetime, timedelta, timezone
+    from backend.layer2_memory import InMemoryMemoryStore
+    from backend.layer2_memory.schemas import EmotionVector, EpisodicMemory
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    for i in range(5):
+        store.save_episodic(EpisodicMemory(
+            user_id="local-user", summary=f"an okay day {i}", topic_tags=["hopelessness"],
+            created_at=now - timedelta(days=25 - i), emotion_vector=EmotionVector(valence=0.1)))
+    for i in range(5):
+        store.save_episodic(EpisodicMemory(
+            user_id="local-user", summary=f"a hard day {i}", topic_tags=["hopelessness"],
+            created_at=now - timedelta(days=5 - i), emotion_vector=EmotionVector(valence=-0.7)))
+
+    class NeutralLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            if "Classify the message" in prompt:
+                return json.dumps({"primary_label": "neutral", "valence": 0.05, "arousal": 0.2,
+                                   "confidence": 0.9, "crisis_flag": False,
+                                   "primary_intent": "casual_chat"})
+            return self._reply
+
+    llm = NeutralLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store)
+    out = ConversationOrchestrator(steps).run_turn("local-user", "hey, how's it going")
+
+    assert out.crisis_active is True
+
+
 def test_real_layer3_wiring_forwards_episodic_memories_to_background_state():
     """BES (§4) inputs used to be permanently empty (Layer 2's UWM/episodic gap). Now that
     Layer 2 has a real write path, api/assembly.py::classify pulls active_episodic straight off

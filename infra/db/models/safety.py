@@ -15,3 +15,11 @@ class SafetyEvent(UserScopedMixin, Base):
     tier: Mapped[str] = mapped_column(String(16), index=True)
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     payload: Mapped[dict] = mapped_column(_JSONB)
+
+
+class SafetyRecordEntry(UserScopedMixin, Base):
+    """One row per Layer-11 SafetyRecordEntry (§8) -- the tamper-evident SHA-256 hash chain,
+    distinct from SafetyEvent's raw CrisisSignal dump. Payload = serialized SafetyRecordEntry."""
+    __tablename__ = "safety_record_entry"
+    entry_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    payload: Mapped[dict] = mapped_column(_JSONB)

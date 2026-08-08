@@ -193,6 +193,7 @@ class IntegrityOut(BaseModel):
     status: str          # INTACT | TAMPER_DETECTED
     audit_chain_ok: bool
     privacy_chain_ok: bool
+    safety_chain_ok: bool
 
 
 # ── Sync (Layer 12, zero-knowledge) ──────────────────────────────────────

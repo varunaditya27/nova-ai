@@ -8,6 +8,7 @@ from api.schemas import IntegrityOut, MemoryAuditOut, MemoryDeletionOut, MemoryO
 from infra.db.audit_trail import PostgresAuditTrail
 from infra.db.memory_store import PostgresMemoryStore
 from infra.db.privacy_audit import PostgresPrivacyAudit
+from infra.db.safety_record_store import PostgresSafetyRecordStore
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -57,16 +58,19 @@ def memory_audit(state=Depends(get_state)):
 
 @router.get("/integrity", response_model=IntegrityOut)
 def memory_integrity(state=Depends(get_state)):
-    """Verify the tamper-evident hash chains (Layer-2 memory audit + Layer-12 privacy audit)."""
+    """Verify the tamper-evident hash chains (Layer-2 memory audit + Layer-11 safety record +
+    Layer-12 privacy audit)."""
     uid = state.default_user_id
     try:
         audit_ok = PostgresAuditTrail(state.session_factory, uid).verify()
         privacy_ok = PostgresPrivacyAudit(state.session_factory, uid).verify()
+        safety_ok = PostgresSafetyRecordStore(state.session_factory, uid).verify_chain()
     except Exception:
         raise HTTPException(status_code=503, detail="integrity check unavailable")
-    ok = audit_ok and privacy_ok
+    ok = audit_ok and privacy_ok and safety_ok
     return IntegrityOut(status="INTACT" if ok else "TAMPER_DETECTED",
-                        audit_chain_ok=audit_ok, privacy_chain_ok=privacy_ok)
+                        audit_chain_ok=audit_ok, privacy_chain_ok=privacy_ok,
+                        safety_chain_ok=safety_ok)
 
 
 @router.get("/search", response_model=list[MemoryOut])

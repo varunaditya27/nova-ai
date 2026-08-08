@@ -648,7 +648,8 @@ def test_safety_writer_records_crisis_and_skips_none():
 
     def _ctx(tier):
         sig = CrisisSignal(tier=tier)
-        return SimpleNamespace(user_id="local-user", session_id="s1",
+        return SimpleNamespace(user_id="local-user", session_id="s1", message="I feel awful",
+                               response_text="I'm here with you.",
                                crisis_assessment=SimpleNamespace(signal=sig))
 
     writer(_ctx("none"))
@@ -656,6 +657,46 @@ def test_safety_writer_records_crisis_and_skips_none():
     writer(_ctx("tier_2"))
     recent = PostgresSafetyLog(factory).recent("local-user")
     assert len(recent) == 1 and recent[0].tier == "tier_2" and recent[0].user_id == "local-user"
+
+
+def test_safety_writer_chains_a_real_tamper_evident_safety_record():
+    """SafetyRecord's SHA-256 hash chain (architecture doc §8) had zero production callers --
+    PostgresSafetyLog persisted crisis signals as plain JSONB with no cryptographic chain, so
+    "safety is a verifiable property" didn't hold. Proves make_safety_writer now appends a real,
+    persisted, chained SafetyRecordEntry for each crisis turn, that the chain verifies intact
+    across two turns, and that a tampered row is actually detected -- not just constructed."""
+    from types import SimpleNamespace
+    from infra.db.safety_record_store import PostgresSafetyRecordStore
+    from backend.layer11_safety.schemas import CrisisSignal
+    from api.state import make_safety_writer
+    import infra.db.models as m
+    from infra.db.engine import session_scope
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    writer = make_safety_writer(factory)
+
+    def _ctx(tier):
+        sig = CrisisSignal(tier=tier)
+        return SimpleNamespace(user_id="local-user", session_id="s1", message="I feel awful",
+                               response_text="I'm here with you.",
+                               crisis_assessment=SimpleNamespace(signal=sig))
+
+    writer(_ctx("tier_1"))
+    writer(_ctx("tier_2"))
+
+    store = PostgresSafetyRecordStore(factory, "local-user")
+    assert store.verify_chain() is True
+
+    with session_scope(factory) as s:
+        row = s.query(m.SafetyRecordEntry).filter_by(user_id="local-user").order_by(
+            m.SafetyRecordEntry.id.asc()).first()
+        payload = dict(row.payload)
+        payload["detail"] = "tampered"
+        row.payload = payload
+
+    assert store.verify_chain() is False
 
 
 def test_onboarding_writer_counts_and_graduates():

@@ -101,3 +101,4 @@ def test_integrity_reports_intact_chains():
     body = client.get("/memory/integrity").json()
     assert body["status"] == "INTACT"
     assert body["audit_chain_ok"] is True and body["privacy_chain_ok"] is True
+    assert body["safety_chain_ok"] is True

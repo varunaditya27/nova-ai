@@ -11,7 +11,7 @@ from infra.db.models.relationship import RelationshipState
 from infra.db.models.social import SocialGraph, SocialEvent, SocialPattern
 from infra.db.models.goals import Goal
 from infra.db.models.proactivity import ProactiveItem
-from infra.db.models.safety import SafetyEvent
+from infra.db.models.safety import SafetyEvent, SafetyRecordEntry
 from infra.db.models.privacy import PrivacyAudit
 from infra.db.models.longitudinal import (
     LongitudinalSummary, BehavioralPattern, LifeCalendarEntry, Retrospective,
@@ -29,5 +29,5 @@ __all__ = [
     "PersonaState", "RelationshipState", "Goal", "ProactiveItem", "SafetyEvent",
     "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
     "SyncDelta", "SocialGraph", "SocialEvent", "SocialPattern", "FormatProfile",
-    "BehavioralPattern", "LifeCalendarEntry", "Retrospective",
+    "BehavioralPattern", "LifeCalendarEntry", "Retrospective", "SafetyRecordEntry",
 ]
