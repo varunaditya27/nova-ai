@@ -1405,145 +1405,112 @@ This independence — a dedicated classifier that the conversation cannot reach 
 
 ---
 
-## 14. Implementation Notes (as-built)
+## 14. Live Wiring Status (current state)
 
-- **Module map:** SC-1 `ethical_guardrails.py` (the six checks, §3); SC-2 `crisis_classifier.py`
-  (three-layer detection + fusion, §4); SC-3 `escalation_engine.py` (Tier 1/2 responses + regional
-  registry, §5/§10) with `safe_mode_enforcer.py` (crisis output override, §5.2); SC-4
-  `dependency_monitor.py` (§6); `safety_record.py` (tamper-evident audit, §8); `safety_agent.py`
-  (coordinator → `SafetyAgentDecision`, §7); `schemas.py`.
-- **Dependency injection:** the semantic classifier (`semantic_fn`) and the crisis acknowledgment
-  model (`crisis_llm_fn`) are injected callables, and dependency-indicator detection is an injected
-  `indicator_detector` — so the layer runs and is tested fully offline with no model or DB.
-- **Safety-critical invariants enforced in code:**
-  - Crisis resources come **only** from `CRISIS_RESOURCES`; the LLM writes only the acknowledgment,
-    and any LLM failure degrades to a static fallback that still contains a real resource (§9) — a
-    Tier 1 response is never empty.
-  - The Safety Agent holds **veto authority**: Tier 1/Tier 2 discards the proposed response and
-    injects a safe-mode-enforced crisis response; the guardrail filter runs on every other response.
-  - The Safety Record is an **append-only SHA-256 hash chain**; mutating any logged entry breaks
-    `verify_chain`. It stores content *hashes*, never raw conversation content.
-- **Deviations from the May-28 scaffold (reconciled):**
-  - The scaffold's five-level taxonomy (NONE/MONITORING/ELEVATED/CRISIS/IMMINENT, Tier0-3) is
-    replaced by the authoritative three-tier model (TIER_1/2/3 + NONE).
-  - Added `ethical_guardrails`, `dependency_monitor`, and `safety_record` (absent from the scaffold).
-  - **Doc off-by-one:** §6 prose says "15 DependencyIndicators" but enumerates 14 (SS×4, AE×4,
-    EI×3, UP×3); the enumerated set of 14 is implemented.
-  - The semantic classifier is modeled as an injected interface (the real fine-tuned model is wired
-    by the pipeline); offline, lexical + longitudinal layers still operate, matching §9's degraded mode.
+**Module map:** SC-1 `ethical_guardrails.py` (the six checks, §3); SC-2 `crisis_classifier.py`
+(three-layer detection + fusion, §4); SC-3 `escalation_engine.py` (Tier 1/2 responses + regional
+registry, §5/§10) with `safe_mode_enforcer.py` (crisis output override, §5.2); SC-4
+`dependency_monitor.py` (§6); `safety_record.py` (tamper-evident audit, §8); `safety_agent.py`
+(coordinator → `SafetyAgentDecision`, §7); `schemas.py`. Dependency injection throughout: the
+semantic classifier (`semantic_fn`) and the crisis acknowledgment model (`crisis_llm_fn`) are
+injected callables, and dependency-indicator detection is an injected `indicator_detector` — so
+the layer runs and is tested fully offline with no model or DB. `backend/layer11_safety/` was the
+best-built module found across the whole audit pass — zero bugs — so everything below is real,
+scoped follow-up work, not bug-fixing.
+
+- **SC-1 Ethical Guardrails** — live. `run_all_checks` runs post-generation on every response via
+  `api/assembly.py`; the guardrail filter's modifications/replacements are applied before Layer 9
+  delivers (per the crisis/safety ownership invariant, §12).
+- **SC-2 Crisis Detection Engine** — live, but only two of its three layers fire in production.
+  The **lexical layer** runs on every message via the orchestrator's independent crisis scan
+  (`api/assembly.py::safety_scan`). The **longitudinal layer** is now wired: `safety_scan` forwards
+  `episodic_memories`/`emotional_records` into `evaluate(...)`, converted via Layer 10's own
+  `background._adapters.episodic_records`/`emotional_records` helpers (reused, not reimplemented —
+  they already produce the `.date`/`.topics`/`.valence` shape `evaluate_longitudinal_pattern`
+  expects). This is safe despite SC-2's "must run before/parallel to Layer 2 recall" constraint
+  (§2) because `memory_store.active_episodic(user_id)` is a raw store read, not Layer 2's
+  recall/scoring pipeline — `classify()` already relies on the same fact for the BES's episodic
+  inputs (`docs/layer-3-architecture.md` §18). An explicit tz-aware `now` is passed rather than
+  relying on `evaluate_longitudinal_pattern`'s own `date.today()` default, matching how "today" is
+  computed everywhere else in this codebase (`timezone_offset_hours`-adjusted). Proven end to end
+  by `tests/unit/api/test_assembly_turn.py::
+  test_real_layer11_wiring_longitudinal_signal_reaches_the_veto_even_with_a_neutral_message`: a
+  real escalating-distress pattern (crisis-tagged topics, declining valence across persisted
+  episodes) triggers the veto even though the current turn's message is lexically and semantically
+  neutral — proving the longitudinal layer specifically is what fired. The **semantic layer**
+  remains correctly unwired: no fine-tuned crisis-classifier model exists to inject as `semantic_fn`
+  (modeled as an injected interface per §14's original design; offline, lexical + longitudinal
+  still operate, matching §9's degraded mode). Practical effect: the doc's three-layer
+  defense-in-depth (§4.3) runs as two layers live; this isn't a live safety hole because Layer 3
+  runs its own independent lexical crisis check that ORs into the same veto.
+- **SC-3 Escalation Protocol** — live. `generate_crisis_response` runs on the veto path; crisis
+  resources come **only** from `CRISIS_RESOURCES` (the LLM writes only the acknowledgment), and any
+  LLM failure degrades to a static fallback that still contains a real resource (§9) — a Tier 1
+  response is never empty. `region` is no longer hardcoded: `config/layer11.yaml`'s
+  `escalation.default_region: india` was already merged into the running config (`load_config`
+  merges every `layerN.yaml`) but had no reader; `api/state.py::build_app_state` now passes
+  `region=config.get("layer11", {}).get("escalation", {}).get("default_region", "india")` into
+  `build_pipeline_steps` instead of relying on that function's own hardcoded `"india"` default
+  standing in forever. Same effective value today (both are `"india"`), but now a real, changeable
+  config read — matches CLAUDE.md's "wire each cross-cutting config gap as its layer is revisited"
+  guidance rather than inventing a new competing config key.
+- **SC-4 Dependency Monitor** — live. `compute_dependency_score` runs weekly via
+  `background/dependency_monitor_job.py`.
+- **Safety Agent coordinator (§7)** — the `SafetyAgent` class itself has zero callers, and this is
+  correct, not a gap: `api/assembly.py` calls the SC-1/2/3/4 functions directly, and
+  `ConversationOrchestrator` implements the equivalent coordination logic itself (crisis veto
+  OR-ing, post-generation guardrails). Confirmed to produce the same effective behavior the doc's
+  `SafetyAgent.process_incoming_message` specifies — an as-built deviation, not a live gap.
+- **Safety Record hash chain (§8)** — live. `safety_record.py`'s `SafetyRecord` class (real chain
+  math — `append`/`verify_chain`) was complete and tested but had zero callers; it was wired, not
+  reimplemented. `infra/db/safety_record_store.py::PostgresSafetyRecordStore` loads prior entries
+  into a fresh in-memory `SafetyRecord` on each call, delegates to its real `.append()`, and
+  persists just the new entry to a `safety_record_entry` table — the same load-head-then-append
+  shape `infra/db/audit_trail.py::PostgresAuditTrail` already uses for Layer 2's chain.
+  `api/state.py::make_safety_writer` appends a `crisis_signal_detected` entry alongside every real
+  `PostgresSafetyLog` write. `content_hash` covers the actual turn's message+response text, but
+  only the SHA-256 digest is ever persisted — satisfying §8's access policy
+  (`"crisis_session_content_in_record": "metadata_only"`) by construction, not by convention.
+  `GET /memory/integrity` and the `integrity_check` background job verify three chains (Layer 2
+  memory audit, Layer 11 safety record, Layer 12 privacy audit) via `IntegrityOut.safety_chain_ok`.
+  Proven by `tests/unit/api/test_state.py::
+  test_safety_writer_chains_a_real_tamper_evident_safety_record`: two real crisis turns produce a
+  chain that verifies intact, and a test that directly mutates a persisted row's payload confirms
+  `verify_chain()` actually detects it. **Scope, stated plainly:** only `crisis_signal_detected`
+  entries flow through the chain today (the one call site with a real, live signal to log). §8's
+  other entry types (`guardrail_violation`, `dependency_score_computed`, etc.) have no live callers
+  of their own yet — wiring those means touching SC-1's guardrail path and SC-4's dependency
+  monitor separately.
+- **Design deviations from the original May-28 scaffold (reconciled, not a gap):** the scaffold's
+  five-level taxonomy (NONE/MONITORING/ELEVATED/CRISIS/IMMINENT, Tier0-3) was replaced by the
+  authoritative three-tier model (TIER_1/2/3 + NONE); `ethical_guardrails`, `dependency_monitor`,
+  and `safety_record` were added (absent from the scaffold). **Doc off-by-one:** §6 prose says "15
+  DependencyIndicators" but enumerates 14 (SS×4, AE×4, EI×3, UP×3); the enumerated set of 14 is
+  what's implemented.
 - **Test coverage:** 63 unit tests across `test_crisis_classifier` (13), `test_ethical_guardrails`
   (11), `test_escalation_engine` (10), `test_dependency_monitor` (9), `test_safe_mode_enforcer` (5),
   `test_safety_record` (7), `test_safety_agent` (8).
 
----
+## 15. Decision Log
 
-## 15. Live wiring status (Phase 11 polish pass, 2026-08-04)
-
-`backend/layer11_safety/` is the best-built module audited in this pass: no bugs found. All four
-sub-components have real, live production callers — SC-1 (`run_all_checks`) post-generation on
-every response, SC-2 (`evaluate`) on every message via the orchestrator's independent crisis scan,
-SC-3 (`generate_crisis_response`) on the veto path, SC-4 (`compute_dependency_score`) weekly via
-`background/dependency_monitor_job.py`. This is unlike every other layer audited so far — nothing
-here needed fixing, and the gaps below are genuine, scoped feature work rather than wiring bugs.
-
-- **SC-2's semantic and longitudinal detection layers never receive real data live — only the
-  lexical layer fires.** `api/assembly.py::safety_scan` calls `evaluate(message)` with no
-  `semantic_fn`, `episodic_memories`, `emotional_records`, or `session_context`. This is partly
-  architectural, not an oversight: SC-2 must run before/parallel to Layer 2's memory recall (§2 —
-  "cannot be blocked by any other pipeline step"), and the orchestrator's `_safe_safety_scan` runs
-  before `ctx.recalled_memories` is populated, so there's no cheap way to thread episodic/emotional
-  history in without a dedicated, decoupled query. No semantic classifier model is deployed either
-  (matches §14's note that the real fine-tuned model is "wired by the pipeline" — aspirationally).
-  Practical effect: SC-2's independent scan is lexical-only today. This isn't a live safety hole —
-  Layer 3 runs its own independent lexical crisis check that ORs into the same veto (Phase 3
-  finding) — but the doc's three-layer defense-in-depth (§4.3) is really one layer, live, doubled.
-  **The longitudinal half is now wired — see §16.1.** The semantic half remains correctly unwired:
-  no fine-tuned classifier model exists to inject.
-- **`SafetyRecord`'s tamper-evident SHA-256 hash chain (§8) is never used.** The live persistence
-  path, `infra/db/safety_store.py::PostgresSafetyLog`, is a plain append-only JSONB table with no
-  `content_hash`/`previous_entry_hash`/`chain_hash` fields — none of §8's cryptographic
-  tamper-evidence exists for crisis/safety events specifically (Layer 2's episodic memory and
-  Layer 12's privacy deletions each have their own separate hash-chained audit trail; Layer 11's
-  own dedicated one, `safety_record.py`, sits unused). This is worth taking seriously: design
-  principle 4 states "safety is not just a behavior — it is a verifiable property," and today that
-  property doesn't hold for the safety log specifically. Wiring it needs either a schema change (a
-  few JSONB-storable fields) or storing the chain fields inside the existing `payload` column, plus
-  reading the previous row's `chain_hash` before each write — real, scoped work, not a one-line fix.
-  **Wired — see §16.2.**
-- **The `SafetyAgent` coordinator class (§7) has zero callers — not a gap.** `api/assembly.py`
-  calls the SC-1/2/3/4 functions directly; `ConversationOrchestrator` implements the equivalent
-  coordination logic itself (crisis veto OR-ing, post-generation guardrails). Confirmed during the
-  Phase 3 audit that this produces the same effective behavior the doc's `SafetyAgent.
-  process_incoming_message` specifies — recorded here as an as-built deviation, not a live gap.
-- **`region` is hardcoded to `"india"` everywhere** (`build_pipeline_steps(region="india")`,
-  never overridden). One instance of the already-documented cross-cutting gap that
-  `config/layerN.yaml` files (here, `config/layer11.yaml`'s `default_region: india`) are merged
-  into config but never read by layer code (see the Layer 1 entry in `docs/POLISH_BACKLOG.md`).
-  Not urgent given the system's current single-user scope. **Wired — see §16.3.**
-
-## 16. Remaining gaps closed (follow-up, 2026-08-09)
-
-All three real gaps above closed, aside from the semantic classifier (correctly still unwired —
-no model exists to inject).
-
-### 16.1 SC-2 longitudinal detection wired
-
-`api/assembly.py::safety_scan` now forwards `episodic_memories`/`emotional_records` into
-`evaluate(...)`, converted via Layer 10's own `background._adapters.episodic_records`/
-`emotional_records` (reused, not reimplemented — they already produce the `.date`/`.topics`/
-`.valence` shape `evaluate_longitudinal_pattern` expects). The "SC-2 must run before recall
-completes" constraint the original audit correctly identified is real, but doesn't block this:
-`memory_store.active_episodic(user_id)` (which those adapters wrap) is a raw store read, not
-Layer 2's recall/scoring pipeline — `classify()` already relies on the exact same fact for the
-BES's episodic inputs (`docs/layer-3-architecture.md` §18). An explicit tz-aware `now` (the
-session's recurring naive/aware datetime fix pattern) is passed rather than relying on
-`evaluate_longitudinal_pattern`'s own `date.today()` default, for consistency with how "today" is
-computed everywhere else in this codebase (`timezone_offset_hours`-adjusted).
-
-Proven end to end through the real orchestrator by `tests/unit/api/test_assembly_turn.py::
-test_real_layer11_wiring_longitudinal_signal_reaches_the_veto_even_with_a_neutral_message`: a
-real escalating-distress pattern (crisis-tagged topics, declining valence across persisted
-episodes) triggers the veto even though the current turn's message is lexically and semantically
-neutral (both the lexical layer and the classify() LLM stub say non-crisis) — proving the
-longitudinal layer, specifically, is what fired.
-
-### 16.2 SafetyRecord hash chain wired
-
-`backend/layer11_safety/safety_record.py`'s `SafetyRecord` class already existed, complete and
-tested, with zero callers — the real chain math (`append`/`verify_chain`) was never reimplemented,
-only wrapped for persistence. New `infra/db/safety_record_store.py::PostgresSafetyRecordStore`
-loads prior entries into a fresh in-memory `SafetyRecord` on each call, delegates to its real
-`.append()`, and persists just the new entry to a new `safety_record_entry` table — the same
-load-head-then-append shape `infra/db/audit_trail.py::PostgresAuditTrail` already uses for Layer
-2's chain. `api/state.py::make_safety_writer` now appends a `crisis_signal_detected` entry
-alongside every real `PostgresSafetyLog` write. `content_hash` covers the actual turn's
-message+response text, but only the SHA-256 digest is ever persisted — satisfying §8's access
-policy (`"crisis_session_content_in_record": "metadata_only"`) by construction, not by convention.
-
-`GET /memory/integrity` and the `integrity_check` background job now verify three chains (Layer 2
-memory audit, Layer 11 safety record, Layer 12 privacy audit), not two — `IntegrityOut` gained a
-`safety_chain_ok` field.
-
-Proven by `tests/unit/api/test_state.py::
-test_safety_writer_chains_a_real_tamper_evident_safety_record`: two real crisis turns produce a
-chain that verifies intact, and a test that directly mutates a persisted row's payload confirms
-`verify_chain()` actually detects it — not just that the method exists.
-
-**Scope, stated plainly**: only `crisis_signal_detected` entries flow through the chain (the one
-call site with a real, live signal to log). §8's other entry types (`guardrail_violation`,
-`dependency_score_computed`, etc.) have no live callers of their own yet — wiring those means
-touching SC-1's guardrail path and SC-4's dependency monitor separately, out of scope here.
-
-### 16.3 `region` wired from real config
-
-`config/layer11.yaml`'s `escalation.default_region: india` already existed and was already merged
-into the running config (`load_config` merges every `layerN.yaml`) — it just had no reader.
-`api/state.py::build_app_state` now passes `region=config.get("layer11", {}).get("escalation",
-{}).get("default_region", "india")` into `build_pipeline_steps`, instead of relying on that
-function's own hardcoded `"india"` default silently standing in forever. Same effective value
-today (both are `"india"`) but now a real, changeable config read, not a coincidence — matches
-CLAUDE.md's "wire each cross-cutting config gap as its layer is revisited" guidance rather than
-inventing a new competing config key.
+- **2026-08-04 (Phase 11 polish pass):** Audited `backend/layer11_safety/` — found zero bugs, the
+  cleanest layer in the pass. Identified three real (non-bug) gaps: SC-2's semantic/longitudinal
+  layers not receiving live data, the `SafetyRecord` hash chain having no live persistence path,
+  and `region` being hardcoded instead of reading `config/layer11.yaml`. Confirmed the
+  `SafetyAgent` coordinator's lack of callers is an intentional as-built deviation, not a gap.
+- **2026-08-09 (follow-up):** Wired SC-2's longitudinal detection layer into `safety_scan` by
+  reusing Layer 10's episodic/emotional adapters — closes the "SC-2 running lexical-only" gap
+  without touching the recall-ordering constraint that caused it. Semantic layer intentionally left
+  unwired (no fine-tuned model exists).
+- **2026-08-09 (follow-up):** Wired the `SafetyRecord` SHA-256 hash chain via a new
+  `PostgresSafetyRecordStore`, giving crisis-signal events the same tamper-evident guarantee Layer
+  2 and Layer 12 already have — closes the gap between design principle 4 ("safety is a verifiable
+  property") and the prior unhashed `PostgresSafetyLog`-only reality. Scoped to
+  `crisis_signal_detected` entries only; other entry types remain unwired pending their own call
+  sites.
+- **2026-08-09 (follow-up):** Wired `region` from `config/layer11.yaml`'s
+  `escalation.default_region` into `build_pipeline_steps`, replacing the standing hardcoded
+  `"india"` default with a real config read (same value today, but no longer a coincidence).
 
 ---
 

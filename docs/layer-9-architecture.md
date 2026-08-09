@@ -1265,196 +1265,111 @@ Post-delivery:
 
 *This document specifies Layer 9 completely. All four sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the streaming-with-typing-overlay architecture (cold-start problem), response length calibration with Layer 4 upstream injection, the complete six-type micro-interaction taxonomy with trigger conditions and frequency caps, the SSML generation pipeline with prosody tables and filler policy, the voice content transform layer, the TTS engine abstraction interface, the Format Decision Matrix with all seven conversation modes, the markdown prohibition enforcement, the User Format Profile with its update logic, and the engagement signal feedback loop — are fully resolved. No behavior of Layer 9 requires assumptions or inferences from other documents.*
 
-### Live integration update (2026-07-07) — voice endpoint
+## 13. Live Wiring Status (current state)
 
-Voice synthesis is exposed over HTTP: `POST /voice` (`api/routes/voice.py`) builds prosody-annotated
-SSML for the given conversation mode and dispatches it to the **Kokoro** backend
+**Voice endpoint**: live over HTTP. `POST /voice` (`api/routes/voice.py`) builds
+prosody-annotated SSML for the given conversation mode and dispatches it to the **Kokoro** backend
 (`build_voice_backend` on `AppState`, httpx transport), returning `audio/mpeg` — or `503` so the
 client falls back to text (Layer-9 degrade-to-text contract). See `docs/API_REFERENCE.md`.
 
-### Live wiring status (Phase 9 polish pass, 2026-08-04)
+**Primary `POST /chat` delivery**: live and correct. `ConversationOrchestrator._safe_deliver` now
+writes Layer 9's `deliver()` return value back onto `ctx.response_text` — the field
+`OrchestratedOutput.response_text`/`ChatResponse.response` actually returns — so the
+markdown-stripping backstop (§6.4), emoji limiting, closing signals, and transition phrases
+produced by Layer 9 are what the primary chat response actually contains, not thrown away. (Root
+cause of the original bug: `deliver()` was called and stored on `ctx.delivered`, but nothing
+copied it onto `ctx.response_text`; `/chat/stream` and the persisted message log were unaffected
+because both already read `ctx.delivered` in preference to `ctx.response_text`.)
 
-`backend/layer9_output/` itself is clean — 99/99 tests pass, matches spec closely. Two real bugs
-were found this phase: one in the orchestrator (bigger, silently discarding Layer 9's entire
-output on the primary API response) and one wiring gap in `api/assembly.py` (smaller, fixed
-alongside it since the orchestrator bug made it unobservable until now).
+**Context parameters forwarded through `api/assembly.py::deliver()`**: `conversation_mode`,
+`crisis_mode_active`, `emotional_intensity`, `relationship_stage`, and `circadian_band` are all
+live-forwarded — these are the parameters with a *visible* effect on delivered text
+(`emotional_intensity > 0.65` drives `compute_format_spec`'s `pure_prose` branch;
+`relationship_stage` drives register/emoji policy; `circadian_band` drives
+`thinking_pause.py`'s late-night/morning multipliers and `voice_synthesizer`'s circadian phrasing).
+`relationship_stage` crosses a real vocabulary mismatch at the boundary: Layer 4's
+`RelationshipState.stage` uses `new/acquaintance/developing/established/close`, while Layer 9's
+modules use `stranger/acquaintance/friend/close_friend` — only `acquaintance` overlaps naturally.
+`api/assembly.py` applies an explicit mapping (`new→stranger`, `developing/established→friend`,
+`close→close_friend`) rather than forwarding the raw value, which would have put every non-`new`
+brand-new user into `register="intimate"`. `semantic_draft` (for self-edit replay),
+`complexity_score`, `turn_type`, `urgency_level`, and `voice_mode` are **not** forwarded —
+`turn_type`/`urgency_level`/`complexity_score` have no live source anywhere upstream, and
+`voice_mode` needs the Layer 1 attachment/multimodal gap (`docs/layer-1-architecture.md` §18.1),
+which stays correctly unwired since no backend exists for it; `semantic_draft` was deliberately
+scoped out (see event replay below).
 
-**Fixed — `ConversationOrchestrator._safe_deliver` never wrote Layer 9's output back to
-`ctx.response_text`.** `deliver()` was called and its return value stored on `ctx.delivered`, but
-`ctx.response_text` — the field `OrchestratedOutput.response_text` (and therefore
-`POST /chat`'s `ChatResponse.response`) actually returns — was never updated from it. This meant
-Layer 9's markdown-stripping backstop (§6.4), emoji limiting, closing signals, and transition
-phrases were computed every single turn and then thrown away for the primary chat response.
-`/chat/stream` and the persisted message log were unaffected — both already read `ctx.delivered`
-in preference to `ctx.response_text` (`api/streaming.py`, `api/state.py::make_message_writer`) —
-so this was specifically a `POST /chat` (non-streaming) bug. Fixed by writing `ctx.response_text`
-from `deliver()`'s return value when it's a string (the real adapter's contract); left richer
-delivery objects — e.g. a test fake returning a dict — untouched, since the orchestrator's
-`deliver` hook contract doesn't guarantee a string return in general.
+**`UserFormatProfile` learning loop**: fully live. A `format_profile` table
+(`infra/db/models/format_profile.py`, one JSONB row per user) backs a `PostgresFormatProfileStore`
+and `api/state.py::make_format_profile_writer` in the post-turn writer chain. The cross-turn "did
+the user skim a long response" signal (§6.6) is self-contained rather than re-querying
+`PostgresMessageStore`: `UserFormatProfile` carries `last_response_length`/`last_response_at`
+bookkeeping fields the writer reads before computing this turn's signals and overwrites at the
+end; latency reuses Layer 1's `response_latency_ms`. `classify_format_feedback` pre-filters so
+ordinary turns don't append a None-preference `FormatFeedbackEvent` — only turns whose text
+matches the module's feedback keywords do. `api/state.py::make_format_profile_provider` feeds the
+persisted profile into `deliver()`'s `user_format_profile` argument, so the length target reflects
+what was actually learned instead of the hardcoded `medium` default. All three previously
+uncomputed schema fields are now real: `avg_user_message_length` blends toward each turn's real
+message length; `emoji_usage_rate` blends toward a 0/1 signal from `format_adapter.py`'s own
+`_EMOJI_RE` (imported, not re-derived, to avoid the two regexes drifting apart); `uses_slang_themselves`
+flips to `True` (sticky) the first time Layer 4's `style_learning.py`'s real `_CASUAL` regex
+matches the user's message — deliberate cross-layer reuse of a signal Layer 4 already computes for
+its own `formality_preference` EMA, rather than a second slang detector. All three use a
+`_ENGAGEMENT_EMA = 0.2` blend rate matching `style_learning.py`'s own rate, and are fed by
+`user_message_text` passed into `update_format_profile` from `ctx.message`.
 
-**Fixed — `api/assembly.py`'s `deliver()` adapter forwarded only `conversation_mode` and
-`crisis_mode_active`, dropping `emotional_intensity` and `relationship_stage`.** Of Layer 9's ~20
-context parameters, these two are the ones with a *visible* effect on delivered text through this
-adapter (`emotional_intensity > 0.65` drives `compute_format_spec`'s `structure="pure_prose"`
-branch; `relationship_stage` drives register/emoji policy) — everything else (`circadian_band`,
-`semantic_draft` for self-edit, `complexity_score`, `turn_type`, `urgency_level`, `voice_mode`)
-only affects the `OrchestratedOutput.events` list, which nothing downstream of `deliver()` consumes
-today (see below), so forwarding them now would be inert. Not forwarded this phase for that reason.
-
-**Discovered and reconciled while wiring `relationship_stage`: a real vocabulary mismatch between
-Layer 4 and Layer 9.** Layer 4's `RelationshipState.stage` uses `new/acquaintance/developing/
-established/close`; every branch across `format_adapter.py`, `thinking_pause.py`,
-`length_calibrator.py`, and `micro_interaction_engine.py` uses the doc's `stranger/acquaintance/
-friend/close_friend`. Only `acquaintance` overlaps — forwarding Layer 4's stage unmapped would
-have put every non-`acquaintance` stage (including `new`, a brand-new user) into the `else` branch
-of `compute_format_spec`'s register logic, producing `register="intimate"` for a stranger. Added
-an explicit mapping (`new→stranger`, `developing/established→friend`, `close→close_friend`) at the
-`api/assembly.py` adapter boundary rather than forwarding raw.
+**Event-sequence replay on `/chat/stream`**: thinking-pause and backchannel events replay live;
+self-edit show/delete replay was confirmed out of scope with the user (not a real product need) —
+`deliver()` never forwards `semantic_draft`, so `self_edit_plan` stays `None` regardless.
+`api/assembly.py::deliver()` stashes the real `orchestrate_output()` event list on
+`ctx.layer9_events` (same mutable-`TurnContext` side-effect pattern as Layer 4's
+`ctx.semantic_draft_obj`); `TurnContext`/`OrchestratedOutput` both carry the field through
+`_to_output`. `api/streaming.py::stream_turn` replays `thinking_pause`/`backchannel` events as new,
+additive SSE frames emitted before the token stream begins — the existing `meta`/`token`/`done`
+contract is unchanged, so a client that doesn't recognize the new frame names simply ignores them.
+`format_spec_applied` (the `FormatSpec` Layer 9 computes every turn) is similarly stashed on
+`ctx`/`OrchestratedOutput` rather than exposed through `ChatResponse` — the same restraint applied
+to Layer 6's ungated `content_basis` (`docs/layer-6-architecture.md`) against inventing API surface
+ahead of a real client need — reachable by a future consumer without a premature contract.
 
 **Verified NOT a bug**: the architecture doc's own `enforce_format_spec` pseudocode (§6.4) has a
 latent no-op — its `lambda m: m.group(1) if m.lastindex else m.group(0)` returns the match
 unchanged for every pattern without a capture group (headers, bullets, numbered lists, horizontal
-rules). The as-built `format_adapter.py` does **not** have this bug — it uses direct
-`pattern.sub("", text)` calls for those patterns and only the bold pattern needs the capture-group
-substitution, which it gets right (`_BOLD_RE.sub(r"\1", text)`). Confirmed by the new regression
-test, which exercises header/bullet/bold stripping together on real delivered text.
+rules). The as-built `format_adapter.py` does **not** have this bug: it uses direct
+`pattern.sub("", text)` for those patterns, and only the bold pattern needs (and correctly gets)
+the capture-group substitution (`_BOLD_RE.sub(r"\1", text)`).
 
-**Not fixed at the time, tracked in `docs/POLISH_BACKLOG.md`**: the `OrchestratedOutput` event
-sequence (thinking pauses, backchannels, self-edit show/delete events) and `format_spec_applied`
-were computed by `deliver()` every turn and never consumed by any client — `/chat/stream` built its
-own, separate `StreamTypingOverlay` call rather than replaying Layer 9's events. `UserFormatProfile`
-(the learned per-user length/emoji/markdown preferences, §6.5–6.6) had zero references anywhere in
-`api/` or `infra/` — no persistence, never read, never written; the entire "the system learns from
-how the user responds" design principle (§11.4) was inert live. **Both closed — see §13 below.**
+**Recurring bug class worth remembering**: `UserFormatProfile.explicit_format_feedback_events` was
+declared as bare `list` rather than `list[FormatFeedbackEvent]` — the same serde-breaking pattern
+(silently round-trips as plain `dict`s through `infra/db/memory_serde`) independently found in
+Layer 7's `Goal.milestones`/`Goal.habits` and Layer 10's `NarrativeArc.chapters`/
+`LifeChapter.defining_moments`. Fixed here to the parameterized form.
 
-## 13. UserFormatProfile persistence + event replay (follow-up, 2026-08-09)
+## 14. Decision Log
 
-Both gaps above are now wired. Two clarifying decisions were confirmed with the user before
-building (the correct one wasn't obvious from the module alone): where to source the previous
-turn's response length for the skim-detection signal, and how far to take the event-list
-reconciliation without risking already-shipped `/chat/stream` pacing behavior.
-
-### 13.1 `UserFormatProfile` persistence and the learning loop
-
-New `format_profile` table (`infra/db/models/format_profile.py`, one JSONB row per user, same
-shape as `SocialGraph`/`RelationshipState`), a `PostgresFormatProfileStore`
-(`infra/db/format_profile_store.py`), and `api/state.py::make_format_profile_writer` — a new entry
-in the post-turn writer chain (`build_app_state`).
-
-`update_format_profile`'s "did the user skim a long response" signal (§6.6) is inherently
-cross-turn: it compares Nova's *previous* response length against *this* turn's user reply
-latency/length. Rather than querying `PostgresMessageStore` for the prior assistant message every
-turn, `UserFormatProfile` grew two new bookkeeping fields — `last_response_length`/
-`last_response_at` — that the writer reads before computing this turn's signals and overwrites
-with this turn's own response length at the end, so the profile is self-contained (confirmed with
-the user as the preferred design over a message-store query). Latency reuses Layer 1's already-live
-`response_latency_ms` (`ctx.input_packet.response_latency_ms`) rather than re-deriving timing.
-`classify_format_feedback` is run as a pre-filter before passing `explicit_format_feedback` through
-to `update_format_profile`, so ordinary turns don't append a None-preference
-`FormatFeedbackEvent` on every single message — only turns whose text actually matches the
-module's own feedback keywords do.
-
-`api/state.py::make_format_profile_provider` feeds the persisted profile into
-`api/assembly.py::deliver()`'s `user_format_profile` argument, so `compute_format_spec`'s length
-target now reflects what's actually been learned instead of `UserFormatProfile()`'s hardcoded
-`medium` default on every turn.
-
-**Bug caught in the same pass**: `UserFormatProfile.explicit_format_feedback_events` was declared
-as bare `list` (with no `[FormatFeedbackEvent]` parameter) — the same serde-breaking pattern found
-and fixed in Layer 7's `Goal.milestones`/`Goal.habits` (`docs/layer-7-architecture.md` §14). Fixed
-to `list[FormatFeedbackEvent]`.
-
-Proven end to end through the real orchestrator + writer/provider pair by
-`tests/unit/api/test_assembly_turn.py::
-test_real_layer9_wiring_learns_shorter_preference_from_a_skimmed_long_response`: a 500-char
-response is bookkept on turn 1, a one-character reply on turn 2 shifts `preferred_length` from
-`medium` to `short` by turn 3's read.
-
-Deliberately not touched: `emoji_usage_rate`, `avg_user_message_length`, and
-`uses_slang_themselves` are schema fields `update_format_profile` itself never computes — that's a
-pre-existing gap in the Layer 9 module, not something invented here; wiring a caller to a function
-that doesn't yet do the computation would mean writing new business logic outside the module,
-which is exactly the kind of reimplementation this pass avoids.
-
-### 13.2 Event-sequence replay in `/chat/stream`
-
-Confirmed with the user: the self-edit show/delete visual replay isn't a real product need and
-was dropped from scope entirely — `deliver()` never forwards `semantic_draft`, so
-`self_edit_plan` stays `None` in this adapter regardless. Thinking-pause and backchannel replay
-were confirmed as wanted.
-
-`api/assembly.py::deliver()` now stashes the real `orchestrate_output()` event list on
-`ctx.layer9_events` (a plain side-effect on the mutable `TurnContext`, the same pattern Layer 4's
-`plan()` already uses for `ctx.semantic_draft_obj`). `TurnContext`/`OrchestratedOutput`
-(`backend/pipeline/conversation_orchestrator.py`) both grew a `layer9_events` field so it survives
-from the hook through `_to_output` to the caller. `api/streaming.py::stream_turn` replays any
-`thinking_pause`/`backchannel` events it finds there as new, additive SSE frames
-(`event: thinking_pause`, `event: backchannel`) emitted before the existing `token` stream begins
-— the existing `meta`/`token`/`done` frame contract is completely unchanged, so no existing
-consumer of `/chat/stream` is affected; a client that doesn't recognize the new frame names simply
-ignores them.
-
-Proven end to end by `tests/unit/api/test_assembly_turn.py::
-test_real_layer9_wiring_thinking_pause_and_backchannel_reach_the_sse_stream`, which runs a real
-high-emotional-intensity turn through the real orchestrator and `stream_turn`, and asserts a
-`thinking_pause` frame is emitted before the first `token` frame.
-
-**Still open at the time**: `format_spec_applied` wasn't forwarded to any client;
-`emoji_usage_rate`/`avg_user_message_length`/`uses_slang_themselves` were uncomputed;
-`circadian_band` wasn't forwarded through `deliver()`. All four closed in §14 below.
-
-## 14. Follow-up (2026-08-09): real emoji/slang/length signals + format_spec_applied/circadian_band
-
-### 14.1 `UserFormatProfile`'s three uncomputed fields
-
-`emoji_usage_rate`/`avg_user_message_length`/`uses_slang_themselves` were declared on the schema
-and genuinely *consumed* downstream — `format_adapter.compute_format_spec` reads
-`emoji_usage_rate` to pick `EmojiPolicy.NONE`/`RARE`/`NATURAL` and `uses_slang_themselves` to set
-`allow_slang` — but `update_format_profile` never computed either, so they stayed pinned at their
-`0.0`/`False` defaults forever: the emoji policy always resolved to `NONE` and slang was always
-disallowed, regardless of how the user actually writes, silently defeating the feature.
-
-`update_format_profile` gained a `user_message_text: str = ""` parameter (the writer already had
-`ctx.message` available; it just wasn't being passed through). Three real, gentle-EMA-blended
-signals (`_ENGAGEMENT_EMA = 0.2`, matching `style_learning.py`'s own learning rate):
-- `avg_user_message_length` — blended toward this turn's real `user_response_length`.
-- `emoji_usage_rate` — blended toward a 0/1 "did this message contain an emoji" signal, detected
-  with `format_adapter.py`'s own real `_EMOJI_RE` (imported, not re-derived — a second emoji
-  regex would inevitably drift from the first).
-- `uses_slang_themselves` — flips to `True` (sticky, never resets) the first time
-  `backend/layer4_persona/style_learning.py`'s real `_CASUAL` regex matches the user's message.
-  Cross-layer reuse deliberately, not a second slang detector: Layer 4 already classifies exactly
-  this signal for its own `formality_preference` EMA, off the identical set of casual markers.
-
-`api/state.py::make_format_profile_writer` now passes `user_message_text=message` into the call.
-
-**Tests:** `tests/unit/test_user_format_profile.py` — five new unit tests (length moves toward a
-real average, emoji rate rises for an emoji-using message and stays exactly `0.0` for one
-without, slang flips true/stays false). `tests/unit/api/test_assembly_turn.py::
-test_real_layer9_wiring_emoji_and_slang_habits_reach_the_persisted_profile` proves it through the
-real orchestrator + writer, not a unit-level call to `update_format_profile`.
-
-### 14.2 `circadian_band` forwarded to `deliver()`; `format_spec_applied` survives to `ctx`
-
-`api/assembly.py::deliver()` called the real Layer 9 `deliver()` without a `circadian_band=`
-argument at all, so it silently used the hardcoded `"afternoon"` default every turn regardless of
-the real value Layer 1 already computes (`ctx.input_packet.circadian_band`) — `thinking_pause.py`'s
-real late-night (`×1.25`) / morning (`×0.85`) modifiers and `voice_synthesizer`'s circadian-aware
-phrasing never engaged. Now forwarded for real.
-
-`format_spec_applied` (the `FormatSpec` Layer 9 computes every turn — structure, length target)
-was computed and discarded. Rather than invent unused `ChatResponse` API surface ahead of any
-real client need (the same restraint applied to `GET /proactive`'s ungated `content_basis`,
-`docs/layer-6-architecture.md`), it's stashed on `ctx`/`OrchestratedOutput` the same way
-`layer9_events` already is (`TurnContext.format_spec_applied` → `_to_output` →
-`OrchestratedOutput.format_spec_applied`) — reachable by a future API consumer without a premature
-contract.
-
-**Tests:** `tests/unit/api/test_assembly_turn.py::test_real_layer9_wiring_circadian_band_reaches_
-thinking_pause` (same heavy-emotion turn run at a late-night vs. an afternoon local time, Python's
-global `random` seeded identically before each so only the circadian multiplier differs, asserts
-a real, larger thinking pause at night) and `..._format_spec_applied_reaches_orchestrated_output`.
-
-`turn_type`/`urgency_level`/`complexity_score` still have no live source anywhere upstream
-(unchanged); `voice_mode` still needs the Layer 1 attachment/multimodal gap
-(`docs/layer-1-architecture.md` §18.1), which stays correctly unwired (no backend exists).
+- **2026-07-07:** Voice synthesis exposed over HTTP via `POST /voice`, dispatching real
+  prosody-annotated SSML to the Kokoro backend, degrading to `503` so clients fall back to text.
+- **2026-08-04:** Phase 9 polish pass. Fixed `ConversationOrchestrator._safe_deliver` silently
+  discarding Layer 9's output on the primary (non-streaming) `POST /chat` response — `deliver()`'s
+  return value was stored on `ctx.delivered` but never copied onto `ctx.response_text`, the field
+  actually returned to the client; `/chat/stream` was unaffected since it already read
+  `ctx.delivered`. Also fixed `api/assembly.py::deliver()` dropping `emotional_intensity`/
+  `relationship_stage` (forwarding only `conversation_mode`/`crisis_mode_active`), and discovered +
+  reconciled a real vocabulary mismatch between Layer 4's and Layer 9's relationship-stage
+  enumerations while wiring the fix. Verified the doc's own `enforce_format_spec` pseudocode has a
+  latent no-op bug that the as-built code does not share. Logged two structural gaps:
+  `OrchestratedOutput` events/`format_spec_applied` never consumed by any client, and
+  `UserFormatProfile` entirely unwired (no persistence, inert learning-loop design principle).
+- **2026-08-09:** Closed both gaps from the prior entry. Built `UserFormatProfile` persistence
+  (new `format_profile` table/store/writer/provider) and the skim-detection learning loop, sourcing
+  cross-turn response length from new self-contained bookkeeping fields rather than a message-store
+  query (confirmed with the user as the preferred design). Caught and fixed the same bare-`list`
+  serde bug found in Layer 7 the same pass. Wired thinking-pause/backchannel SSE replay into
+  `/chat/stream`; confirmed self-edit replay out of scope with the user.
+- **2026-08-09 (same-day follow-up):** Computed the three `UserFormatProfile` fields that were
+  declared but never filled in (`emoji_usage_rate`, `avg_user_message_length`,
+  `uses_slang_themselves`), which had been silently defeating the emoji/slang policy since they
+  stayed pinned at their zero defaults. Forwarded `circadian_band` into `deliver()` (previously
+  hardcoded to `"afternoon"`, so circadian modifiers never engaged) and stashed
+  `format_spec_applied` onto `ctx`/`OrchestratedOutput` for a future consumer.

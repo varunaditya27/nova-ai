@@ -1081,11 +1081,13 @@ This is a deliberate design choice: explicit metadata ("Nova sent this because: 
 
 ---
 
-## 14. Implementation Notes (as-built)
+## 14. Live Wiring Status (current state)
 
-This section records how the specification above is realized in `backend/layer6_proactivity/`. The code is the single source of truth; §1–13 are the design intent.
+Layer 6 (`backend/layer6_proactivity/`) is clean and fully wired end-to-end: 76 unit tests pass,
+all five sub-components plus all seven intake contracts have real production callers, and no bugs
+were found in the module itself across the whole polish pass.
 
-### 14.1 Module map
+**Module map:**
 
 | Spec sub-component | Module | Key entry point |
 |---|---|---|
@@ -1094,263 +1096,189 @@ This section records how the specification above is realized in `backend/layer6_
 | SC-3 Timing & Delivery Gate | `timing_gate.py` | `evaluate_timing_gate` |
 | SC-4 Proactive Message Generator | `message_generator.py` | `generate_proactive_message`, `validate_proactive_message`, `build_proactive_prompt` |
 | SC-5 Response Tracker | `response_tracker.py` | `classify_response`, `compute_engagement_score`, `update_queue_from_response` |
-| Intake contracts (§9) | `intake.py` | `on_thread_due`, `on_post_distress_gap`, `on_deferred_coaching`, `on_goal_milestone_approaching` |
+| Intake contracts (§9) | `intake.py` | `on_thread_due`, `on_post_distress_gap`, `on_deferred_coaching`, `on_goal_milestone_approaching`, `on_behavioral_pattern`, `on_retrospective_ready`, `on_calendar_entry_due` |
 | Orchestrator (§8) | `engine.py` | `run_proactive_cycle` → `ProactiveEngineOutput` |
+| Delivery (route-shared) | `api/proactive_delivery.py` | `build_timing_context`, `gate_passes`, `build_proactive_context`, `generate_message_for_item` |
 | All dataclasses / enums | `schemas.py` | — |
 
-### 14.2 Type reuse and dependency direction
+**Type reuse and dependency direction.** Layer 6 imports rather than redefines upstream types:
+`NarrativeThread` from Layer 1 (§9.1 intake) and `CoachingOpportunity` from Layer 5 (§9.3 intake).
+The Layer 7 goal intake (§9.4) takes goal fields as plain arguments rather than importing an
+unbuilt `Goal` type, so Layer 6 has no forward dependency on Layer 7.
 
-Layer 6 imports rather than redefines upstream types: `NarrativeThread` from Layer 1 (§9.1 intake) and `CoachingOpportunity` from Layer 5 (§9.3 intake). The Layer 7 goal intake (§9.4) takes goal fields as plain arguments rather than importing an unbuilt `Goal` type, so Layer 6 has no forward dependency on Layer 7.
+**Dependency injection for offline testability.** The single LLM call (SC-4) is injected as
+`llm_fn` (`str -> str`). The two external lookups are likewise injected: source-memory strength in
+the gate (`memory_strength_fn`, B5.1 — skipped when absent) and the per-item context assembly in
+the engine (`context_builder`). With nothing injected the layer degrades exactly as §11 prescribes
+— `generate_proactive_message` returns `None` and the cycle sends nothing — which is what the unit
+suite exercises. SC-5 valence detection is a small keyword heuristic (the response itself is
+re-routed through the full L1–L4 pipeline elsewhere; only a coarse engagement signal is needed
+here).
 
-### 14.3 Dependency injection for offline testability
+**Behavioral deviations from the design text:**
+- **Intake field mapping (§9.1).** The doc's `PendingThread` (`event_date`,
+  `emotional_anticipation_score`) maps to the implemented Layer 1 `NarrativeThread`
+  (`follow_up_due_at`, `emotional_weight`). The valence carried into `content_basis_valence` is
+  `emotional_weight`.
+- **One-send-per-cycle via the gate, not a `break`.** After a successful send the engine
+  increments `proactive_messages_sent_today`; subsequent candidates then hit gate condition B1.5
+  (`daily_cap_reached`) and are deferred, recording the reason rather than silently skipping, and
+  keeping the daily cap a property of SC-3 (§3.4, §13).
+- **Generation failure defers (§11).** When the gate says `send_now` but SC-4 cannot produce a
+  valid message within 2 attempts, the item is set to `deferred` with reason `generation_failed`
+  and nothing is sent — there is no fallback text, ever, anywhere in this layer.
+- **Float-stable priority bounds.** `ProactiveQueueManager.base_priority` rounds to 6 decimals so
+  the learned-adjustment cap (+0.15) and floor (0.10) hold exactly despite float drift.
+- **BES trend vocabulary.** SC-1's `BES_WEIGHTS` uses the doc's trend keys
+  (`positive`/`stable`/`mild_negative_drift`/…); an unknown trend falls back to a flat weight of
+  1.0. This is the 7-day rolling trend label Layer 6 receives, which may differ from Layer 3's
+  per-session `BESLabel` enum.
 
-The single LLM call (SC-4) is injected as `llm_fn` (`str -> str`). The two external lookups are likewise injected: source-memory strength in the gate (`memory_strength_fn`, B5.1 — skipped when absent) and the per-item context assembly in the engine (`context_builder`). With nothing injected the layer degrades exactly as §11 prescribes — `generate_proactive_message` returns `None` and the cycle sends nothing — which is what the unit suite exercises. SC-5 valence detection is a small keyword heuristic (the response itself is re-routed through the full L1–L4 pipeline elsewhere; only a coarse engagement signal is needed here).
+**Hard rules as implemented (§11, §13):** the gate (`evaluate_timing_gate`) returns the *first*
+blocking condition — only a fully clear path yields `send_now`, and a gate exception is caught in
+the engine and treated as a `defer`, never a send. The daily cap (1/day) and the 48-hour minimum
+gap are enforced in the gate and cannot be overridden by priority or BES.
 
-### 14.4 Behavioral deviations from the design text
+**SC-1 (Queue Manager):** live via `background/proactive_check_job.py` every ~30 minutes
+(`recompute_priority`/`expire`/`top_candidates`).
 
-- **Intake field mapping (§9.1).** The doc's `PendingThread` (`event_date`, `emotional_anticipation_score`) maps to the implemented Layer 1 `NarrativeThread` (`follow_up_due_at`, `emotional_weight`). The valence carried into `content_basis_valence` is `emotional_weight`.
-- **One-send-per-cycle via the gate, not a `break`.** After a successful send the engine increments `proactive_messages_sent_today`; subsequent candidates then hit gate condition B1.5 (`daily_cap_reached`) and are deferred. This records the deferral reason for the rest of the cycle rather than silently skipping items, and keeps the daily cap a property of SC-3 (§3.4, §13).
-- **Generation failure defers (§11).** When the gate says `send_now` but SC-4 cannot produce a valid message within 2 attempts, the item is set to `deferred` with reason `generation_failed` and nothing is sent — there is no fallback text.
-- **Float-stable priority bounds.** `ProactiveQueueManager.base_priority` rounds to 6 decimals so the learned-adjustment cap (+0.15) and floor (0.10) hold exactly despite float drift.
-- **BES trend vocabulary.** SC-1's `BES_WEIGHTS` uses the doc's trend keys (`positive`/`stable`/`mild_negative_drift`/…); an unknown trend falls back to a flat weight of 1.0. This is the 7-day rolling trend label Layer 6 receives, which may differ from Layer 3's per-session `BESLabel` enum.
+**SC-2/SC-3 (Initiative Classifier / Timing & Delivery Gate):** live. `api/routes/proactive.py`
+(`GET /proactive`) and `api/proactive_delivery.py` (the background job) both classify
+(`classify_initiative`) and gate (`evaluate_timing_gate`) every candidate through a real
+`UserTimingContext` assembled from persisted stores — `circadian_band` (Layer 1's
+`map_circadian_band`), message-gap timing (`PostgresMessageStore.last_interaction_at`),
+`bes_trend` (Layer 3's `compute_background_state` run live over active episodic memories),
+crisis flag (`PostgresSafetyLog.recent`, tier != "none"), and relationship stage/tie-strength
+(`PostgresRelationshipStore.load`). Only `send_now`-approved items ever surface to a client or get
+a message generated for them — this replaced an earlier version of the route that returned raw,
+ungated `content_basis` for every pending/deferred item regardless of gate outcome (a real
+behavior change: a brand-new relationship, `stage == "new"`, now correctly suppresses all
+proactive sends per block group 3, where the old endpoint would have surfaced them). User
+preferences and quiet-period state have no source anywhere (no preferences store exists) and stay
+at the gate's own conservative defaults, not silently guessed.
 
-### 14.5 Hard rules as implemented (§11, §13)
+**SC-4 (Message Generator):** live. `api/proactive_delivery.py::build_proactive_context` assembles
+a real `ProactiveContext` by calling the live orchestrator's own `steps.build_persona`
+(`app_state.orchestrator.steps`) rather than re-deriving persona/voice logic a second time — the
+"wire to the real module" pattern CLAUDE.md names. `background/proactive_check_job.py` generates a
+message for each item that clears the SC-3 gate and has none yet, persisting it on
+`ProactiveItem.generated_message`; `GET /proactive`'s response carries this real text in a
+`message` field (`content_basis` stays as the internal fragment, for debugging — never rendered as
+a message to the user). **A live-only bug found and fixed while wiring this**: `build_persona`
+reads `ctx.input_packet.circadian_band` and `ctx.emotion_intent.background_state` directly (not
+getattr-safe on `ctx` itself) — a bare `SimpleNamespace(user_id=..., conversation_mode=...)` for
+the background-job's synthetic context raised `AttributeError`, silently caught by
+`build_persona`'s own try/except and degrading `voice_parameters` to defaults. Every unit test
+using a stub `steps` object passed regardless, because the stub never exercised the real function
+— only caught by running `build_proactive_context` against the real `build_app_state`-constructed
+orchestrator live. Fixed by giving the job's synthetic `ctx` a real `input_packet`/`emotion_intent`;
+`tests/unit/api/test_proactive_delivery.py` regression-tests this specifically against the real
+`build_persona`, not a double, so this bug class can't slip back in unnoticed.
 
-- The gate (`evaluate_timing_gate`) returns the *first* blocking condition; only a fully clear path yields `send_now`. A gate exception is caught in the engine and treated as a `defer`, never a send.
-- The daily cap (1/day) and the 48-hour minimum gap are enforced in the gate and cannot be overridden by priority or BES.
-- No pre-written fallback messages exist anywhere in the layer; silence is always preferable to a low-quality proactive message.
+**SC-5 (Response Tracker):** live. `POST /proactive/{id}/delivered` transitions an item to `SENT`
+the moment a client actually shows it to the user (the frontend's `useProactiveStream` calls this
+automatically on receipt). `api/state.py::make_proactive_response_writer` (in the post-turn writer
+chain) checks `ChatRequest.is_reply_to_proactive` on every turn and, when set, classifies the
+reply and transitions the most-recently-`SENT` item to `RESPONDED` with a real valence via
+`classify_response`/`update_queue_from_response`. There's no explicit item id from the client, so
+"most recently sent" is the only real attribution available without inventing new client surface —
+correct as long as a user isn't mid-reply to two proactive messages at once, which the gate's own
+48-hour minimum gap makes structurally rare. `update_queue_from_response`'s priority/ignore-count
+side effects stay scoped to a throwaway `ProactiveQueueManager` per call, same as the background
+job's own recompute already does — that state was never persisted anywhere in this codebase before
+this work, not a new gap. Verified live end-to-end against real Postgres/Ollama: the SC-3 gate
+correctly deferred a real queued item with `post_crisis_sensitivity` after a genuine crisis-tier
+safety event earlier in the same session, and — with the gate cleared directly — generated a real,
+coherent, on-topic message through the actual LLM and persona pipeline.
 
-### 14.6 Test coverage
+**Delivery transport:** `GET /proactive/stream` (SSE, `api/routes/proactive.py`) is a
+bounded-lifetime (~25 min) connection that polls the same `build_timing_context`/`gate_passes` the
+poll route uses, pushing an `item` frame the moment a candidate is both gate-passing *and* already
+has a real `generated_message` — deduplicated within the connection, never pushing raw
+`content_basis`. Deliberately bounded rather than indefinite: a sync generator run in FastAPI's
+threadpool has no built-in client-disconnect detection, so an unbounded loop would pin a worker
+thread forever if the client vanished; instead the stream closes on its own and relies on
+`EventSource`'s native browser auto-reconnect (fine for a single-user local deployment — one
+connection at a time). Frontend: `frontend/app/proactive/page.tsx` + `lib/hooks/
+useProactiveStream.ts` (opens a native `EventSource` against the stream, bypassing the same-origin
+`/api/*` rewrite the JSON client uses since the dev proxy buffers SSE — same reasoning as
+`useChatStream` — and calls `POST /proactive/{id}/delivered` on receipt, closing the SC-5 loop
+automatically) + pure `lib/proactive/merge.ts::mergeProactiveItems` (merges the polled baseline
+with live-pushed items, deduped by id, streamed-wins-on-overlap, sorted by priority; kept pure and
+separately unit-tested so the merge/dedup logic doesn't require mocking `EventSource`). This also
+fixed a pre-existing frontend bug: the page previously rendered `content_basis` directly as if it
+were a message from Nova — exactly what the SC-3 gating work above was meant to prevent a future
+consumer from doing.
 
-76 unit tests across seven files exercise every sub-component, the intake contracts, and the orchestrator:
-`test_proactive_queue_manager.py` (14), `test_initiative_classifier.py` (9), `test_timing_gate.py` (21), `test_proactive_message_generator.py` (11), `test_response_tracker.py` (8), `test_proactive_intake.py` (7), `test_proactive_engine.py` (6). Coverage includes the full priority formula (age/BES/context weights) and lifecycle (eviction, expiry, learned adjustment caps/floors); every initiative-classification branch; all five gate block groups (temporal, emotional, relationship, preference, quality); message validation + regeneration + the no-fallback rule; the 48-hour response window and the suppression cascade; all four intake contracts; and the orchestrator's one-send-per-cycle cap and §11 never-send-on-failure guarantee.
+**Intake contracts (§9):** all seven wired. `on_goal_milestone_approaching` (Layer 7, via
+`api/proactive_gen.py::goal_checkin_item`), `on_deferred_coaching` (Layer 5, via
+`api/state.py::make_proactive_coaching_writer` — `api/assembly.py`'s `social_coaching` hook calls
+the real Layer 5 orchestrator `build_social_intelligence_packet`, which already computes
+`proactive_coaching_queue` for any gate-2/gate-3-deferred opportunity, matching this contract's
+input exactly), `on_thread_due` (Layer 1, via `api/state.py::make_thread_proactive_writer` reading
+`ctx.input_packet.due_threads`), `on_post_distress_gap` (via `background/distress_gap_job.py`,
+daily — derives its inputs directly from persisted episodic `emotion_vector` data rather than
+needing a new Layer 2 hook, finding the most recent episode with `valence < -0.6` and recomputing
+the gap from the episodic store each run rather than persisting a pointer), and
+`on_behavioral_pattern`/`on_retrospective_ready`/`on_calendar_entry_due` (Layer 10, via
+`background/pattern_detection_job.py` and `background/life_calendar_job.py` — `on_calendar_entry_due`
+exists separately from `on_retrospective_ready` because a relationship-day milestone is a
+celebration nudge, not a look-back retrospective, even though both originate from a fired
+`CalendarEntry`). All seven use the same idempotent-`item_id`-derived-from-source pattern, so
+re-firing the same trigger on a later turn upserts instead of duplicating.
+
+**Test coverage.** 76 unit tests across seven files for the core module
+(`test_proactive_queue_manager.py` (14), `test_initiative_classifier.py` (9),
+`test_timing_gate.py` (21), `test_proactive_message_generator.py` (11),
+`test_response_tracker.py` (8), `test_proactive_intake.py` (7), `test_proactive_engine.py` (6)) —
+covering the full priority formula, lifecycle, every initiative-classification branch, all five
+gate block groups, message validation/regeneration/no-fallback, the 48-hour response window, all
+intake contracts, and the orchestrator's one-send-per-cycle cap — plus the live-wiring suites:
+`tests/unit/api/test_routes_background.py` (gating + SSE stream), `tests/unit/api/
+test_proactive_delivery.py` (against the real `build_app_state`, specifically to catch the
+`build_persona` bug class above), `tests/unit/background/test_jobs.py` (distress-gap and message
+generation), and `tests/unit/api/test_state.py`/`test_assembly_turn.py` (intake writers).
+Frontend: `lib/proactive/merge.test.ts` (5 tests) + a Playwright-verified live browser run against
+seeded Postgres state (the Chrome DevTools MCP extension wasn't connected in that environment).
 
 ---
 
-*This document specifies Layer 6 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — the Proactive Queue Manager schema and priority scoring, Initiative Classifier taxonomy, Timing Gate full condition set, Message Generator prompt and validation, Response Tracker feedback loop, intake contracts from all four upstream layers, user preference schema, and delivery interface — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 6 requires assumptions or inferences from other documents.*
+*This document specifies Layer 6 completely. All five sub-components have full schemas, all
+algorithms are specified with exact logic, and all gaps from prior documents — the Proactive Queue
+Manager schema and priority scoring, Initiative Classifier taxonomy, Timing Gate full condition
+set, Message Generator prompt and validation, Response Tracker feedback loop, intake contracts
+from all four upstream layers, user preference schema, and delivery interface — are fully
+resolved. §14 records the as-built implementation; no behavior of Layer 6 requires assumptions or
+inferences from other documents.*
 
-### Live integration update (2026-07-07) — proactivity wired into the turn
+## 15. Decision Log
 
-Candidate generation is now connected to the live conversation. `api/proactive_gen.py`
-(`goal_checkin_item`) turns each active Layer-7 goal with an upcoming deadline/milestone into a
-deterministic `GOAL_CHECK_IN` `ProactiveItem`; the post-turn `make_proactive_writer` upserts them
-into `PostgresProactiveQueue` (idempotent by goal-derived id, suppressed while cold-starting), so
-`GET /proactive` accumulates real candidates. The `proactive_check` scheduler job continues to own
-re-prioritization/expiry. See `docs/API_REFERENCE.md`.
-
-## 15. Live wiring status (Phase 6 polish pass, 2026-08-04)
-
-`backend/layer6_proactivity/` itself is clean: all 76 tests pass, `engine.py`, `queue_manager.py`,
-`timing_gate.py`, and `message_generator.py` all match the spec precisely (including the
-documented §14.4 deviations), no bugs found this pass.
-
-**What's actually live** (confirmed by direct read, more than the July note above covers): SC-1's
-pure scoring functions (`recompute_priority`/`expire`/`top_candidates`) run for real via
-`background/proactive_check_job.py` every ~30 minutes, and one intake contract — `on_
-goal_milestone_approaching` (§9.4), via `api/proactive_gen.py` — creates real `GOAL_CHECK_IN`
-candidates each turn. That's the entire live surface.
-
-**What never runs live**, confirmed by grepping `api/`, `background/`, and `infra/` for every
-Layer 6 entry point beyond the two above (`run_proactive_cycle`, `evaluate_timing_gate`,
-`classify_initiative`, `generate_proactive_message`, `classify_response`,
-`update_queue_from_response`): all matches are in tests.
-
-- **SC-2 (Initiative Classifier), SC-3 (Timing & Delivery Gate), SC-4 (Message Generator), and
-  SC-5 (Response Tracker) never run.** There is no delivery channel (`api/routes/proactive.py`'s
-  own docstring: "No push channel without a frontend") — `GET /proactive` is a client-polled read
-  of the raw queue, not a delivery mechanism, so there was never anywhere to wire the send-side
-  pipeline into.
-- **`GET /proactive` exposes raw, ungated `content_basis` text, not a generated message.** Worth
-  stating plainly since it's a live behavior, not a missing one: the endpoint returns items
-  filtered only by `status in (pending, deferred)` — it does not run `evaluate_timing_gate`, so
-  none of §5.2's five block groups apply to what it returns. A candidate that would be hard-blocked
-  by the gate (crisis aftermath, relationship stage too new, user has disabled that item type, the
-  1/day cap, the 48-hour min gap) is returned exactly the same as a candidate that would clear
-  every gate. This is not a live safety hole today — `content_basis` is a plain-language fragment
-  like `"Goal: X | Milestone: Y"`, not a message SC-4 would ever have produced or validated, so
-  nothing resembling an actual proactive message reaches a client. But it means a future frontend
-  that renders `content_basis` directly as a "message from Nova" would bypass every one of Layer
-  6's designed safeguards. Flagged in `docs/POLISH_BACKLOG.md`.
-- **Three of four intake contracts (§9.1, §9.2, §9.3) are unwired**, consistent with their source
-  layers: `on_thread_due` needs Layer 1's narrative-thread detector (still unbuilt per the Layer 1
-  audit); `on_post_distress_gap` needs Layer 2 state-updater hooks not yet present;
-  `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, which cannot exist until
-  Layer 5 itself is wired (Phase 5 finding — zero production callers). **`on_deferred_coaching` is
-  now wired — see §16 below**; `on_thread_due` and `on_post_distress_gap` remain blocked on Layer
-  1/2 as described.
-
-## 16. §9.3 intake wired (follow-up, 2026-08-09)
-
-Layer 5's full build (`docs/layer-5-architecture.md` §16) unblocked this. `api/assembly.py`'s
-`social_coaching` hook was rewired to call the real Layer 5 orchestrator
-(`build_social_intelligence_packet`) instead of a bare `detect_coaching_opportunity` +
-`inject_observation` pair — the orchestrator already computes `proactive_coaching_queue` (§8) for
-any opportunity gate 2 (timing) or gate 3 (recency) defers, exactly matching this contract's input.
-
-`api/state.py::make_proactive_coaching_writer` turns a deferred `CoachingOpportunity` into a
-`ProactiveItem` via the real `on_deferred_coaching(opportunity, person_display_name, now)` and
-upserts it into `PostgresProactiveQueue`, mirroring `make_proactive_writer`'s goal-check-in
-pattern: `item_id` is deterministically derived from the triggering pattern/event id, so
-re-deferring the same opportunity on a later turn upserts instead of duplicating. Wired into
-`build_pipeline_steps(proactive_coaching_writer=...)` in `build_app_state`.
-
-Proven end to end through the real orchestrator by
-`tests/unit/api/test_assembly_turn.py::test_real_layer5_wiring_deferred_coaching_reaches_the_layer6_proactive_queue`:
-a relationship stage of `"new"` hard-blocks gate 2 (timing), the pattern's observation never
-reaches the delivered response, and a `social_pattern_coaching` item lands in the real
-`PostgresProactiveQueue` for that user.
-
-**Still open, unchanged**: no delivery channel exists for SC-2..SC-5 (genuine infra work — a push
-surface, not a wiring gap); `GET /proactive` still returns ungated `content_basis`, including now
-for `social_pattern_coaching` items — the same caveat above applies, whoever builds the consumer
-must run `evaluate_timing_gate` server-side first, not render `content_basis` directly.
-`on_thread_due`/`on_post_distress_gap` are no longer blocked — see §18.
-
-## 17. Three more intake functions for Layer 10 (follow-up, 2026-08-09)
-
-Layer 10's full build (`docs/layer-10-architecture.md` §16) added `on_behavioral_pattern`,
-`on_retrospective_ready`, and `on_calendar_entry_due` to `backend/layer6_proactivity/intake.py` —
-same shape as the four pre-existing constructors, plus two new `ProactiveItemType` values
-(`behavioral_pattern_surfacing`, `retrospective_reflection`) and their `BASE_PRIORITY_BY_TYPE`
-entries. `background/pattern_detection_job.py` and the new `background/life_calendar_job.py` are
-the only callers. See `docs/layer-10-architecture.md` §16.3-16.4 for the full design, including
-why `on_calendar_entry_due` exists separately from `on_retrospective_ready` (a relationship-day
-milestone is a celebration nudge, not a look-back retrospective — the two are semantically
-different even though both originate from a fired `CalendarEntry`).
-
-## 18. Follow-up (2026-08-09): `on_thread_due` and `on_post_distress_gap` both closed
-
-Both intake functions in `docs/PENDING_WORK.md`'s Layer 6 entry were listed as "blocked" —
-re-investigated and both closed, neither needed the blocker it was waiting on.
-
-**`on_thread_due`** was blocked on Layer 1's narrative-thread detector, which shipped this pass
-(`docs/layer-1-architecture.md` §18.2). `api/state.py::make_thread_proactive_writer` (post-turn)
-reads `ctx.input_packet.due_threads` (now real) and calls `on_thread_due` for each, upserting a
-deterministic `ProactiveItem` into the real queue — the same idempotent-`item_id` pattern as
-`goal_checkin_item`.
-
-**`on_post_distress_gap`** was recorded as "blocked on a Layer 2 state-updater hook that doesn't
-exist yet." Re-investigation found no new hook is actually required: the function's three real
-inputs (`session_summary`, `episode_id`, `end_valence`, `gap_days`) are all directly derivable
-from the already-persisted episodic memories' `emotion_vector` — the same real signal
-`background/dependency_monitor_job.py` and Layer 10's jobs already reuse via
-`background/_adapters.py`. `background/distress_gap_job.py` (new, daily) finds the most recent
-episode with `valence < -0.6`, computes the real gap in days since it, and calls the function
-directly — no persisted "last distress session" pointer needed, since it's recomputed from the
-episodic store each run. Registered as the scheduler's eleventh job.
-
-**Tests:** `tests/unit/background/test_jobs.py` — three new tests for `distress_gap` (queues on a
-real gap, doesn't queue without one, ignores non-distressed episodes) plus the two updated
-`on_thread_due` tests in `tests/unit/api/test_state.py`/`test_assembly_turn.py`
-(`docs/layer-1-architecture.md` §18.2).
-
-## 19. Follow-up (2026-08-09): `GET /proactive` gated server-side through the real SC-3 Timing &
-Delivery Gate
-
-The endpoint returned raw, ungated `content_basis` for every pending/deferred queue item — SC-3
-(`timing_gate.evaluate_timing_gate`) had never had a production caller anywhere in the codebase.
-`api/routes/proactive.py::_build_timing_context` assembles a real `UserTimingContext` from the
-persisted stores for the first time: `circadian_band` (Layer 1's `map_circadian_band`, same pure
-function Layer 9 already reuses), message-gap timing (`PostgresMessageStore.last_interaction_at`),
-`bes_trend` (Layer 3's `compute_background_state` run live over active episodic memories —
-`BESLabel` values pass straight through, no translation needed since `timing_gate`/
-`initiative_classifier` already check for the exact same label strings), crisis flag
-(`PostgresSafetyLog.recent`, tier != "none"), and relationship stage/tie-strength
-(`PostgresRelationshipStore.load`). Each pending item is classified (`classify_initiative`) and
-gated (`evaluate_timing_gate`) before being returned; only `send_now`-approved items surface. User
-preferences and quiet-period state have no source anywhere (no preferences store exists) and stay
-at the gate's own conservative defaults — same reasoning as every other genuinely-nothing-to-wire
-gap in this pass, not silently guessed.
-
-This is a real behavior change, not just plumbing: a brand-new relationship (`stage == "new"`) now
-correctly suppresses all proactive sends per the gate's own block group 3, where the old, ungated
-endpoint would have surfaced them. `tests/unit/api/test_routes_background.py` was rewritten to
-prove both sides — suppression on a fresh relationship, and surfacing once the relationship and
-content actually clear every block group — with `datetime.now` patched for a deterministic
-circadian band instead of depending on wall-clock time.
-
-## 20. Follow-up (2026-08-09): SC-4 real message generation + SC-5 response tracking wired
-
-Two more genuinely independent Layer 6 gaps closed, per user decision — split from the "no
-delivery pipeline" item precisely because neither needed a transport decision:
-
-**SC-4 (`message_generator.py`)** had zero production callers. `api/proactive_delivery.py` (new,
-shared between the route and the background job so the timing-gate construction isn't duplicated)
-adds `build_proactive_context`, which assembles the real `ProactiveContext` by calling the live
-orchestrator's own `steps.build_persona` (`app_state.orchestrator.steps`) rather than re-deriving
-persona/voice logic a second time — the exact "wire to the real module" pattern CLAUDE.md names.
-`background/proactive_check_job.py` (already running every ~30 min, already the thing that calls
-`save_all`) now generates a message for each item that clears the SC-3 gate *at generation time*
-and has none yet, persisting it on a new `ProactiveItem.generated_message` field.
-`GET /proactive`'s HTTP response gained a `message` field carrying this real text (`content_basis`
-stays as the internal fragment, for debugging).
-
-**A live-only bug found and fixed in the same pass**: `build_persona` reads
-`ctx.input_packet.circadian_band` and `ctx.emotion_intent.background_state` directly (not
-getattr-safe on `ctx` itself) — a bare `SimpleNamespace(user_id=..., conversation_mode=...)` for
-the background-job caller raised `AttributeError`, silently caught by `build_persona`'s own
-try/except and degrading `voice_parameters` to defaults. Every unit test using a stub `steps`
-object passed regardless, because the stub never exercised the real function. Caught only by
-running `build_proactive_context` against the real `build_app_state`-constructed orchestrator
-live — fixed by giving the job's synthetic `ctx` a real `input_packet`/`emotion_intent`, and a
-regression test (`tests/unit/api/test_proactive_delivery.py`) was added specifically using the
-real `build_persona`, not a double, so this class of bug can't slip back in unnoticed.
-
-**SC-5 (`response_tracker.py`)** also had zero production callers. `POST /proactive/{id}/delivered`
-(new) transitions an item to `SENT` — the frontend calls this the moment it actually shows a
-proactive item to the user, closing the "nothing ever marks an item sent" gap that made response
-tracking structurally unreachable before. `api/state.py::make_proactive_response_writer` (new,
-in the post-turn writer chain) checks `ChatRequest.is_reply_to_proactive` on every turn and, when
-set, classifies the reply and transitions the most-recently-`SENT` item to `RESPONDED` with a real
-valence via the existing `classify_response`/`update_queue_from_response`. There's no explicit
-item id from the client, so "most recently sent" is the only real attribution available without
-inventing new client surface — correct as long as a user isn't mid-reply to two proactive messages
-at once, which the gate's own `_MIN_GAP_HOURS` (48h between sends) makes structurally rare.
-`update_queue_from_response`'s priority/ignore-count side effects stay scoped to a throwaway
-`ProactiveQueueManager` per call, same as the background job's own recompute already does — that
-state was never persisted anywhere in this codebase before this pass either, not a new gap.
-
-Verified live end-to-end (real Postgres/Ollama): the SC-3 gate correctly deferred a real queued
-item with `post_crisis_sensitivity` after a genuine crisis-tier safety event earlier in the same
-session — proof the gate reads real safety data, not a fixture. With the gate cleared directly
-(seeded relationship state), `generate_message_for_item` produced a real, coherent, on-topic
-message through the actual LLM and persona pipeline.
-
-## 21. Follow-up (2026-08-09): push transport (SSE) + frontend proactive UI
-
-The one piece §20 explicitly left open — product decision: build it now, including the frontend,
-rather than deferring to a later frontend-only phase.
-
-**Backend**: `GET /proactive/stream` (new, `api/routes/proactive.py`) — a bounded-lifetime
-(~25 min) Server-Sent Events connection that polls the same `build_timing_context`/`gate_passes`
-the poll route uses, and pushes an `item` frame the moment a candidate is both gate-passing *and*
-already has a real `generated_message` (never pushes `content_basis`). Deduplicates within the
-connection so a given item is only ever pushed once. Deliberately bounded rather than truly
-indefinite: a sync generator run in FastAPI's threadpool has no built-in client-disconnect
-detection, so an unbounded loop would pin a worker thread forever if the client vanished; instead
-the stream closes on its own and relies on `EventSource`'s native browser auto-reconnect. Fine for
-a single-user local deployment (one connection at a time).
-
-**Frontend** (`frontend/`, an existing Next.js app with an established design system): `app/
-proactive/page.tsx` already existed but rendered `content_basis` directly — exactly the bug the
-backend gating work was meant to prevent a *future* consumer from committing; fixed as part of
-closing this out. New `lib/hooks/useProactiveStream.ts` opens a native `EventSource` against the
-stream (bypassing the same-origin `/api/*` rewrite the JSON client uses, same reasoning as
-`useChatStream`: the dev proxy buffers SSE) and calls `POST /proactive/{id}/delivered` the moment
-each item is received, closing the SC-5 loop automatically. New pure `lib/proactive/merge.ts`
-(`mergeProactiveItems`) merges the polled baseline with live-pushed items, deduped by id,
-streamed-wins-on-overlap, sorted by priority — kept pure and separately unit-tested (5 tests)
-rather than folded into the component, so the merge/dedup logic doesn't require mocking
-`EventSource` to verify.
-
-**Verification**: `tsc --noEmit` and `eslint` clean; `vitest` (16 tests, incl. the 5 new merge
-tests) green. The Chrome DevTools MCP extension wasn't connected in this environment, so
-interactive in-browser verification used a small Playwright script instead (real Chromium, not a
-mock): seeded a real gate-passing, message-generated `ProactiveItem` directly in Postgres (an
-organic conversation reaching a gate-clearable relationship stage would take 1+ hour of local
-CPU inference — same reasoning as §20), loaded the real page against the real running backend,
-and confirmed zero console errors, the real generated message rendered (not `content_basis`), and
-`POST /proactive/{id}/delivered` fired automatically — the item's status genuinely flipped to
-`sent` in Postgres as a direct result of the browser loading the page, not a simulated event.
-CORS: `config/defaults.yaml`'s `cors_origins` gained `http://localhost:3001` (Next's own automatic
-fallback port when :3000 is already taken) alongside the existing :3000 default.
+- **2026-07-07:** Candidate generation wired into the live turn — `api/proactive_gen.py::
+  goal_checkin_item` turns each active Layer-7 goal with an upcoming deadline/milestone into a
+  deterministic `GOAL_CHECK_IN` item, upserted post-turn via `make_proactive_writer` (idempotent by
+  goal-derived id). First real production caller for any Layer 6 candidate source.
+- **2026-08-04 (Phase 6 polish pass):** Module itself confirmed clean (76/76 tests, zero bugs).
+  Only SC-1 scoring/expiry and the goal-milestone intake were live; SC-2..SC-5 and the other three
+  intake contracts had zero production callers, and `GET /proactive` exposed raw ungated
+  `content_basis` — because no delivery channel existed at all to wire the send-side pipeline into.
+- **2026-08-09:** `on_deferred_coaching` (§9.3) wired, unblocked by Layer 5's full build — why:
+  Layer 5's orchestrator already computed the exact `proactive_coaching_queue` this contract needs.
+- **2026-08-09:** Three more intake functions added for Layer 10's full build
+  (`on_behavioral_pattern`, `on_retrospective_ready`, `on_calendar_entry_due`) plus two new
+  `ProactiveItemType` values.
+- **2026-08-09:** `on_thread_due` and `on_post_distress_gap` re-investigated and closed — both had
+  been recorded as blocked on upstream work, but neither actually needed the blocker: Layer 1's
+  thread detector shipped, and the distress-gap inputs turned out already derivable from persisted
+  episodic data without a new hook.
+- **2026-08-09:** `GET /proactive` gated server-side through the real SC-3 timing gate instead of
+  returning raw `content_basis` — why: SC-3 had zero production callers, so a candidate that would
+  be hard-blocked (crisis aftermath, too-new relationship, daily cap) was returned identically to
+  one that would clear every gate.
+- **2026-08-09 (product decision, confirmed with the user):** SC-4 (real message generation) and
+  SC-5 (response tracking) wired — split out from "no delivery pipeline" specifically because
+  neither needed a transport decision first. Found and fixed the live-only `build_persona`
+  AttributeError bug in the same pass (see SC-4 above).
+- **2026-08-09 (product decision, confirmed with the user):** push transport (SSE) + frontend
+  proactive UI built, including fixing a pre-existing frontend bug (`content_basis` rendered
+  directly as a message) — why: the user chose to build the full delivery channel now rather than
+  defer the frontend half to a later phase.

@@ -1079,261 +1079,193 @@ When Nova surfaces a pattern observation, it explicitly frames it as optional fo
 
 ---
 
-## 14. Implementation Notes (as-built)
+## 14. Live Wiring Status (current state)
 
-This section records how the specification above is realized in `backend/layer5_relationship/`. The code is the single source of truth; §1–13 are the design intent.
+This section records how the specification above is realized in `backend/layer5_relationship/`
+and its live integration, and what actually runs on a turn today. The code is the single source
+of truth; §1–13 are the design intent.
 
 ### 14.1 Module map
 
 | Spec sub-component | Module | Key entry point |
 |---|---|---|
 | SC-1 Social Graph Manager | `social_graph.py` | `resolve_entity`, `infer_relationship_from_context`, `create_node`, `update_node_valence`, `decay_confidence`, `is_tentative_match` |
-| SC-2 Interpersonal Event Tracker | `event_tracker.py` | `detect_events_rule_based`, `extract_events`, `EVENT_DETECTION_RULES` |
+| SC-2 Interpersonal Event Tracker | `event_tracker.py` | `detect_events_rule_based`, `extract_events`, `EVENT_DETECTION_RULES`, `_NEUTRAL_SUMMARY` |
 | SC-3 Social Pattern Recognizer | `pattern_recognizer.py` | `detect_patterns`, `cluster_by_semantic_similarity`, `compute_mention_counts_by_window`, `is_declining_trend` |
 | SC-4 Coaching Opportunity Detector | `coaching_detector.py` | `detect_coaching_opportunity`, `gate_1_availability`, `gate_2_timing`, `gate_3_recency` |
 | SC-5 Social Coaching Response Modifier | `coaching_modifier.py` | `inject_observation`, `select_transition` |
 | SocialIntelligencePacket orchestration | `packet_builder.py` | `build_social_intelligence_packet`, `build_social_context_update` |
+| Persistence | `infra/db/models/social.py`, `infra/db/social_serde.py`, `infra/db/social_store.py` | `PostgresSocialStore` |
+| Live adapters | `api/state.py`, `api/assembly.py` | `make_social_writer`, `social_coaching`, `make_proactive_coaching_writer` |
+| Background job | `background/social_pattern_job.py` | registered as `"social_pattern_detection"` |
 | All dataclasses / enums | `schemas.py` | — |
 
-### 14.2 Type reuse and dependency direction
+### 14.2 Type reuse, dependency injection, and test coverage
 
-The pipeline runs L1→L2→L3→L4→L5, so Layer 5 imports rather than redefines upstream types: `FinalResponsePacket` and `VoiceParameters` from Layer 4; `EmotionClassification`, `BackgroundEmotionalState`, `EmotionIntentPacket` from Layer 3; `ConversationMode` (via Layer 4) from Layer 2. Layer 5 owns the richer `SocialGraph` / `SocialNode` / `SocialEdge` / `SocialEvent` / `SocialPattern` model — distinct from Layer 2's lighter UWM `RelationshipGraph` / `PersonNode` snapshot, which Layer 5 *writes to* via `SocialContextUpdate` (§9).
+The pipeline runs L1→L2→L3→L4→L5, so Layer 5 imports rather than redefines upstream types:
+`FinalResponsePacket` and `VoiceParameters` from Layer 4; `EmotionClassification`,
+`BackgroundEmotionalState`, `EmotionIntentPacket` from Layer 3; `ConversationMode` (via Layer 4)
+from Layer 2. Layer 5 owns the richer `SocialGraph`/`SocialNode`/`SocialEdge`/`SocialEvent`/
+`SocialPattern` model — distinct from Layer 2's lighter UWM `RelationshipGraph`/`PersonNode`
+snapshot, which Layer 5 *writes to* via `SocialContextUpdate` (§9). A field group was added to
+Layer 4's `FinalResponsePacket` so SC-5 can mark injection (§7.3): `social_coaching_injected`,
+`coaching_type_injected`, `coaching_person_id` (default to no-injection).
 
-A new field group was added to Layer 4's `FinalResponsePacket` so SC-5 can mark injection (per §7.3): `social_coaching_injected`, `coaching_type_injected`, `coaching_person_id` (all default to no-injection).
+The two LLM uses are injected as plain callables: SC-2 event extraction (`llm_fn`, the
+post-session Pass 2) and the SC-4/orchestrator pattern-reflection / conflict-navigation text
+(`observation_llm_fn`). Entity resolution (SC-1) and conflict-topic clustering (SC-3) accept an
+injected `similarity_fn` with token-overlap defaults — clustering uses the **overlap coefficient**
+(`|A∩B|/min(|A|,|B|)`), not Jaccard, because short conflict-topic summaries share too few tokens
+for Jaccard to group reliably; an embedding `similarity_fn` can be injected to match production.
+With nothing injected the layer degrades exactly as §11 prescribes and the rule-based paths run
+fully offline, which is what the unit suite exercises.
 
-### 14.3 Dependency injection for offline testability
+Other behavioral deviations from the design text: the §4.4 `EVENT_DETECTION_RULES` had duplicated
+alternations (`argument|argument`, `didn't|didn't`), deduped in code, plus two rules
+(`support_received`, `conflict_resolution`) added beyond the doc's five examples so SC-3 can
+recognize positive/resolution dynamics; `detect_coaching_opportunity` returns a populated
+opportunity with `opportunity_detected=False` and `delivery_mode="deferred"` when availability
+passes but timing/recency fails (an *empty* opportunity, no `coaching_type`, means nothing was
+available at all).
 
-The two LLM uses are injected as plain callables: SC-2 event extraction (`llm_fn`, the post-session Pass 2) and the SC-4/orchestrator pattern-reflection / conflict-navigation text (`observation_llm_fn`). The embedding-dependent steps — entity resolution (SC-1) and conflict-topic clustering (SC-3) — accept an injected `similarity_fn` with token-overlap defaults (overlap coefficient for clustering, used because short topic phrases share few tokens). With nothing injected the layer degrades exactly as §11 prescribes and the rule-based paths run fully offline, which is what the unit suite exercises.
+63 unit tests across six files exercise every sub-component and the orchestrator
+(`test_social_graph.py`, `test_event_tracker.py`, `test_pattern_recognizer.py`,
+`test_coaching_detector.py`, `test_coaching_modifier.py`, `test_layer5_packet_builder.py`), plus
+real-wiring integration tests in `tests/unit/api/test_assembly_turn.py` referenced by name below.
 
-### 14.4 Behavioral deviations from the design text
+### 14.3 Ethics constraints (§10) as implemented
 
-- **Entity-resolution embeddings.** §3.4 computes `embed()` cosine inline; the implementation makes the semantic comparison an injected `similarity_fn` (skipped when absent), so alias and relationship-type matching still work with zero ML dependencies.
-- **Clustering similarity.** §5.4 references a generic semantic-similarity cluster; the offline default is the **overlap coefficient** (`|A∩B|/min(|A|,|B|)`), not Jaccard — short conflict-topic summaries share too few tokens for Jaccard to group reliably. An embedding `similarity_fn` can be injected to match production.
-- **Regex typos.** The §4.4 `EVENT_DETECTION_RULES` contain duplicated alternations (`argument|argument`, `didn't|didn't`); these are deduped in code. Two high-value rules absent from the doc's five examples (`support_received`, `conflict_resolution`) were added so SC-3 can recognize positive and resolution dynamics.
-- **Deferred vs. absent opportunity.** `detect_coaching_opportunity` returns a populated opportunity with `opportunity_detected=False` and `delivery_mode="deferred"` when availability passes but timing/recency fails — the orchestrator queues these for Layer 6. An empty opportunity (no `coaching_type`) means nothing was available.
-- **Pattern batch cadence.** §5.4 runs SC-3 every 5 sessions as a background job; `detect_patterns` is a pure function over the full event history, so the cadence is the scheduler's concern. The orchestrator consumes already-computed `active_patterns`.
+- Pattern-reflection observations are framed provisionally — "I've noticed … Does that feel
+  accurate to you?" — never as verdicts (Constraint 2; §7.4). The orchestrator's LLM prompt
+  repeats the non-prescriptive, non-diagnostic framing.
+- Events store only a neutral `summary` + `user_perspective`, never raw text (Constraint 3) — see
+  §14.4 SC-2 for how the rule-based path came to genuinely satisfy this.
+- The three-gate model defaults to silence; the recency gate stops surfacing after 3
+  unacknowledged attempts (Constraint 5).
 
-### 14.5 Ethics constraints (§10) as implemented
+### 14.4 Per sub-component, current state
 
-- Pattern-reflection observations are framed provisionally — "I've noticed … Does that feel accurate to you?" — never as verdicts (Constraint 2; §7.4). The orchestrator's LLM prompt repeats the non-prescriptive, non-diagnostic framing.
-- Events store only a neutral `summary` + `user_perspective`, never raw text (Constraint 3).
-- The three-gate model defaults to silence; the recency gate stops surfacing after 3 unacknowledged attempts (Constraint 5).
+**SC-1 Social Graph Manager — live**, via `api/state.py::make_social_writer` (post-turn). One LLM
+call (`_extract_social_mentions`) surfaces named third-party mentions + a short context snippet
+each; the real SC-1 functions do the actual work: `resolve_entity` against the persisted graph's
+existing nodes, `infer_relationship_from_context` + `create_node` for a new person. Persisted via
+three new Postgres tables (`social_graph`, `social_event`, `social_pattern`, same JSONB-payload
+shape as every other Layer-2/4 store); `infra/db/social_serde.py` handles `SocialGraph.nodes`/
+`.edges` (untyped `dict[id -> dataclass]` containers the shared generic codec can't reconstruct on
+its own) by reusing `to_jsonable`/`from_jsonable` at the `SocialNode`/`SocialEdge` leaf level.
+`resolve_entity`'s tentative-match confidence band (`[0.65, 0.80)`, `is_tentative_match`) is
+rejected rather than silently merged: a relationship-type-from-context match sitting in that band
+now creates a new node instead of resolving onto an existing one, trading the risk of a duplicate
+node (recoverable) against the risk of silently merging two distinct real people (not recoverable)
+— a deliberate choice, not the default the design text implies. One consequence: a person referred
+to by relationship term rather than name across turns ("my sister Maya" then later just "my
+sister") can now create a duplicate node instead of merging, since this app has no confirmation
+mechanism for tentative matches across sessions. **No `SocialEdge` creation exists**: no real SC-1
+function builds edges (only nodes have create/update/decay functions), so inventing edge-creation
+logic in the adapter would be exactly the reimplement-rather-than-wire-to-the-real-module
+anti-pattern; `SocialGraph.edges` stays permanently empty until Layer 5 itself grows a real
+edge-management function.
 
-### 14.6 Test coverage
+**SC-2 Interpersonal Event Tracker — live**, via the same `make_social_writer` call.
+`extract_events` (rule-based Pass 1) attributes an interpersonal event only when the turn resolves
+to exactly one deduplicated person — a turn naming two different people has its events skipped
+rather than guessing which one they're about (§13 principle 2); a turn mentioning the same person
+twice is deduplicated first so it still counts as one-person attribution. Rule-based summaries are
+now genuinely neutral: `_NEUTRAL_SUMMARY`, a per-`SocialEventType` template dict covering the seven
+event types the rule-based patterns can produce, replaced a prior `" ".join(text.split())[:200]`
+near-verbatim copy of the user's message that had silently violated Constraint 3 since before this
+layer had any caller. The optional LLM pass (Pass 2, background-only) remains available and rarely
+exercised.
 
-63 unit tests across six files exercise every sub-component and the orchestrator:
-`test_social_graph.py` (12), `test_event_tracker.py` (12), `test_pattern_recognizer.py` (9), `test_coaching_detector.py` (16), `test_coaching_modifier.py` (7), `test_layer5_packet_builder.py` (7). Coverage includes entity resolution across all match kinds + confidence decay; rule-based and LLM-fallback event extraction; intra/cross/temporal pattern detection with longitudinal spans; all three coaching gates (incl. crisis/distress/stage hard blocks and the negative-drift soft block); inline vs as-question injection with the headroom guard; provisional pattern framing; and the §11 hard rule (any internal failure passes the Layer 4 response through unchanged).
+**SC-3 Social Pattern Recognizer — live**, via `background/social_pattern_job.py`, registered as
+`"social_pattern_detection"` in `background/scheduler.py`'s `JOBS`, on a **fixed weekly interval**
+rather than the doc's literal "every 5 sessions" (§5.4) — that cadence needs a persisted
+sessions-since-last-run counter that doesn't exist anywhere in this codebase (the FCE has the
+identical gap, Layer 2 doc); matching the shape every other job already uses was an explicit
+product decision over building new counter infrastructure for one job. `detect_patterns` is a pure
+function with no memory of prior runs, so the job re-identifies each freshly detected pattern
+against last week's *active* patterns by real identity (`pattern_type` + sorted
+`person_ids_involved`), carrying `pattern_id`/`has_been_surfaced`/`surface_count`/
+`user_acknowledged`/`last_activation` forward when still active, and deactivating patterns no
+longer detected — without this, the same recurring conflict would duplicate into a new, unsurfaced
+row every week. The job passes an explicit tz-aware `now=datetime.now(timezone.utc)`, since
+`detect_patterns`' own default (`datetime.utcnow()`, naive) would otherwise mismatch the tz-aware
+`SocialEvent.reported_timestamp` — the same naive/aware bug class as Layer 3's BES.
 
-## 15. Live wiring status (Phase 5 polish pass, 2026-08-04)
+**SC-4 Coaching Opportunity Detector — live**, via `api/assembly.py::social_coaching`, which calls
+the real Layer 5 orchestrator `packet_builder.build_social_intelligence_packet` directly (not
+`detect_coaching_opportunity`/`inject_observation` called separately — an earlier version did that
+and silently skipped LLM-based observation regeneration for `PATTERN_REFLECTION`/
+`CONFLICT_NAVIGATION` and `proactive_coaching_queue` population, corrected 2026-08-09; see the
+Decision Log). Cold start is safe by construction: gate 1 already returns "no opportunity" on an
+empty graph/events/patterns, which is every account's state until the background job has run at
+least once. Both templated coaching types (`STRENGTH_ACKNOWLEDGMENT`, `SUPPORT_NETWORK_NUDGE`,
+canned `OBSERVATION_TEMPLATES`, no LLM call, always `DeliveryMode.INLINE`) and the LLM-generated
+`PATTERN_REFLECTION` type are proven end-to-end through the real orchestrator.
 
-`backend/layer5_relationship/` itself is clean: all 63 tests pass, every sub-component matches
-its spec (including the deliberate deviations §14.4 already documents), no dead code, no bugs
-found in this pass. There is nothing to fix inline this phase — the finding is that **the layer
-has zero production callers of any kind**, confirmed by grepping `api/`, `backend/pipeline/`,
-`background/`, and `infra/` for every public entry point
-(`build_social_intelligence_packet`, `detect_coaching_opportunity`, `inject_observation`,
-`detect_patterns`, `detect_events_rule_based`, `resolve_entity`): all matches are in tests.
+**SC-5 Social Coaching Response Modifier — live.** The hook runs in `_generate_normal` right after
+generation (both System 1 and System 2), before SC-1 Ethical Guardrails, so guardrails always gets
+final say over the delivered text. `gate_3_recency`'s repeat-suppression is no longer permanently
+inert: `PostgresSocialStore.mark_pattern_surfaced` (called only when `inject_observation` actually
+delivered the observation, not when deferred for lack of length headroom) now sets
+`has_been_surfaced`/`surface_count`/`last_observed` — the field `gate_3_recency` actually reads is
+`last_observed`, not `last_activation`, which the first version of this fix missed.
 
-Unlike Layer 4 (a real orchestrator with no caller, but small adapter-shaped gaps fixable
-inline), Layer 5 has **no integration point to wire into at all**:
+**Layer 6 handoff (§9.3 intake) — live.** A deferred `CoachingOpportunity` (gate 2/3 blocked, or
+`inject_observation` deferred for lack of length headroom) is no longer dropped:
+`api/state.py::make_proactive_coaching_writer` turns `packet.proactive_coaching_queue` entries into
+durable `ProactiveItem`s via Layer 6's real `on_deferred_coaching` intake contract and upserts them
+into `PostgresProactiveQueue`. Full detail: `docs/layer-6-architecture.md` §15.
 
-- `backend.pipeline.PipelineSteps` (the orchestrator's 12-hook adapter surface, per
-  `api/assembly.py`'s module docstring) has no Layer 5 hook — `TurnContext` carries no social
-  graph, event history, or active patterns.
-- `infra/db/models.py` has no `SocialGraph`/`SocialNode`/`SocialEdge`/`SocialEvent`/
-  `SocialPattern` tables — there is nowhere to persist what SC-1/SC-2/SC-3 would produce.
-- SC-3's pattern detection is specified as a background batch job "every 5 sessions" (§5.4);
-  `background/scheduler.py`'s six registered jobs have no seventh entry for it.
+**UWM reconciliation — live, Layer 5 is now the sole person-mention resolver.** Rather than run two
+independent LLM calls both trying to notice "who did the user mention" — the divergent-
+reimplementation smell CLAUDE.md's audit flags elsewhere — `_extract_uwm_signals`'s prompt no
+longer asks about people at all; `make_state_update_writer` projects the turn's touched
+`SocialNode`s onto `UWM.relationship_graph.people` via `_person_projection` (a lossy display
+mapping from Layer 5's richer `RelationshipType` taxonomy to the UWM's loose free-text tier — the
+real classification is still `infer_relationship_from_context`'s). The pre-Layer-5 fallback path
+(no `social_writer_fn`) is still exercised by Layer 2's original UWM test, so both paths stay
+covered.
 
-This is real, substantial feature work — a new DB schema, an orchestrator hook, per-turn entity
-resolution + event detection calls, and a new background job — not a wiring bug. Logged in
-`docs/POLISH_BACKLOG.md` rather than fixed inline, per the "fix what's small and safe, log
-everything bigger" rule.
+### 14.5 Test coverage for the live-wiring claims
 
-## 16. The feature build (Phase 5 polish pass, follow-up, 2026-08-08)
-
-All four pieces §15 identified as missing were built this pass: persistence, per-turn
-extraction, the orchestrator hook, and the background job. Nova now actually accumulates a
-social model of the people in the user's life across sessions, and can surface a gated
-observation about it.
-
-### 16.1 Persistence
-
-Three new tables (`infra/db/models/social.py`), same JSONB-payload shape as every other
-Layer-2/4 store: `social_graph` (one row per user — the whole `SocialGraph`, nodes + edges),
-`social_event` (one row per detected interpersonal event), `social_pattern` (one row per
-detected social pattern). `infra/db/social_serde.py` handles `SocialGraph.nodes`/`.edges` —
-untyped `dict[id -> dataclass]` containers the shared `infra/db/memory_serde.py` generic codec
-can't reconstruct on its own (it only recurses into typed dataclass fields and lists) — by
-reusing `to_jsonable`/`from_jsonable` at the leaf (`SocialNode`/`SocialEdge`) level rather than
-teaching the shared codec a new, single-caller shape. `infra/db/social_store.py::PostgresSocialStore`
-exposes `load_graph`/`save_graph`, `save_event`/`recent_events` (capped at 200, most-recent-first),
-`save_patterns`/`active_patterns`, and `mark_pattern_surfaced` (§16.3). No Alembic revision was
-added — same as `NarrativeChain` earlier this session (Layer 2 §22): the baseline migration runs
-`create_all`, which is the only migration path this project currently exercises.
-
-**No `SocialEdge` creation.** No real SC-1 function builds edges (only nodes have
-`create_node`/`resolve_entity`/`update_node_valence`/`decay_confidence`); inventing edge-creation
-logic here would be exactly the reimplement-rather-than-wire-to-the-real-module anti-pattern
-CLAUDE.md warns against. `SocialGraph.edges` stays permanently empty until Layer 5 itself grows
-a real edge-management function.
-
-### 16.2 Per-turn extraction (`api/state.py::make_social_writer`)
-
-One LLM call (`_extract_social_mentions`) surfaces named third-party mentions + a short context
-snippet each; the *real* SC-1 functions do the actual work — `resolve_entity` against the
-persisted graph's existing nodes, `infer_relationship_from_context` + `create_node` for a new
-person. `extract_events` (rule-based pass) attributes an interpersonal event only when the turn
-resolves to **exactly one** person — a turn naming two different people has its events skipped
-rather than guessing which person they're about (§13 principle 2, "never inferred beyond what's
-stated"); a turn mentioning the *same* person twice is deduplicated first so it still counts as
-one-person attribution (see 16.5, a bug caught in review).
-
-**UWM reconciliation (per explicit product decision).** Layer 5's SocialGraph is a strict
-superset of Layer 2's `UWM.relationship_graph.people` (a simple name/tier/mention_count list).
-Rather than ship two independent LLM calls both trying to notice "who did the user mention" —
-exactly the kind of divergent-reimplementation pair CLAUDE.md's audit flagged as a smell
-elsewhere in this codebase — Layer 5 is now the *only* place person mentions are resolved.
-`_extract_uwm_signals`'s prompt no longer asks about people at all; `make_state_update_writer`
-projects the turn's touched `SocialNode`s onto `UWM.relationship_graph.people` via
-`_person_projection` (a lossy display mapping from Layer 5's richer `RelationshipType` taxonomy
-to the UWM's loose free-text tier — not a second classification, the real classification is
-still `infer_relationship_from_context`'s). `test_writer_creates_and_merges_the_user_world_model_
-from_extracted_signals` (Layer 2's original UWM test) still exercises the pre-Layer-5 fallback
-path (no `social_writer_fn`) intentionally, so both are covered.
-
-**Known limitation, not fixed here:** `extract_events`' rule-based pass sets
-`summary = " ".join(text.split())[:200]` — the near-verbatim user message, not a compressed
-extracted description. This contradicts the module's own §10 Constraint 3 ("events store a
-neutral summary... never the raw conversation text"), but it's the *real* SC-2 function's actual
-behavior, shipped and tested before this pass — the gap was simply latent while the layer had no
-caller. `make_social_writer` calling the real function makes it a genuine on-disk surface for
-the first time. Not fixed by rewriting event_tracker.py's summary logic (out of scope for a
-wiring pass); tracked in `docs/POLISH_BACKLOG.md`.
-
-### 16.3 Orchestrator hook (`backend/pipeline/conversation_orchestrator.py`)
-
-A new optional `PipelineSteps.social_coaching(ctx, response) -> response` hook runs in
-`_generate_normal` right after generation (both System 1 and System 2), before SC-1 Ethical
-Guardrails — so guardrails always gets the final say over the delivered text, coaching-modified
-or not. `api/assembly.py::social_coaching` forwards real inputs (persisted graph/events/patterns
-via a new `social_provider`, `ctx.emotion_intent`, `ctx.persona_packet.relationship_state.stage`,
-`ctx.persona_packet.voice_parameters`) into the real Layer 5 orchestrator itself —
-`packet_builder.build_social_intelligence_packet` — rather than calling
-`detect_coaching_opportunity`/`inject_observation` directly. **Corrected 2026-08-09**: the first
-version of this wiring (the initial Layer 5 build) called those two functions directly, which
-worked for the inline-delivery path but silently skipped two things the real orchestrator already
-does: regenerating `PATTERN_REFLECTION`/`CONFLICT_NAVIGATION` observation text through an LLM
-(`observation_llm_fn`, wired to `system1.complete`) instead of using the pattern's raw
-`plain_language_description` verbatim, and populating `proactive_coaching_queue` for a deferred
-opportunity — which is what makes the Layer 6 handoff (16.6 below) possible at all. This is
-exactly the "wire to the real module, don't reimplement it" trap CLAUDE.md calls out: the real,
-fuller orchestrator already existed with zero callers; the adapter should have called it from the
-start instead of re-deriving a subset of its sequencing.
-
-Cold start is safe by construction: `detect_coaching_opportunity`'s gate 1 (called internally by
-`build_social_intelligence_packet`) already returns "no opportunity" on an empty
-graph/events/patterns, which is every account's state until the background job (16.4) has run at
-least once.
-
-### 16.4 Background job (`background/social_pattern_job.py`)
-
-Registered as `"social_pattern_detection"`, a 7th entry in `background/scheduler.py`'s `JOBS`,
-on a **fixed weekly interval** — the doc's literal §5.4 cadence ("every 5 sessions") would need
-a persisted sessions-since-last-run counter that doesn't exist anywhere in this codebase yet
-(the FCE has the identical gap, `docs/POLISH_BACKLOG.md`'s Layer 2 entry); matching the shape
-every other job already uses was an explicit product decision over building new counter
-infrastructure for this one job alone.
-
-`detect_patterns` (SC-3) is a pure function with no memory of prior runs — every call mints
-fresh `pattern_id`s for whatever it currently detects. The job re-identifies each freshly
-detected pattern against last week's *active* patterns by its real identity
-(`pattern_type` + sorted `person_ids_involved`), carrying `pattern_id`/`has_been_surfaced`/
-`surface_count`/`user_acknowledged`/`last_activation` forward when the same pattern is still
-active, and deactivating (`is_active=False`) any pattern that was active last run but isn't
-detected this run. Without this, the same recurring conflict would duplicate into a new,
-unsurfaced row every week — see 16.5, a bug caught and fixed in review, with a regression test
-(`test_social_pattern_job_does_not_duplicate_the_same_pattern_across_runs`).
-
-### 16.5 Bugs caught and fixed in review (not shipped)
-
-Four real bugs were caught before this was reported done — via advisor review, each with a
-regression test proving the fix:
-
-1. **Naive/aware datetime mismatch in the background job**, identical in shape to Layer 3's BES
-   bug (`docs/layer-3-architecture.md` §18): `detect_patterns`' own `now` default is naive
-   (`datetime.utcnow()`), but real `SocialEvent.reported_timestamp` is tz-aware. Fixed by passing
-   an explicit `now=datetime.now(timezone.utc)` from the job, same narrowly-scoped call-site fix
-   as Layer 3's (not touching `pattern_recognizer.py`'s own default).
-2. **Silent merging of distinct people who share a relationship type.** `resolve_entity`'s
-   relationship-type-from-context match sits at exactly 0.70 confidence — `is_tentative_match`'s
-   own [0.65, 0.80) tentative range, not a confirmed match. The first version of the writer
-   discarded that confidence value entirely, so a second, different friend named in a later turn
-   would silently resolve onto the first friend's node. Fixed by rejecting a tentative match and
-   creating a new node instead. **Trade-off, not a further fix:** this means a person referred to
-   by relationship term rather than name across turns ("my sister Maya" then later just "my
-   sister") can create a duplicate node instead of merging — §3.4's "tentative matches are
-   confirmed over later sessions" describes a confirmation mechanism this app doesn't have. A
-   duplicate is recoverable; a silent merge of two real people is not — the trade was made
-   deliberately in that direction.
-3. **The same coaching observation would repeat on every qualifying turn forever**, because
-   nothing ever set `has_been_surfaced`/`surface_count`/`last_observed` — `gate_3_recency` exists
-   specifically to block a repeat and was permanently inert. Fixed by adding
-   `PostgresSocialStore.mark_pattern_surfaced` (a new write path, called from
-   `api/assembly.py::social_coaching` only when `inject_observation` actually delivered the
-   observation this turn, not when it deferred for lack of length headroom) and wiring it as a
-   new `social_surface_writer` hook. Caught partway through: `gate_3_recency` reads
-   `pattern.last_observed`, not `last_activation` — the first version of the fix set only
-   `has_been_surfaced`/`surface_count`/`last_activation` and the recency block still didn't fire.
-4. **A turn naming the same person twice double-counted the mention** (`mention_count`
-   incremented per mention, not per turn) and, because `len(touched) == 1` used an undeduplicated
-   list, incorrectly skipped event attribution for a turn that was unambiguously about one
-   person. Fixed by deduplicating resolved `person_id`s before both the count-increment and the
-   single-person check.
-
-### 16.6 §9.3 Layer 6 handoff wired (2026-08-09)
-
-A deferred `CoachingOpportunity` (gate 2/3 blocked, or `inject_observation` deferred it for lack
-of length headroom) is no longer just dropped. `api/state.py::make_proactive_coaching_writer`
-turns `packet.proactive_coaching_queue` entries into durable `ProactiveItem`s via Layer 6's real
-`on_deferred_coaching` intake contract and upserts them into `PostgresProactiveQueue`, so a
-pattern the user isn't ready to hear about right now becomes a real outreach candidate instead of
-silently vanishing. Full detail and the regression test: `docs/layer-6-architecture.md` §16.
-
-## 17. Follow-up (2026-08-09): the third coaching type/delivery combination tested end-to-end
-
-`docs/POLISH_BACKLOG.md`/`docs/PENDING_WORK.md` flagged the three coaching delivery types
-(`DeliveryMode.INLINE`, `CoachingType.STRENGTH_ACKNOWLEDGMENT`, `CoachingType.SUPPORT_NETWORK_
-NUDGE`) as real, unmodified functions with no test proving they reach a delivered response
-through the real orchestrator — only `PATTERN_REFLECTION` (`AS_QUESTION` delivery, LLM-generated
-text) had a real end-to-end test (§16.6's sibling, `test_real_layer5_wiring_coaching_observation_
-reaches_delivered_response`).
-
-Investigated `coaching_detector.py`'s `_PATTERN_TO_COACHING` map and confirmed
-`STRENGTH_ACKNOWLEDGMENT`/`SUPPORT_NETWORK_NUDGE` are canned-template types (`OBSERVATION_
-TEMPLATES`, no LLM call), reached via `SocialPatternType.HEALTHY_RELATIONSHIP_PATTERN`/
-`SOCIAL_WITHDRAWAL_PATTERN` and always delivered `DeliveryMode.INLINE` (per
-`build_opportunity_from_pattern`'s `is_reflection` branch). No code changes were needed — the
-functions already work — only test coverage: `tests/unit/api/test_assembly_turn.py::
-test_real_layer5_wiring_strength_acknowledgment_delivers_a_templated_inline_observation` and
-`..._support_network_nudge_delivers_a_templated_inline_observation`, each seeding a real
-persisted `SocialPattern` of the matching type and asserting the template text (not a mock)
-appears in the delivered response through the real orchestrator.
-
-## 18. Fixed (2026-08-09): rule-based event summaries contradicted the module's own constraint
-
-`event_tracker.py`'s docstring and `SocialEvent.summary`'s own field comment both promise "a
-neutral extracted description — never the raw conversation text" (§10 Constraint 3). The
-rule-based Pass 1 (`extract_events`, no `llm_fn` needed) violated this on every call:
-`summary = " ".join(text.split())[:200]` was a whitespace-normalized, truncated copy of the
-user's actual message — names, amounts, anything in the first 200 characters, verbatim. Only the
-optional LLM pass (Pass 2, background-only, rarely exercised) produced a genuinely neutral
-summary. Fixed with `_NEUTRAL_SUMMARY`, a small per-`SocialEventType` template dict covering the
-seven event types the rule-based patterns can actually produce (conflict onset/resolution,
-support withheld/received, boundary violation/set, reconnection) — no LLM call added, still fully
-deterministic and offline. See `tests/unit/test_event_tracker.py::
-test_rule_based_summary_is_neutral_never_raw_text`.
+`tests/unit/api/test_assembly_turn.py::test_real_layer5_wiring_coaching_observation_reaches_delivered_response`,
+`..._strength_acknowledgment_delivers_a_templated_inline_observation`,
+`..._support_network_nudge_delivers_a_templated_inline_observation`, and
+`..._deferred_coaching_reaches_the_layer6_proactive_queue` prove the coaching paths end-to-end
+through the real orchestrator. `tests/unit/test_event_tracker.py::test_rule_based_summary_is_neutral_never_raw_text`
+and `test_social_pattern_job_does_not_duplicate_the_same_pattern_across_runs` cover the two fixed
+bugs directly.
 
 ---
 
-*This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 5 requires assumptions or inferences from other documents.*
+*This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation and current live-wiring state. No behavior of Layer 5 requires assumptions or inferences from other documents.*
+
+## 15. Decision Log
+
+- **2026-08-04 (Phase 5 polish pass):** `backend/layer5_relationship/` itself was clean (all 63
+  tests passing, no bugs), but the layer had **zero production callers of any kind** — no
+  orchestrator hook, no DB tables, no scheduler job entry. Unlike Layer 4, there was no integration
+  point to wire into at all; logged as real feature work (new DB schema, orchestrator hook, per-turn
+  extraction, background job) rather than fixed inline.
+- **2026-08-08 (Phase 5 follow-up — full feature build):** Built all four missing pieces:
+  persistence (3 new Postgres tables + `social_serde.py`), per-turn extraction
+  (`make_social_writer`), the orchestrator hook (`social_coaching`), and the background job
+  (`social_pattern_detection`, weekly). Also fixed 4 bugs caught in advisor review before shipping:
+  a naive/aware datetime mismatch in the background job; `resolve_entity`'s tentative-match
+  confidence being silently discarded (fixed to reject and create a new node instead, trading
+  duplicate-node risk for avoiding silent bad merges); `has_been_surfaced` never being set (making
+  `gate_3_recency` permanently inert); and same-person mentions in one turn being double-counted.
+- **2026-08-09:** Layer 6 handoff (§9.3 intake) wired via `make_proactive_coaching_writer` +
+  `on_deferred_coaching`.
+- **2026-08-09:** Corrected `social_coaching` to call the real `build_social_intelligence_packet`
+  orchestrator instead of `detect_coaching_opportunity`/`inject_observation` directly — the direct-
+  call version had been silently skipping LLM-based observation regeneration and
+  `proactive_coaching_queue` population since the initial build. Direct instance of the "wire to
+  the real module, don't reimplement it" principle.
+- **2026-08-09:** Proved the third coaching type/delivery combination
+  (`STRENGTH_ACKNOWLEDGMENT`/`SUPPORT_NETWORK_NUDGE`, templated inline) end-to-end with new tests;
+  no code changes were needed, the functions already worked.
+- **2026-08-09:** Fixed rule-based event summaries to be genuinely neutral (`_NEUTRAL_SUMMARY`
+  templates) — they had been near-verbatim raw user text since before the layer had any caller,
+  violating §10 Constraint 3.

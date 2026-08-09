@@ -1087,49 +1087,6 @@ Layer 7 creates `ProactiveItem` entries using the intake contracts defined in La
 
 ---
 
-## 12.5 Implementation Notes (as-built)
-
-This section records how the specification above is realized in `backend/layer7_goals/`. The code is the single source of truth; §1–11 are the design intent.
-
-### Module map
-
-| Spec sub-component | Module | Key entry point |
-|---|---|---|
-| SC-1 Goal Extractor | `goal_extractor.py` | `should_run_extractor`, `extract_goal`, `is_duplicate_goal`, `GOAL_SIGNAL_KEYWORDS` |
-| SC-2 Goal Store | `goal_store.py` | `GoalStore`, `apply_transition`, `STATUS_TRANSITIONS` |
-| SC-3 Progress Monitor | `progress_monitor.py` | `classify_progress_signal`, `update_progress_score`, `compute_momentum`, `run_staleness_scan` |
-| SC-4 Accountability Response Modifier | `accountability_modifier.py` | `decide_goal_reference` → `GoalContextPacket` |
-| SC-5 Goal Decomposer | `goal_decomposer.py` | `decompose_goal`, `register_milestones_with_layer6`, `check_milestone_completion` |
-| Orchestrator (§8) | `engine.py` | `run_goal_pipeline` → `Layer7Output` |
-| All dataclasses / enums | `schemas.py` | — |
-
-### Type reuse and dependency direction
-
-Layer 7 imports `EmotionClassification` from Layer 3 (the `emotional_state` used in SC-4's distress check). The SC-5 Layer 6 handoff imports Layer 6's `on_goal_milestone_approaching` intake contract and returns Layer 6 `ProactiveItem`s — closing the loop the Proactive Engine already consumes (§9.4 there). There is no forward dependency cycle: Layer 6's intake takes plain goal fields, and Layer 7 calls it.
-
-### Dependency injection for offline testability
-
-The three LLM uses are injected: SC-1 extraction (`llm_fn` returning a dict/JSON), SC-3 post-session deep inference (an LLM call wired by the pipeline; the inline path is keyword-only and never blocks), and SC-5 decomposition (`llm_fn`). The embedding comparisons — dedup (SC-1), relevance (SC-2), milestone matching (SC-5) — accept an injected `similarity_fn` with a token-overlap default. With nothing injected the layer degrades exactly as §10 prescribes: SC-1 returns "no goal," SC-5 returns empty milestones, and the synchronous path still produces a valid (empty) `GoalContextPacket`.
-
-### Behavioral deviations from the design text
-
-- **Lifecycle folded into the Goal Store.** The doc lists SC-2 as "Goal Store" with lifecycle management; the explicit `STATUS_TRANSITIONS` table and `apply_transition` live in `goal_store.py` rather than a separate lifecycle module. The §4.6 table and the §5.6 staleness reasons use different trigger names (`stale_21_days` vs `stale_14_days`); both are encoded, and the 24-hour scan emits `stale_14_days` for active/on-track goals as §5.6 specifies.
-- **Extraction inline only with an LLM.** §2 runs SC-1 asynchronously; the orchestrator runs it inline only when an `extractor_llm_fn` is supplied, and always failure-tolerantly (wrapped in `_safe`), so the synchronous response path is never blocked (§10).
-- **Scaffold relocation.** The May-28 scaffold (`goal_lifecycle`, `task_engine`, `conflict_detector`, `life_event_tracker`) was removed. Lifecycle is in the store; task plans, goal-conflict detection, and life-event cascades are out of scope for the Layer 7 spec (the doc's five SCs do not include them).
-
-### Hard rules as implemented (§10, §11)
-
-- The synchronous path is wrapped so SC-2 failing returns `[]` and SC-4 then yields `should_reference_goal=False` — a Layer 7 failure never blocks the response.
-- Goals yield to the present moment: `decide_goal_reference` hard-blocks crisis / emotional_support / casual modes and brand-new relationships, and only ever references the single highest-relevance goal (§6.4).
-- Progress scores are internal only — `GoalContextPacket` carries plain-language `response_instruction` / `tone_instruction`, never a numeric score for the user (§11 principle 2).
-
-### Test coverage
-
-58 unit tests across six files exercise every sub-component and the orchestrator:
-`test_goal_extractor.py` (10), `test_goal_store.py` (8), `test_progress_monitor.py` (17), `test_accountability_modifier.py` (11), `test_goal_decomposer.py` (6), `test_layer7_engine.py` (6). Coverage includes the pre-filter + dedup + update/extract branches; the status-transition table and relevance ranking with the at-risk bonus; signal classification, the progress/momentum formulas, and the staleness scan; all four reference cases plus the hard blocks and single-goal rule; decomposition + Layer 6 handoff + milestone-completion detection; and the §10 never-block guarantee.
-
----
-
 ## 12. Performance Targets
 
 | Operation | Target | Notes |
@@ -1145,193 +1102,151 @@ The three LLM uses are injected: SC-1 extraction (`llm_fn` returning a dict/JSON
 
 ---
 
-## 13. Live wiring status (Phase 7 polish pass, 2026-08-04)
+## 17. Live Wiring Status (current state)
 
-`backend/layer7_goals/` itself is clean: all 58 tests pass, matches the spec closely (including
-the documented §12.5 deviations). Layer 7 is the best-wired layer audited so far — `run_goal_pipeline`
-(SC-1 extraction, SC-2 retrieval, SC-3 inline progress inference, SC-4 accountability decision) runs
-for real every turn via `make_goal_writer`. One real bug was found and fixed; two structural gaps
-were found and logged.
+This section records how the specification above is realized in `backend/layer7_goals/` and how
+it is wired into the live pipeline. The code is the single source of truth; §1–11 are the design
+intent.
 
-### 13.1 Fixed this phase — `_goal_directive` ignored §6.3's hard blocks
+**Module map**: SC-1 Goal Extractor → `goal_extractor.py` (`should_run_extractor`, `extract_goal`,
+`is_duplicate_goal`, `GOAL_SIGNAL_KEYWORDS`); SC-2 Goal Store → `goal_store.py` (`GoalStore`,
+`apply_transition`, `STATUS_TRANSITIONS`); SC-3 Progress Monitor → `progress_monitor.py`
+(`classify_progress_signal`, `update_progress_score`, `compute_momentum`, `run_staleness_scan`);
+SC-4 Accountability Response Modifier → `accountability_modifier.py` (`decide_goal_reference` →
+`GoalContextPacket`); SC-5 Goal Decomposer → `goal_decomposer.py` (`decompose_goal`,
+`register_milestones_with_layer6`, `check_milestone_completion`); orchestrator (§8) → `engine.py`
+(`run_goal_pipeline` → `Layer7Output`); dataclasses/enums → `schemas.py`.
 
-`api/assembly.py`'s `_goal_directive` (which actually reaches the planner prompt — see §13.2)
-built its own goal-accountability directive independently of the real `decide_goal_reference`,
-and had none of §6.3's hard blocks: it injected a goal reference regardless of
-`conversation_mode` (including `crisis` and `emotional_support`, which §6.3 and §6.4 anti-pattern
-4 explicitly forbid — "Human distress overrides everything") and regardless of relationship stage
-(including brand-new relationships, also explicitly blocked). It also referenced up to 3 goals,
-violating anti-pattern 3 ("never reference more than one goal per response").
+**Type reuse and dependency direction**: Layer 7 imports `EmotionClassification` from Layer 3 (the
+`emotional_state` used in SC-4's distress check). The SC-5 Layer 6 handoff imports Layer 6's
+`on_goal_milestone_approaching` intake contract and returns Layer 6 `ProactiveItem`s — closing the
+loop the Proactive Engine already consumes (§9.4 there). There is no forward dependency cycle:
+Layer 6's intake takes plain goal fields, and Layer 7 calls it.
 
-Fixed by adding the three doc-specified blocks directly to `_goal_directive` and capping to the
-single highest-relevance goal title. Verified with a new end-to-end test
-(`test_real_layer7_goal_directive_blocked_in_emotional_support_and_shown_in_goal_planning`) that
-runs the real orchestrator through blocked-mode, blocked-stage, and allowed cases.
+**Dependency injection for offline testability**: the three LLM uses are injected: SC-1
+extraction (`llm_fn` returning a dict/JSON), SC-3 post-session deep inference (an LLM call wired
+by the pipeline; the inline path is keyword-only and never blocks), and SC-5 decomposition
+(`llm_fn`). The embedding comparisons — dedup (SC-1), relevance (SC-2), milestone matching (SC-5)
+— accept an injected `similarity_fn` with a token-overlap default. With nothing injected the layer
+degrades exactly as §10 prescribes: SC-1 returns "no goal," SC-5 returns empty milestones, and the
+synchronous path still produces a valid (empty) `GoalContextPacket`.
 
-**Practical effect worth stating plainly**: `conversation_mode` defaults to `casual` for most
-short/neutral turns (Phase 3 finding), and `casual` is one of the three blocked modes — so this
-fix makes goal-accountability injection fire far less often than before (previously: every turn
-with an active goal, unconditionally). This is the architecturally correct behavior per §6.3, but
-it means the feature is now much quieter in practice than CLAUDE.md previously implied.
+**Behavioral deviations from the design text**: lifecycle is folded into the Goal Store rather than
+a separate lifecycle module — the doc lists SC-2 as "Goal Store" with lifecycle management, but the
+explicit `STATUS_TRANSITIONS` table and `apply_transition` live directly in `goal_store.py` (the
+§4.6 table and the §5.6 staleness reasons use different trigger names, `stale_21_days` vs.
+`stale_14_days`; both are encoded, and the 24h scan emits `stale_14_days` for active/on-track goals
+per §5.6). Extraction runs inline only when an `extractor_llm_fn` is supplied, always
+failure-tolerantly (wrapped in `_safe`), so the synchronous response path is never blocked (§10),
+even though §2 describes SC-1 as asynchronous. The May-28 scaffold's `goal_lifecycle`, `task_engine`,
+`conflict_detector`, and `life_event_tracker` modules were removed — lifecycle lives in the store,
+and task plans / goal-conflict detection / life-event cascades are out of scope for the doc's five
+SCs.
 
-### 13.2 Not fixed, tracked in `docs/POLISH_BACKLOG.md`
+**Hard rules as implemented (§10, §11)**: the synchronous path is wrapped so SC-2 failing returns
+`[]` and SC-4 then yields `should_reference_goal=False` — a Layer 7 failure never blocks the
+response. Goals yield to the present moment: `decide_goal_reference` hard-blocks crisis /
+emotional_support / casual modes and brand-new relationships, and only ever references the single
+highest-relevance goal (§6.4). Progress scores are internal only — `GoalContextPacket` carries
+plain-language `response_instruction` / `tone_instruction`, never a numeric score for the user (§11
+principle 2).
 
-- **The real `GoalContextPacket` (SC-4's actual output) never reaches Layer 4.**
-  `make_goal_writer` calls `run_goal_pipeline` and discards the returned `Layer7Output` entirely
-  — every field SC-4 exists to produce (`reference_type`, `response_instruction`,
-  `tone_instruction`, `goal_reference_position`, `max_goal_reference_chars`) is computed *after*
-  the response has already been delivered, because `make_goal_writer` runs in the post-turn write
-  chain (Layer 2 is read-only during inference, by design). `_goal_directive`'s hand-rolled
-  directive (§13.1) is what actually reaches the prompt. Reconciling this needs SC-2/3/4 to run
-  pre-generation for the current turn, which is a structural pipeline-ordering question, not a
-  small fix.
-- **SC-5 (Goal Decomposer) never runs; `Goal.milestones` is always `[]` and `Goal.deadline` is
-  never populated from extraction.** `engine.py`'s `Goal(...)` construction does not set
-  `deadline` from the extractor's `deadline_description`/`has_explicit_deadline` fields (and the
-  extractor itself only returns a free-text description, never a parsed date — date parsing from
-  natural language isn't implemented anywhere in the codebase). Combined with SC-5 being unwired,
-  every extracted goal has no deadline and no milestones. **This corrects a Phase 6 claim**: Layer
-  6's `api/proactive_gen.py::goal_checkin_item` was documented as "the one live intake contract"
-  producing real candidates, but `_nearest_future_target` requires either a milestone or a
-  deadline date to find anything — so for goals extracted through the live pipeline, it returns
-  `None` on every turn. The goal→proactive intake is wired correctly; it just has no real input to
-  act on yet.
+**SC-1 Goal Extractor**: live, runs inline per turn via `run_goal_pipeline`/`make_goal_writer`
+when an LLM is configured; always failure-tolerant, so extraction can never block a response.
 
-## 14. SC-5 wired + the deadline/metric field-drop fixed (follow-up, 2026-08-09)
+**SC-2 Goal Store**: live; every turn's extraction/retrieval goes through `GoalStore`. Status now
+correctly transitions to `"completed"`/`"abandoned"` (with a new `status_changed_at` timestamp)
+when `run_goal_pipeline` sees a terminal `progress_signal` — previously no live code path ever set
+a terminal status at all (see Decision Log, 2026-08-09), which also silently starved Year in
+Review's achievement counting (`docs/layer-10-architecture.md` §16.2).
 
-Both §13.2 gaps closed, without needing natural-language date parsing:
+**SC-3 Progress Monitor**: live inline (keyword-based `classify_progress_signal` on every turn) plus
+an async post-session deep-inference path. `run_staleness_scan` (the `TENTATIVE`→`ARCHIVED`/
+`ACTIVE`/`ON_TRACK`→`AT_RISK`/`AT_RISK`→`ABANDONED` decay path, §5.6) is wired via
+`background/goal_staleness_job.py`, a new weekly job that loads every non-terminal goal, runs the
+real scan, and persists each `GoalStateChange` through `PostgresGoalStore`
+(`goal_staleness_days` config key, default 7). Without this job a goal the user simply stops
+mentioning would never decay on its own — it could only reach a terminal state through an explicit
+completion/abandonment phrase.
 
-- **`engine.py`'s `Goal(...)` construction now threads `deadline_description`,
-  `deadline_is_inferred` (`not has_explicit_deadline`), `has_metric`, and `metric_description`
-  from the extractor's already-computed fields** — they were extracted and simply dropped at
-  construction. Proven by `tests/unit/test_layer7_engine.py::
-  test_new_goal_threads_deadline_and_metric_fields_from_extraction`. `Goal.deadline` (a parsed
-  `datetime`) is still never populated — no natural-language date parser exists anywhere in this
-  codebase, and building one is out of scope for a wiring pass — but `deadline_description` now
-  reaching the goal also makes SC-5's decomposition prompt (`build_decomposition_prompt`, which
-  reads `goal.deadline_description`) actually see the user's stated deadline instead of always
-  "open-ended."
-- **SC-5 (`decompose_goal`) is now called from `api/state.py::make_goal_writer`** for every goal
-  `run_goal_pipeline` newly creates this turn: the goal is reloaded from the store, decomposed via
-  an LLM call (JSON milestones with `target_date`/`progress_weight` + habits, per
-  `build_decomposition_prompt`), and `goal.milestones`/`goal.habits` are persisted back.
-  `decompose_goal`'s own `_parse_date` already accepts an ISO `target_date` string from the LLM —
-  no separate date-parsing component was needed, since the decomposition LLM call can be asked to
-  return an ISO date directly (unlike the free-text `deadline_description` from the *extraction*
-  call, which SC-1's prompt never asked to be structured).
-- **Found in the process, fixed as a one-line schema bug**: `Goal.milestones`/`Goal.habits` were
-  declared as bare `list` (with a `# list[Milestone]` comment) rather than `list[Milestone]`. The
-  shared `infra/db/memory_serde.from_jsonable` reconstructs nested dataclasses only from a real
-  parameterized generic — with the bare annotation, a reloaded goal's milestones silently
-  round-tripped as plain `dict`s instead of `Milestone` objects, which `goal_checkin_item`'s
-  `getattr(ms, "target_date", None)` would have silently read as `None` on every dict (the
-  fallback default hides the mismatch instead of raising). Fixed to `list[Milestone]`/
-  `list[Habit]` — `Goal.signal_events` on the very next line already used the correct pattern, so
-  this was an isolated oversight, not a systemic one.
+**SC-4 Accountability Response Modifier**: live and runs **pre-generation**, same-turn.
+`decide_goal_reference` is pure/read-only, so `api/state.py::make_goal_provider` calls
+`get_relevant_goals` → `classify_progress_signal` → `decide_goal_reference` directly from the read
+path, using this turn's *live* `conversation_mode`/`emotional_state`/`relationship_stage` — not a
+persisted decision from the post-turn writer. This is deliberate: "goals yield to the present
+moment" (§11 principle 3) is a same-turn invariant, and persisting-and-replaying a decision from
+`make_goal_writer` (which runs post-turn, since Layer 2 is read-only during inference) would
+reference a goal under a stale gate computed under *last* turn's mode — wrong exactly on the turns
+where mode changes (e.g. casual → crisis). `api/assembly.py::_goal_directive` consumes the real
+`GoalContextPacket.response_instruction` directly; its own duplicated `_GOAL_BLOCKED_MODES`/stage
+check was deleted once `decide_goal_reference` was confirmed to already enforce the same §6.3 hard
+rule internally (duplicating it was exactly the drift risk CLAUDE.md warns about — a rule fixed in
+one place, silently unfixed in the other). The directive text is progress-signal-differentiated
+(celebratory on completion, gentle on a distressed setback, a one-sentence topic connection when
+relevant), capped to the single highest-relevance goal.
 
-Proven end to end (extraction → decomposition → persisted `Milestone.target_date` → Layer 6's
-`goal_checkin_item` builds a real item) by
-`tests/unit/api/test_state.py::test_goal_writer_decomposes_a_new_goal_into_a_dated_milestone`.
-This closes the Layer 6 correction noted in §13.2 and `docs/POLISH_BACKLOG.md`'s Layer 6 entry —
-`goal_checkin_item` can now produce real candidates for goals the decomposition LLM gives a dated
-milestone to. `Layer7Output.milestones_decomposed` (a summary/audit field) is not populated by
-this pass — cosmetic, not load-bearing, left as `[]`. `register_milestones_with_layer6` (an
-alternate, earlier Layer-6-handoff path, distinct from `goal_checkin_item`'s independent per-turn
-walk) remains uncalled — redundant with `goal_checkin_item`, which already covers the same
-milestones every turn via `make_proactive_writer`; not wired to avoid two divergent paths writing
-the same `GOAL_CHECK_IN` item.
+**SC-5 Goal Decomposer**: live, called from `api/state.py::make_goal_writer` for every goal
+`run_goal_pipeline` newly creates. The goal is reloaded from the store, decomposed via an LLM call
+(JSON milestones with `target_date`/`progress_weight` + habits, per `build_decomposition_prompt`),
+and `goal.milestones`/`goal.habits` are persisted back — `decompose_goal`'s own `_parse_date`
+accepts an ISO `target_date` string from the LLM directly, so no separate date-parsing component
+was needed. `engine.py`'s `Goal(...)` construction threads `deadline_description`,
+`deadline_is_inferred`, `has_metric`, and `metric_description` from the extractor's already-computed
+fields (previously extracted and silently dropped at construction). `Goal.deadline` (a parsed
+`datetime`) is still never populated — no natural-language date parser exists anywhere in this
+codebase, and building one is out of scope for a wiring pass — but `deadline_description` reaching
+the goal is enough for SC-5's decomposition prompt to see the user's stated deadline instead of
+always "open-ended." `register_milestones_with_layer6` (an alternate, earlier Layer-6-handoff path)
+remains deliberately uncalled — it is redundant with `goal_checkin_item`
+(`api/proactive_gen.py`), which already covers the same milestones every turn via
+`make_proactive_writer`; wiring both would risk two divergent paths writing the same
+`GOAL_CHECK_IN` item. `Layer7Output.milestones_decomposed` (a summary/audit field) is not
+populated — cosmetic, not load-bearing.
 
-## 15. Goals never actually reached a terminal status (follow-up, 2026-08-09)
+**Recurring bug class worth remembering**: `Goal.milestones`/`Goal.habits` were declared as bare
+`list` (with only a `# list[Milestone]` comment) rather than the parameterized `list[Milestone]`.
+The shared `infra/db/memory_serde.from_jsonable` only reconstructs nested dataclasses from a real
+parameterized generic — with a bare annotation, a reloaded goal's milestones silently round-tripped
+as plain `dict`s instead of `Milestone` objects, which `goal_checkin_item`'s
+`getattr(ms, "target_date", None)` would then silently read as `None` (the fallback default hides
+the mismatch instead of raising). Fixed to `list[Milestone]`/`list[Habit]`. The same pattern was
+independently found and fixed in Layer 9's `UserFormatProfile.explicit_format_feedback_events` and
+Layer 10's `NarrativeArc.chapters`/`LifeChapter.defining_moments` — worth grepping for bare `list`
+annotations on any dataclass that round-trips through `memory_serde` before adding a new one.
 
-Discovered while fixing the `"achieved"` vs. `"completed"` status-string bug flagged as a Layer 10
-follow-up (`docs/layer-10-architecture.md` §16.2, §16.6): the real bug was one level deeper than a
-string mismatch. **No code in the live per-turn path ever set `Goal.status` to `"completed"` or
-`"abandoned"` at all.**
+**Test coverage**: 58 unit tests across six files (`test_goal_extractor.py`, `test_goal_store.py`,
+`test_progress_monitor.py`, `test_accountability_modifier.py`, `test_goal_decomposer.py`,
+`test_layer7_engine.py`) covering every sub-component and the orchestrator, plus real
+end-to-end tests through `api/assembly.py`/`api/state.py` proving each wiring fix below against
+real object shapes rather than mocked pipeline steps.
 
-`progress_monitor.update_progress_score` sets `progress_score = 1.0` on a `COMPLETED` signal but
-deliberately leaves `.status` untouched — its own comment says "status handled by the transition
-rules." But `run_goal_pipeline` (`engine.py`), the only live caller of `update_progress_score`,
-never applied any such rule; it just persisted the goal with the score updated and the status
-exactly as it was before (almost always `"active"`). A user saying "I finally finished my
-marathon goal!" would move `progress_score` to 1.0 and trigger a `CELEBRATE_COMPLETION` reference
-that same turn, but the goal itself stayed `status="active"` forever afterward, with `status_
-changed_at` never existing as a field to set in the first place. This was invisible to the
-existing test (`test_completion_celebrated_and_score_full`) because it only ever asserted on
-`progress_score`, never on `status`.
+## 18. Decision Log
 
-**Fixed**: `Goal` gained a `status_changed_at: Optional[datetime]` field (set at creation too, for
-consistency — a goal's status did "change" to `active` the moment it was created).
-`run_goal_pipeline` now transitions `top.status` to `"completed"`/`"abandoned"` and stamps `status_
-changed_at` when `progress_signal.signal_type` is one of those two terminal values (their string
-values already match `GoalStatus`'s 1:1, so no new mapping was needed). Proven by two new tests
-in `tests/unit/test_layer7_engine.py`
-(`test_completion_signal_transitions_status_and_stamps_status_changed_at`,
-`test_abandonment_signal_transitions_status`) that assert on `.status`/`.status_changed_at`
-directly, closing the exact blind spot the old test had.
-
-This also fixes the actual root cause of `docs/layer-10-architecture.md` §16.6's Year in Review
-gap — `generate_year_in_review`'s `"achieved"` string (now fixed to `"completed"` in both
-`backend/layer10_longitudinal/retrospective.py` and `progress_tracker.py`) had nothing to match
-against anyway, since no goal ever reached that status. Both problems needed fixing together;
-fixing only the string would have left `achieved`/`goals_achieved` at 0 regardless.
-
-**Still open — found but not fixed this pass, logged properly rather than patched inline**:
-`progress_monitor.run_staleness_scan` (§5.6 — the staleness-driven decay path: `TENTATIVE`→
-`ARCHIVED` after 30 days untouched, `ACTIVE`/`ON_TRACK`→`AT_RISK` after 14 days, `AT_RISK`→
-`ABANDONED` after 30 more) **has zero production callers** (`grep -rn "run_staleness_scan"` outside
-`backend/layer7_goals/` and its own tests returns nothing). This is a real, previously-undocumented
-gap: without it, a goal the user simply stops mentioning never decays status on its own — it can
-only reach a terminal state through an explicit completion/abandonment phrase (now fixed above).
-Wiring it needs a background-job-shaped caller (a periodic sweep over all active goals, the same
-shape as `pattern_detection_job.py`/`life_calendar_job.py`), which is real, separate feature work —
-not something to fold silently into this fix. Tracked in `docs/POLISH_BACKLOG.md`.
-
-## 16. Follow-up (2026-08-09): `run_staleness_scan` wired + SC-4 reaches Layer 4 pre-generation
-
-### 16.1 Goal staleness sweep
-
-§15's "found but not fixed" gap is closed: `background/goal_staleness_job.py` (new, weekly) loads
-every goal in `tentative`/`active`/`on_track`/`at_risk` status, runs the real
-`run_staleness_scan`, and applies each `GoalStateChange` (status + `status_changed_at`) back
-through the real `PostgresGoalStore`. Registered in `background/scheduler.py`'s `JOBS` (weekly
-cadence, `goal_staleness_days` config key, default 7). Tests:
-`tests/unit/background/test_jobs.py::test_goal_staleness_job_decays_a_silently_neglected_active_
-goal` (a goal untouched for 20 days transitions to `at_risk` and persists for real) and
-`..._leaves_recently_mentioned_goals_untouched`.
-
-### 16.2 SC-4's `GoalContextPacket` now reaches Layer 4, same-turn
-
-§13's pending item ("SC-4's real `GoalContextPacket` still never reaches Layer 4 — a
-pipeline-ordering question") turned out to have a cleaner resolution than persisting-and-
-replaying a stale decision across turns. `decide_goal_reference` (`accountability_modifier.py`)
-is pure and read-only — it was only ever called from *inside* `run_goal_pipeline`
-(`make_goal_writer`, post-turn) because that's where SC-1/SC-2/SC-3 happen to run, not because it
-needs to. `classify_progress_signal` (the only other input it depends on besides a read-only
-`get_relevant_goals` query) is equally pure — the *mutating* half of progress classification
-(`update_progress_score`, `goal_store.update_goal`) is a separate call the writer still owns.
-
-`api/state.py::make_goal_provider` now calls `get_relevant_goals` → `classify_progress_signal` →
-`decide_goal_reference` directly, pre-generation, with this turn's *live* `conversation_mode`/
-`emotional_state`/`relationship_stage` — not a persisted decision from last turn. This matters
-because "goals yield to the present moment" (§11 principle 3) is a same-turn invariant: a
-persist-and-replay approach would have referenced a goal using a stale gate decision computed
-under last turn's mode, wrong exactly on the turns where the mode changed (e.g. casual → crisis).
-
-`api/assembly.py::_goal_directive` was rewritten to consume the real `GoalContextPacket`
-(`response_instruction`) instead of a bare-titles list, and its duplicated `_GOAL_BLOCKED_MODES`/
-stage check was deleted — `decide_goal_reference` already enforces the same §6.3 hard rule
-internally, so duplicating it was exactly the drift-risk CLAUDE.md warns about (a rule fixed in
-one place silently unfixed in the other). The directive text is now real and
-progress-signal-differentiated (celebratory on completion, gentle on a distressed setback, a
-one-sentence topic connection when relevant) instead of one generic "reference it naturally"
-template — reaching the planner via `_goal_directive`'s existing call site, no new hook.
-
-**Test rewrite required**: the pre-existing tests passed `goal_provider=lambda uid, msg: ["Run a
-5K"]` — bare title strings, incompatible with `decide_goal_reference`'s real `RelevantGoal`/`Goal`
-inputs (its topic-connection case specifically needs a real `Goal.momentum_score`). Rewrote
-`tests/unit/api/test_assembly_turn.py::test_real_layer7_goal_directive_blocked_in_emotional_
-support_and_shown_in_goal_planning` and `tests/unit/api/test_goal_relationship_injection.py::
-test_goal_titles_injected_into_prompt` to seed a real persisted `Goal` through `PostgresGoalStore`
-and trigger a real completion-signal case, rather than a synthetic list.
+- **2026-08-04:** Phase 7 polish pass — `api/assembly.py`'s `_goal_directive` built its own
+  goal-accountability directive independent of `decide_goal_reference`, missing all of §6.3's hard
+  blocks (crisis/emotional_support/casual mode, brand-new relationships) and referencing up to 3
+  goals instead of 1; fixed to add the blocks and cap to the single highest-relevance goal. Because
+  `conversation_mode` defaults to `casual` for most short/neutral turns, this made goal
+  accountability injection fire far less often than before — the architecturally correct behavior
+  per §6.3, but quieter in practice than earlier docs implied.
+- **2026-08-04:** Found (not fixed) — SC-4's real `GoalContextPacket` never reached Layer 4 because
+  `make_goal_writer` runs post-turn and discarded `Layer7Output`; and SC-5 never ran, so
+  `Goal.milestones` was always `[]` and `Goal.deadline` never populated, which meant Layer 6's
+  `goal_checkin_item` always returned `None` for real goals despite being wired correctly.
+- **2026-08-09:** SC-5 wired into `make_goal_writer` for every newly created goal;
+  `deadline_description`/`has_metric`/`metric_description` threaded from extraction into
+  `Goal(...)` instead of being dropped. Caught and fixed a bare-`list` schema bug on
+  `Goal.milestones`/`Goal.habits` that silently broke deserialization via `memory_serde`.
+- **2026-08-09:** Discovered while chasing a Layer 10 `"achieved"` vs. `"completed"` status-string
+  bug that the real defect was one level deeper: no live code path ever set `Goal.status` to a
+  terminal value at all. Added `Goal.status_changed_at` and made `run_goal_pipeline` transition
+  status on completion/abandonment signals. Also surfaced (found but not fixed this pass)
+  `run_staleness_scan` having zero production callers.
+- **2026-08-09:** `run_staleness_scan` wired via new weekly `background/goal_staleness_job.py`.
+  SC-4's `GoalContextPacket` moved from an unreachable post-turn computation to a same-turn,
+  pre-generation read (`api/state.py::make_goal_provider`) — the cleaner fix once
+  `decide_goal_reference`/`classify_progress_signal` were confirmed pure and callable directly from
+  the read path, avoiding a persist-and-replay design that would reference goals under a stale
+  gate decision.
 
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*

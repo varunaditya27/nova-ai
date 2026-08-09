@@ -9,6 +9,11 @@ this file exists to prevent.
 Entries are grouped by the layer that surfaced them. Mark an entry `[done]` with the commit/PR
 that closed it instead of deleting the entry — it's the record of what got skipped and why.
 
+**This file is the source of truth.** `docs/PENDING_WORK.md` is a generated filtered view — only
+the entries here still missing `[done]`, regrouped for planning. When you close an item, mark it
+`[done, DATE]` here first, then update its corresponding bullet in `PENDING_WORK.md` (or remove it
+if nothing about the still-open item remains).
+
 ---
 
 ## Layer 1 — Input Perception (audited 2026-08-04)

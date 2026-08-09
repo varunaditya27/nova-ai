@@ -1480,11 +1480,13 @@ These are consumed by orchestration logic and translated into natural-language i
 
 ---
 
-## 19. Implementation Notes (as-built)
+## 19. Live Wiring Status (current state)
 
-Layer 2 is implemented end-to-end in `backend/layer2_memory/`, pure-stdlib (no pgvector, no
-ORM, no numpy). Heavy/non-deterministic dependencies sit behind protocols so the whole engine
-runs and is tested offline; real backends drop in without touching engine code.
+Layer 2 is implemented end-to-end in `backend/layer2_memory/`, pure-stdlib (no pgvector, no ORM,
+no numpy). Heavy/non-deterministic dependencies sit behind protocols so the whole engine runs and
+is tested offline; real backends drop in without touching engine code. Every module is used
+somewhere — either by production wiring or by the module's own public API surface — with no
+unreachable code, and all eight sub-components now have real production callers.
 
 **Module map:**
 
@@ -1504,346 +1506,227 @@ runs and is tested offline; real backends drop in without touching engine code.
 | `audit_trail.py` | SC-8 (§10) | SHA-256 hash chain + narrative link detection |
 | `arbiter.py` | §11 | `memory_arbiter` (read) + `build_query_embedding` + MemoryPacket |
 | `state_updater.py` | §12 | `state_updater` (write path) |
+| `uwm_updater.py` | SC-5 | `merge_uwm_update` — pure, LLM-free profile/people/situations/psychological merge |
+| `identity_seed.py` | SC-4 | `default_identity_beliefs()` — boot-time seed |
 
 **Backend/store injection.** `Embedder`, `VectorIndex`, the FCE generalizer, the identity
-belief-generator, and the episode extractor are all injectable; the memory store and audit
-trail are passed in. Production wires the Ollama `nomic-embed-text` embedder + **ChromaDB**
+belief-generator, and the episode extractor are all injectable; the memory store and audit trail
+are passed in. Production wires the Ollama `nomic-embed-text` embedder + **ChromaDB**
 (`infra/vector_store/`) + PostgreSQL (`infra/db/`) and the LLM-backed generalizer/extractor; the
-defaults are dependency-free. (Supersedes the earlier all-MiniLM/hnswlib target — see the §4.4
-as-built note.)
+defaults are dependency-free. This supersedes an earlier all-MiniLM/hnswlib target that appeared
+in an intermediate doc revision — don't re-reconcile to SQLite/hnswlib; check `infra/` for what's
+actually running.
 
-**Reconciliations applied during implementation** (the doc above reflects these):
+**Reconciliations baked into the spec above:**
 - Recall weights corrected to α=.40 β=.30 γ=.20 δ=.10 and τ default 0.7 (config was stale).
-- Storage: an intermediate revision of this doc reconciled to on-device SQLite + hnswlib; superseded again by **PostgreSQL + ChromaDB** (`infra/db/`, `infra/vector_store/`) — the current, live backend. Don't re-reconcile to SQLite/hnswlib; check `infra/` for what's actually running.
+- Storage: PostgreSQL + ChromaDB is the current, live backend (superseding an intermediate SQLite + hnswlib revision).
 - Context-gate modes reconciled to Layer 3's canonical taxonomy; `celebration` row added (§8.5).
 - `required_contradictions` inline comment fixed (0.3 → 4, not 3) — the `ceil` formula is authoritative (§5.3).
 - Immutable-policy enforcement reference corrected from "Safety Layer (Layer 9)" to Layer 11 (Safety Agent, which owns crisis) (§6.5).
 - Selection is deterministic top-3 by effective score (§8.6); softmax/τ is provided for optional stochastic variation (§8.4).
 
-**Test coverage.** 107 unit tests in `tests/unit/` (`test_memory_embedding`, `test_memory_strength`,
+**Test coverage.** 107+ unit tests in `tests/unit/` (`test_memory_embedding`, `test_memory_strength`,
 `test_recall_scorer`, `test_context_gate`, `test_competitive_recall`, `test_stm_buffer`,
 `test_semantic_memory`, `test_identity_memory`, `test_memory_store`, `test_forgetting_engine`,
-`test_memory_audit`, `test_memory_arbiter`, `test_state_updater`) cover the §17.2 requirements:
-recall formula + components, softmax temperature behavior, decay correctness, the full gate
-table, consolidation (3 similar episodes → semantic memory), hash-chain integrity + tamper
-detection, cross-session link detection, the confabulation guard, and contradiction-driven
-belief/semantic updates.
+`test_memory_audit`, `test_memory_arbiter`, `test_state_updater`, `test_uwm_updater`) cover the
+§17.2 requirements plus the live-wiring behavior below: recall formula + components, softmax
+temperature behavior, decay correctness, the full gate table, consolidation (3 similar episodes →
+semantic memory), hash-chain integrity + tamper detection, cross-session link detection, the
+confabulation guard, contradiction-driven belief/semantic updates, and the UWM/identity round
+trips through real serde and the real `ConversationOrchestrator`.
 
-## 20. Live wiring status (Phase 2 polish pass, 2026-08-04)
+**SC-6 — Recall Scoring Engine: live, with one corrected input.** Recall's emotional component
+used to receive a hardcoded neutral vector every turn (`api/assembly.py` passed
+`EmotionVector(0,0,"neutral")` regardless of actual user state), which — given
+`emotional_component`'s distance formula — systematically favored neutral-toned memories,
+backwards from the mood-congruent-recall design intent (§18.3, and the CLAUDE.md invariant on
+mood-congruent recall). Recall runs *before* Layer 3 classification by design (§11.2), so there
+is no `EmotionClassification` available yet at that point; `_emotion_from_input_packet` now
+derives a proxy from Layer 1's `composite_emotional_prior` instead. Verified by constructing two
+identical-embedding memories differing only in `emotion_vector` and confirming recall ordering
+flips between a high- and low-vulnerability input packet.
 
-Every module in `backend/layer2_memory/` is used somewhere — either by production wiring or by
-the module's own public API surface (`__init__.py`'s exports) — with no unreachable code. But
-five of the eight sub-components have **no live production caller at all**; they're complete,
-independently tested, but never invoked outside tests. Full detail (why, and what's needed to
-close each gap): `docs/POLISH_BACKLOG.md`.
+**SC-1 — Short-Term Memory Buffer: live and genuinely accumulating.** `infra/stm_store.py::
+InProcessSTMStore` is a thread-safe, LRU-bounded (200 sessions) in-process `{session_key:
+buffer}` map, satisfying §3.1's "ephemeral, RAM-only" requirement for this codebase's
+single-process, single-user deployment (a restart, or LRU eviction of a very old session, wipes
+it — correct per spec, not a bug). `api/state.py::make_state_update_writer` calls `stm.add_turn`
+for both the user's message and Nova's response each turn. Promotion is checked **on arrival**,
+not on eviction: each incoming user turn is checked against `stm.should_promote` (high arousal, a
+life-event keyword, or an explicit `importance_flag`) immediately — real sessions are a handful
+to a few dozen turns, nowhere near the 100-turn/30,000-char window (§3.2, raised from 40/12,000
+for in-session coherence headroom now that promotion, not every-turn persistence, determines
+long-term memory), so eviction-time checking would essentially never fire; it was removed as dead
+code rather than kept as an unreachable second check. Only `role == "user"` turns are eligible —
+Nova's own reply text can incidentally contain a life-event keyword and must never be recorded as
+something the user said. Batching multiple promotable turns into one multi-turn-synthesized
+episode (§3.1's "no multi-turn synthesis") is deliberately not done, since per-turn arrival
+checking leaves essentially never more than one promotable turn to batch. Ordinary,
+non-significant conversation is still never persisted as an episode by design — only turns that
+trigger promotion become long-term memories; this is intentional lossiness for ordinary
+conversation, not a bug. **Real gap still open:** accumulating `stm.turns` across requests has no
+live consumer that reads it back into a prompt — `assembly.py::plan` still builds each turn's
+prompt from only `ctx.message` + `recalled_memories`, so in-session "what did I say 3 messages
+ago" recall is not yet live; wiring `stm.turns` into prompt construction is unstarted work.
 
-**Fixed in this pass:**
-- **Recall's emotional component used a hardcoded neutral vector on every turn** (`api/assembly.py`
-  passed `EmotionVector(0,0,"neutral")` regardless of the actual user's state), which — given
-  `emotional_component`'s distance formula — systematically favored neutral-toned memories,
-  backwards from the mood-congruent-recall design intent (§18.3). Recall runs before Layer 3
-  classification by design (see §11.2's as-built note), so there's no `EmotionClassification` to
-  use; `_emotion_from_input_packet` now derives a proxy from Layer 1's `composite_emotional_prior`
-  instead. Verified by constructing two identical-embedding memories differing only in
-  `emotion_vector` and confirming recall ordering flips between a high- and low-vulnerability
-  input packet (`tests/unit/api/test_assembly_turn.py`).
-- Three stale docstrings/doc passages describing production storage as SQLite+hnswlib or
-  all-MiniLM (superseded by PostgreSQL/ChromaDB/nomic-embed-text) fixed in `embedding.py`,
-  `memory_store.py`, and §19 above.
+**SC-2 — Episodic Memory Store: live with real LLM summarization.** `_summarize_promoted_turn`
+(`api/state.py`) prompts the injected `system1` client for a short third-person summary of each
+promoted turn, with the same best-effort fallback shape as `background/memory_consolidation_job
+.py`'s `_generalize` (no client, or any exception, falls back to plain truncation, never blocks
+the write path) — replacing an earlier `message[:2000]` truncation stub that ran on every turn
+regardless of significance. Each created episode also carries the turn's real `emotion_vector`
+(previously always the empty default), which also benefits Layer 10's `_episode_valence`-derived
+emotional records. The same call additionally extracts up to 5 named entities
+(`infra/llm/json_extract.extract_json`, same fallback contract — a parse failure or missing
+client yields `entities: []`, not a blocking failure) into `EpisodicMemory.entity_refs`, which is
+what makes narrative-chain linking (below) arithmetically possible.
 
-**All items originally logged in this section are now closed** — see §21 (STM/episodic
-extraction), §22 (narrative-chain linking), §23 (User World Model — narrow slice), and §24
-(Identity Memory — seeding, contradiction detection, read wiring). Remaining scope deferred
-during those passes (`communication_model`/`psychological_model` extraction, entity-extraction
-robustness, in-session `stm.turns` prompt-reading) is tracked in `docs/POLISH_BACKLOG.md`, not
-here.
+**SC-2 — Narrative-chain linking: live end-to-end.** `detect_narrative_links` now has a real
+caller and store. New `narrative_chain` table (`infra/db/models/memory.py`) +
+`PostgresMemoryStore.save_narrative_chain`/`active_narrative_chains` (JSONB round-trip, same
+pattern as `save_identity`/`save_uwm`; "active" means not `ChainStatus.ARCHIVED` — a `RESOLVED`
+chain stays visible since nothing currently archives one). `api/state.py::_link_narrative_chains`
+runs from the same closure that creates promoted episodes: for each newly-promoted episode it
+loads the user's active chains, hydrates each chain's last episode, and calls
+`detect_narrative_links` — a match appends to that chain, no match seeds a new one, best-effort
+(a linking failure never loses the already-saved episode). Linking was arithmetically impossible
+before the SC-2 entity-extraction fix above: the formula is `link_score = 0.6·semantic_similarity
++ 0.4·entity_overlap` against a `0.65` threshold (§10.3), and with `entity_refs` always `[]`,
+`entity_overlap` was always `0`, capping the achievable score at `0.6` — below threshold even at
+perfect semantic similarity. **Deliberately not done — reading chains back into generation.**
+`MemoryPacket.active_narrative_chains` exists as a `memory_arbiter` parameter, but nothing in
+`api/assembly.py::recall` forwards it past the hook's `list[memory]`-only return contract, and
+nothing downstream would consume it if it did (matching Layer 4's own finding that most richer
+context objects have no real prompt-building consumer yet).
 
-## 21. STM accumulation + real episodic extraction (Phase 2 follow-up, 2026-08-05)
+**SC-5 — User World Model: live for `profile` + `relationship_graph` + `life_context` +
+`psychological_model`; `communication_model` deliberately excluded.** Write path:
+`uwm_updater.py::merge_uwm_update(uwm_or_none, user_id, extracted, now)` is pure, LLM-free merge
+logic — profile fields set only when the extracted delta has a value (never blanked by a silent
+turn), people matched case-insensitively by name (repeat mentions bump `mention_count`/
+`last_mentioned_at` and merge traits rather than duplicating nodes), situations/stressors
+deduplicated by description; it creates the first `UserWorldModel` row the first time there's
+anything to persist and returns `None` (persisting nothing) on any silent turn — critical because
+an earlier version only returned `None` when no row existed yet, so every ordinary turn *after*
+the first real signal produced a meaningless `UWM_UPDATED` entry on the user-visible,
+integrity-checked audit chain (`GET /memory/audit`) forever; caught and fixed before it shipped.
+`state_updater.py`'s step 3 takes an optional `uwm_updater_fn` (mirroring the `extractor_fn`
+pattern for episodes; without one, behavior is the original version-only bump — purely additive).
+`api/state.py::make_state_update_writer` supplies the real closure: `_extract_uwm_signals` (a
+per-turn LLM call, JSON-structured) → `merge_uwm_update`, run every turn (not promotion-gated,
+since profile/relationship facts can surface in any ordinary message). Read path:
+`api/assembly.py::build_persona` calls `uwm_provider` (`api/state.py::make_uwm_provider`) and
+folds a plain-language `_uwm_directive` — known profile facts, top 3 people by mention count, up
+to 2 active life situations — onto `PersonaPacket.persona_instruction`, reaching
+`build_planner_prompt` through the real orchestrator (no raw scores, no structure dumped
+verbatim, per this file's own invariant). `communication_model` is explicitly kept out of the UWM
+write/read path: `backend/layer4_persona/style_learning.py` already owns communication style
+live (EMA-updated, reaches `build_persona`'s directive), and building a second UWM-based version
+of the same signal would fork it — a pattern CLAUDE.md already flags as a standing risk from the
+original audit, avoided here rather than left for a future reconciliation. `psychological_model`
+(attachment_signals, emotional_regulation_style, preferred_support_style, self_efficacy_signals,
+identity_conflict_signals, known_triggers) was initially deferred as higher-stakes
+amateur-psychological-profiling risk, then built after the user was asked explicitly and chose to
+proceed: folded into the same `_extract_uwm_signals` call as a fourth JSON key
+(`"psychological"`, same "only what this message actually states or clearly implies" evidentiary
+bar as the other three keys), merged by `uwm_updater.py::_merge_psychological`
+(dedup + `model_confidence` toward 1.0, capped at 10 contributing turns), and stays on-device only
+structurally — `sync_coordinator.py` has no knowledge of the UWM store at all.
+`PsychologicalModel.known_triggers` (`list[TriggerPattern]`) was checked against the bare-`list`
+serde bug that previously bit Layers 7/9/10/13 and confirmed already correctly parametrized (real
+round trip proven, not just an annotation read). **Not yet done:** nothing in
+`build_persona`/generation reads `psychological_model` back out — this closes the write side only,
+matching this pass's pattern of closing write paths before read paths land;
+`persona_resolver.resolve_persona_state` already accepts the param, unused live.
 
-Closes the last two items §20 logged as "not fixed": the Short-Term Memory buffer is now a real,
-accumulating, cross-request buffer, and episode creation follows the architecture's actual
-promotion design (§3.3) with genuine LLM summarization — not the `message[:2000]` truncation
-stub that ran on every single turn regardless of significance.
+**SC-4 — Identity Memory: live — seeded at boot, contradiction-checked every turn, read into the
+prompt.** A doc-level gap had to be resolved first: the original §6.4 pseudocode for
+`detect_identity_contradiction`/`apply_identity_update` doesn't typecheck (it sums `.strength`
+over `evidence_against: list[str]`, which has no such field) — resolved by promoting
+`evidence_against` to `list[IdentityEvidence]` (`summary`, `strength`, `session_id`,
+`recorded_at`) and making `apply_identity_update`'s `prior_against_strength` auto-compute from it
+when not explicitly overridden, which is what makes §6.3's multi-session evidence accumulation
+("central beliefs require strong, repeated evidence") actually work across turns; on an actual
+update `evidence_against` resets to `[]`. Contradiction detection
+(`identity.py::detect_identity_contradictions`) sends the LLM the full list of non-immutable
+belief statements in **one combined call** per turn — chosen over per-belief calls (no accuracy
+benefit at this app's single-user scale) and an embedding-similarity pre-filter (risks discarding
+a real contradiction phrased in unrelated-looking words, a false negative in exactly the case this
+feature exists to catch); scores below `_CONTRADICTION_FLOOR = 0.15` are dropped as LLM noise, and
+immutable beliefs are excluded from the prompt entirely, with `_identity_directive` and
+`make_identity_writer` both re-filtering defensively as well. Seeding:
+`identity_seed.py::default_identity_beliefs()` returns the 5 immutable safety policies from §6.5
+plus a small starting personality, seeded idempotently at `build_app_state` boot rather than in a
+separate script (this app has exactly one deployer); centralities deliberately sit well below the
+immutable floor so genuine repeated disagreement can change them, though Layer 11's independent
+hard-coded path is what actually enforces the immutable policies (§6.5) — this store adds no new
+enforcement. Write: `api/state.py::make_identity_writer` runs post-turn, detects contradictions,
+and for anything flagged calls `apply_identity_update` and persists the result. A real bug was
+caught before shipping: `apply_identity_update`'s `generate_fn` defaulted to an offline
+placeholder (`f"[revised] {belief.statement}"`), and the first writer version called it with no
+override — a real threshold-crossing update would have persisted the literal string
+`"[revised] Nova is direct rather than evasive..."` as Nova's actual belief, compounding a new
+`"[revised] "` prefix on every subsequent update. Fixed two ways: `api/state.py
+::_revise_belief_statement` is a real second LLM call wired as the generator, and
+`apply_identity_update` itself now treats a `generate_fn` returning empty/unchanged text as "no
+rewrite this turn" (evidence still recorded, no `BeliefUpdateEvent`, statement untouched) rather
+than a real update — defense in depth so a future caller forgetting a real generator degrades to
+"belief doesn't update," never to persisting corrupted text. Seeded
+personality/relational/core-value centralities were also raised (0.5–0.85 → 0.7–0.9) since an LLM
+asked for a 0–1 contradiction score readily emits 0.8–0.9 for ordinary disagreement, and §6.3's
+"strong, repeated evidence" bar only holds in practice if the threshold accounts for that. Read:
+`api/state.py::make_identity_provider` selects the top-3 highest-centrality non-immutable beliefs
+(not the whole table, to avoid compounding prompt bloat), and `build_persona` folds them into
+`persona_instruction` as plain sentences via `_identity_directive`.
 
-- **STM is now genuinely accumulated across the session**, not rebuilt empty every turn. New
-  `infra/stm_store.py::InProcessSTMStore` is a thread-safe, LRU-bounded (200 sessions), in-process
-  `{session_key: buffer}` map — satisfying §3.1's "ephemeral, RAM-only" requirement exactly for
-  this codebase's single-process, single-user deployment (a restart, or LRU eviction of a very
-  old session, wipes it, which is correct per spec, not a bug). `api/state.py
-  ::make_state_update_writer` now calls `stm.add_turn` for both the user's message and Nova's
-  response each turn.
-- **Promotion is checked on arrival, not on eviction.** The first implementation of this fix only
-  promoted turns returned by `add_turn`'s eviction — but real sessions are a handful to a few dozen
-  turns, nowhere near the 100-turn/30,000-char window, so eviction would essentially never fire and
-  promotion would essentially never run. Corrected: each incoming user turn is checked against
-  `stm.should_promote` (high arousal, a life-event keyword, or an explicit `importance_flag`)
-  *immediately*. There is deliberately no second, eviction-time check: `should_promote` is a pure
-  function of a turn's own fields, which never mutate after construction, so re-checking a turn
-  that already failed on arrival can only ever repeat the same "no" — an eviction-time pass would
-  add a de-duplication problem (a turn promoted on arrival must not be promoted again when it later
-  ages out) without adding any real coverage, so there's nothing worth guarding against. Only
-  `role == "user"` turns are ever eligible — Nova's own reply text can incidentally contain a
-  life-event keyword (e.g. "congratulations on the **new job**"), and promoting that would record
-  something the user never said as a memory of them.
-- **`max_turns`/`char_limit` raised from 40/12,000 to 100/30,000** (§3.2) — a deliberate product
-  decision, not a spec correction, for in-session coherence headroom now that promotion (not
-  every-turn persistence) is what determines long-term memory.
-- **Episodes are now LLM-summarized, not raw-truncated.** `_summarize_promoted_turn`
-  (`api/state.py`) prompts the injected `system1` client for a short third-person summary of the
-  promoted turn, with the same best-effort fallback shape as
-  `background/memory_consolidation_job.py`'s `_generalize` (no client, or any exception → falls
-  back to a plain truncation, never blocks the write path). Each created episode also now carries
-  the turn's real `emotion_vector` (previously always the empty default on this path) — a
-  side-effect fix that also benefits Layer 10's `_episode_valence`-derived emotional records for
-  any episode created this way.
-- **Deliberately not done:** batching multiple promotable turns into one multi-turn-synthesized
-  episode (§3.1's "no multi-turn synthesis" gap). Promotion is now checked per-turn on arrival, so
-  there is essentially never more than one promotable turn to batch in a single write; each is
-  summarized individually.
-- **Trade-off, explicitly chosen:** ordinary, non-significant conversation is still never
-  persisted as an episode — only turns that trigger promotion (arousal/keyword/flag) become
-  long-term memories. This is the architecture's own design (STM is intentionally lossy for
-  ordinary conversation), not a bug, but it is a real, deliberate behavior change from the prior
-  "remembers literally every message" stub.
-- **Still not delivered: §3.1's in-session coherence purpose.** Accumulating `stm.turns` across
-  requests has exactly one live consumer today — the promotion check on eviction, which this pass
-  removed as dead code (see above) — so nothing currently reads the buffer's turn history back into
-  a prompt. `assembly.py::plan` still builds each turn's prompt from only `ctx.message` +
-  `recalled_memories`; "refer back to what was said 3 messages ago" within a session is not yet
-  live. Wiring `stm.turns` into prompt construction is unstarted follow-up work, not part of this
-  fix.
+**Cost note (applies across SC-2/SC-4/SC-5 above).** `session_writer`'s post-turn chain makes up
+to 5 sequential LLM calls beyond Layer 3's classifier call and (on a promoted turn) episodic
+summarization: goal extraction, Layer 5's person-mention extraction, UWM signal extraction
+(profile/situations/stressors/psychological), identity contradiction detection, and — only when a
+contradiction crosses threshold — the belief-rewrite call. `POST /chat` is synchronous and
+`run_turn` awaits the full write path, so request latency includes all of them — acceptable for
+this app (local, single-user, `system1` is the fast local model throughout), but worth knowing
+before assuming `/chat` latency is dominated by generation alone.
 
-## 22. Narrative-chain linking wired into the write path (Phase 2 follow-up, 2026-08-05)
+## 20. Decision Log
 
-Closes the "narrative-chain linking is orphaned" item from §20: `detect_narrative_links` (already
-fully implemented and tested) now has a real caller and a real store.
-
-- **New `narrative_chain` table** (`infra/db/models/memory.py`) + `PostgresMemoryStore
-  .save_narrative_chain`/`active_narrative_chains` (JSONB-payload round-trip, same pattern as
-  `save_identity`/`save_uwm`). "Active" means not `ChainStatus.ARCHIVED` — a `RESOLVED` chain
-  stays visible (an arc just concluded; nothing currently archives one).
-- **`api/state.py::_link_narrative_chains`** runs from the same `_extractor` closure that creates
-  promoted episodes (`make_state_update_writer`): for each newly-promoted episode, it loads the
-  user's active chains, hydrates each chain's last episode from the store, and calls
-  `detect_narrative_links`. A match appends to that chain; no match seeds a new one. Best-effort
-  (wrapped in its own `try/except`) — a linking failure never loses the episode, which is already
-  saved before this step runs.
-- **Deliberately not done — reading chains back into generation.** `MemoryPacket
-  .active_narrative_chains` already existed as a `memory_arbiter` parameter, but nothing in
-  `api/assembly.py::recall` forwards it (the hook's contract only returns `recalled_memories`),
-  and nothing downstream would consume it if it did — matching Layer 4's own finding (§16) that
-  most of the richer context objects have no real prompt-building consumer yet. Wiring the read
-  side was left out of this fix rather than populating a field nothing reads.
-- **Found and fixed during review: linking was arithmetically impossible without entity
-  extraction.** The formula is `link_score = 0.6·semantic_similarity + 0.4·entity_overlap`
-  against a `0.65` threshold (§10.3). With `EpisodicMemory.entity_refs` always `[]` (nothing
-  populated it), `entity_overlap` was always `0`, capping the achievable score at
-  `0.6·semantic ≤ 0.6` — below threshold even at perfect (`1.0`) semantic similarity, so the
-  linking branch could never fire in production. Fixed by extending `_summarize_promoted_turn`'s
-  existing per-promoted-turn LLM call (`api/state.py`) to also extract up to 5 named entities
-  (people/places/named things) as structured JSON (`infra/llm/json_extract.extract_json` +
-  `json.loads`, same best-effort fallback as before — a parse failure or missing client yields
-  `entities: []`, not a new episode-blocking failure mode), and setting `EpisodicMemory
-  .entity_refs` from it. `tests/unit/api/test_state.py::test_writer_links_two_episodes_that
-  _share_an_extracted_entity` proves two episodes sharing an entity now genuinely chain together;
-  `..._without_entity_overlap_even_at_perfect_similarity` documents the still-real fallback
-  behavior when no summarizer LLM is configured (entities empty → linking degrades to always
-  seeding new singleton chains, never a hard failure).
-
-## 23. User World Model — real extraction, merge, and read wiring (Phase 2 follow-up, 2026-08-05)
-
-Closes "UWM is never created for any real user" — narrowed, deliberately, to `profile` +
-`relationship_graph` + `life_context`. `communication_model` is explicitly **out of scope**:
-`backend/layer4_persona/style_learning.py` already owns communication style live (EMA-updated,
-reaches `build_persona`'s directive) — building a second, UWM-based version of the same signal
-would fork it, which CLAUDE.md already flags as a standing risk from the original audit ("three
-divergent reimplementation pairs... that now need a reconciliation decision each"). Building a
-fourth was avoided rather than left for someone else to reconcile.
-
-- **Write path.** `backend/layer2_memory/uwm_updater.py::merge_uwm_update(uwm_or_none, user_id,
-  extracted, now)` is new, pure, LLM-free merge logic: profile fields are set only when the
-  extracted delta has a value (never blanked by a silent turn); people are matched
-  case-insensitively by name (repeat mentions bump `mention_count`/`last_mentioned_at` and merge
-  traits, not duplicate the node); situations/stressors are deduplicated by description. It
-  creates the user's first `UserWorldModel` row the first time there's anything to persist —
-  closing the actual gap — and returns `None` (persisting nothing) on **any** silent turn with
-  nothing extracted, whether or not a UWM already exists. Caught in review before commit: an
-  earlier version only returned `None` when no row existed yet, so every ordinary turn *after*
-  the first real signal fell through to a no-op version bump — `state_updater` step 3 saves and
-  audits whatever this function returns, so that meant a meaningless `UWM_UPDATED` entry on the
-  user-visible, integrity-checked audit chain (`GET /memory/audit`) every single turn forever.
-- **`backend/layer2_memory/state_updater.py`'s step 3** gained an optional `uwm_updater_fn`
-  parameter (`Optional[UserWorldModel] -> Optional[UserWorldModel]`), mirroring the existing
-  `extractor_fn` pattern for episodes. Without one, behavior is unchanged (the original
-  version-only bump on an existing row) — purely additive, matching this pass's Layer-1 config
-  wiring precedent. `api/state.py::make_state_update_writer` supplies the real closure:
-  `_extract_uwm_signals` (a per-turn LLM call, JSON-structured, matching
-  `_summarize_promoted_turn`'s extraction shape) → `merge_uwm_update`. Runs every turn (not
-  promotion-gated) since profile/relationship facts can surface in any ordinary message, not only
-  emotionally significant ones — one more small per-turn LLM call, the same cost shape as Layer
-  3's classifier call and the Layer-7 goal writer's extraction call.
-- **Read path.** This is the part narrative-chain linking (§22) deliberately left undone, and the
-  reason this section explicitly closes it: `api/assembly.py::build_persona` now calls a new
-  `uwm_provider` (wired via `api/state.py::make_uwm_provider`, same factory-function pattern as
-  `make_relationship_provider`) and folds a plain-language `_uwm_directive` — known profile facts,
-  the top 3 people by mention count, up to 2 active life situations — onto
-  `PersonaPacket.persona_instruction`, which `plan()` already forwards into
-  `build_planner_prompt`. No raw scores, no structure dumped verbatim — plain sentences, per this
-  file's own invariant. `tests/unit/api/test_goal_relationship_injection.py
-  ::test_uwm_profile_and_people_injected_into_prompt` proves it reaches the real prompt through
-  the full `ConversationOrchestrator`, not a mocked step; the companion
-  `..._communication_model_not_injected...` test proves the exclusion holds even when that field
-  is populated.
-- **Deliberately not done:** `psychological_model` extraction (attachment signals, regulation
-  style, triggers) — meaningfully higher-stakes inference than profile/people/situations, and a
-  separate design decision the narrow-slice scoping explicitly deferred. `arbiter._attach_uwm`'s
-  existing `UWMContextSnapshot` construction (relationship/stressor/situation fields, already
-  tested) was not touched — this fix's read path goes through `build_persona`'s own provider
-  call, not through `MemoryPacket.uwm_context`, because (per §22's finding) nothing forwards the
-  full `MemoryPacket` past `recall()`'s `list[memory]`-only return contract.
-
-## 24. Identity Memory — seeding, contradiction detection, and read wiring (Phase 2 follow-up, 2026-08-05)
-
-Closes "Identity Memory is never seeded or updated" — the last item from §20's initial audit.
-Nova now has a live, evolving self-model: a real seed on boot, real contradiction detection
-against it every turn, and a real read path into the planner prompt.
-
-### 24.1 A doc gap this section had to resolve first
-
-The original architecture doc's §6.4 pseudocode for `detect_identity_contradiction`/
-`apply_identity_update` doesn't actually typecheck: it computes
-`total_evidence = sum(e.strength for e in belief.evidence_against)` against a schema where
-`evidence_against: list[str]` — plain text summaries, with no field to hold a numeric strength.
-The already-implemented `apply_identity_update` (pre-dating this pass) worked around this by
-taking `prior_against_strength` as a caller-supplied float parameter — but nothing in the
-codebase ever computed or persisted that value across turns, so multi-session accumulation
-(§6.3's whole point — central beliefs "require strong, repeated evidence") was structurally
-impossible to wire correctly without a schema change. Resolved by promoting `evidence_against` to
-`list[IdentityEvidence]` (`schemas.py`: `summary`, `strength`, `session_id`, `recorded_at`) and
-changing `apply_identity_update`'s `prior_against_strength` default from `0.0` to `None` → auto-
-computed as `sum(e.strength for e in belief.evidence_against)`, with an explicit override still
-honored (all pre-existing tests of the explicit-override path pass unchanged). On an actual update,
-`evidence_against` is reset to `[]` — the new statement starts with a clean slate rather than
-carrying over evidence against the statement it just replaced.
-
-### 24.2 Contradiction detection: one combined LLM call, not per-belief or pre-filtered
-
-`backend/layer2_memory/identity.py::detect_identity_contradictions(client, message, beliefs,
-session_id)` sends the LLM the full list of non-immutable belief statements in one prompt and
-asks which (if any) the message contradicts, with a 0–1 score and a reason, as JSON. Chosen over
-two alternatives after explicit discussion: per-belief LLM calls (N calls/turn, no accuracy
-benefit — the doc's own architecture is one process serving one user, so N is at most a few dozen,
-not hundreds) and an embedding-similarity pre-filter before scoring (the doc's literal shape, but
-a cheap similarity filter risks discarding a real contradiction phrased in unrelated-looking words
-before an LLM ever sees it — a false negative in exactly the case this feature exists to catch).
-Scores below `_CONTRADICTION_FLOOR = 0.15` are dropped as LLM noise before they can pollute
-`evidence_against`'s accumulation. Immutable beliefs are excluded from the prompt entirely (never
-sent to the LLM, so never flagged) — and `_identity_directive` (§24.4) and `make_identity_writer`
-both re-filter defensively too, so an immutable belief can never be rewritten or surfaced even if
-some future provider implementation forgets to exclude one itself.
-
-### 24.3 Seeding — at boot, not in a script
-
-`backend/layer2_memory/identity_seed.py::default_identity_beliefs()` returns the 5 immutable
-safety policies quoted verbatim from §6.5, plus a small starting personality (a `core_value`, a
-`relational_stance`, two `personality_trait`s) — editable content, not a spec; centralities
-deliberately leave them well below the immutable floor so real, repeated user disagreement can
-genuinely change them. `api/state.py::build_app_state` seeds idempotently on boot
-(`if not store.identity_beliefs(): ...`) rather than in `scripts/seed_db.py` — a separate script
-is something a deployer has to remember to run, and this app has exactly one deployer. The
-immutable policies remain symbolic in one sense: Layer 11's independent hard-coded path is what
-actually enforces them (§6.5), this store doesn't add new enforcement.
-
-### 24.4 Write and read paths
-
-- **Write.** `api/state.py::make_identity_writer` runs post-turn (chained into
-  `build_app_state`'s `session_writer`): loads all beliefs, calls
-  `detect_identity_contradictions`, and for anything flagged, calls the existing (pre-dating this
-  pass) `apply_identity_update` and persists the result. Best-effort, like every other writer.
-- **Found and fixed in review: the rewrite generator was never wired to a real LLM.**
-  `apply_identity_update`'s `generate_fn` defaults to `_default_generator`, whose own docstring
-  calls it an offline placeholder (`f"[revised] {belief.statement}"`) — but the first version of
-  `make_identity_writer` called `apply_identity_update(belief, contradiction, now=now)` with no
-  override, so a real threshold-crossing update would have persisted the literal string
-  `"[revised] Nova is direct rather than evasive..."` as Nova's actual belief, and every
-  subsequent revision would prefix another `"[revised] "`. Fixed two ways: (1)
-  `api/state.py::_revise_belief_statement` is a real second LLM call (old statement + the
-  contradicting evidence → a genuinely revised one-sentence statement), wired as
-  `make_identity_writer`'s `generate_fn`; (2) `apply_identity_update` itself now treats a
-  `generate_fn` returning an empty string or the belief's *unchanged* statement (its documented
-  failure-fallback contract) as "couldn't rewrite this turn" rather than a real update — the
-  evidence is still recorded (so the next successful rewrite can pick up where this one left off)
-  but no `BeliefUpdateEvent` is logged and the statement is left untouched. This is the fix's own
-  defense in depth: even if some future caller forgets to inject a real generator, the worst case
-  degrades to "belief doesn't update" rather than persisting corrupted text.
-  `tests/unit/api/test_state.py::test_identity_writer_leaves_belief_unchanged_when_rewrite
-  _generation_fails` proves the failure path.
-- **Also tightened while in here:** seeded personality/relational/core-value centralities were
-  raised (0.5–0.85 → 0.7–0.9) so a single strongly-worded turn can't rewrite a trait outright — an
-  LLM asked for a 0–1 contradiction score readily emits 0.8–0.9 for ordinary disagreement, so
-  §6.3's "requires strong, repeated evidence" only holds in practice if the threshold accounts for
-  that, not just centrality's abstract 0–1 scale.
-- **Read.** `api/state.py::make_identity_provider` selects the top-3 highest-centrality
-  non-immutable beliefs (not the whole table — avoids compounding prompt bloat on top of the
-  relationship/style/UWM/goal/elicitation directives §23 and earlier phases already inject).
-  `api/assembly.py::build_persona` folds them into `persona_instruction` via `_identity_directive`
-  (plain sentences, "let it show, don't recite it" — not a list dumped verbatim).
-  `tests/unit/api/test_goal_relationship_injection.py::test_identity_beliefs_injected_into_prompt`
-  proves this reaches the real prompt through the full `ConversationOrchestrator`, and
-  `test_immutable_identity_beliefs_never_reach_the_prompt` proves the immutable filter holds even
-  when a (hypothetical) provider fails to apply it itself.
-
-### 24.5 Cost note: post-turn LLM call count
-
-Between this section and §23, `session_writer`'s post-turn chain now makes up to 5 sequential LLM
-calls on top of Layer 3's per-turn classifier call and (on a promoted turn) episodic
-summarization: goal extraction (pre-existing), Layer 5's person-mention extraction (`api/state.py::
-make_social_writer`, `docs/layer-5-architecture.md` §16.2 — the one place person mentions are
-resolved now, replacing what used to be UWM signal extraction's own "people" ask), UWM signal
-extraction (profile/situations/stressors only, §23), identity contradiction detection, and — only
-when a contradiction actually crosses threshold — the belief-rewrite call above. `POST /chat` is
-synchronous and `run_turn` awaits the full write path before returning, so the user's request
-latency includes all of them. Acceptable for this app (local, single-user, `system1` is the fast
-local model for all of these), but worth knowing before assuming `/chat` latency is dominated by
-generation alone.
-
-## 25. Follow-up (2026-08-09): `psychological_model` extraction built (product decision confirmed
-with the user)
-
-§23's UWM narrow-slice deliberately excluded `psychological_model` (attachment_signals,
-emotional_regulation_style, preferred_support_style, self_efficacy_signals,
-identity_conflict_signals, known_triggers) as higher-stakes and pending a real decision — inferring
-attachment/regulation patterns from conversation carries real amateur-psychological-profiling
-risk. The user was asked explicitly and chose to build it.
-
-Folded into the existing `_extract_uwm_signals` LLM call in `api/state.py` (no new round trip,
-per §24.5's cost note above) as a fourth JSON key, `"psychological"`, with the same "only what
-this message actually states or clearly implies, never guess or invent" instruction the other
-three keys already use — a deliberately higher evidentiary bar than a general-purpose personality
-inference would use, not a looser one. `backend/layer2_memory/uwm_updater.py::
-_merge_psychological` folds the extracted deltas into `UserWorldModel.psychological_model`,
-deduplicating signal lists and known triggers the same way `_merge_situations`/`_merge_stressors`
-already do, and bumps `model_confidence` toward 1.0 as more turns contribute (capped at 10
-turns). Stays on-device only, structurally: `sync_coordinator.py` has no knowledge of the UWM
-store at all, so this data cannot leave the device by the same mechanism the rest of the UWM
-already relies on.
-
-`PsychologicalModel.known_triggers` is `list[TriggerPattern]` — the bare-`list` serde bug that has
-bitten Layers 7/9/10/13 (a field typed as plain `list` with no item type, silently round-tripping
-nested dataclasses as raw dicts). Checked before trusting it: the field was already correctly
-parametrized, and `tests/unit/test_uwm_updater.py::test_psychological_model_round_trips_through_
-serde` proves the real round trip (not just an annotation read) reconstructs a real `TriggerPattern`
-object, not a dict.
-
-Not yet done: nothing in `build_persona`/generation reads `psychological_model` back out yet —
-this closes the write side (extraction → persistence), matching this pass's established pattern
-of closing write paths before read paths land (e.g. §22's narrative-chain linking). `persona_
-resolver.resolve_persona_state` already accepts a `psychological_model` param it's never been
-given live; wiring the read side is a small follow-up once there's a concrete reason to change
-generation behavior based on it (§4's Layer 4 doc already flags `communication_model`/
-`psychological_model` staying `None` in `build_persona` for the same "nothing real to pass yet"
-reason — half of that note is now stale).
+- **2026-08-04 (Phase 2 polish pass):** Audited every module for a real caller; found 5 of 8
+  sub-components with no live production caller at all (STM real accumulation, episodic real
+  extraction, narrative-chain linking, UWM, Identity Memory). Fixed the recall emotional-component
+  bug (hardcoded neutral vector defeated mood-congruent recall) and stale SQLite+hnswlib/all-MiniLM
+  doc references. Logged the 5 unwired sub-components for follow-up passes.
+- **2026-08-05 (Phase 2 follow-up — STM + episodic):** Made STM a real accumulating,
+  LRU-bounded, cross-request buffer (`InProcessSTMStore`); moved promotion checking to
+  turn-arrival (eviction-time checking was dead code given real session sizes); raised
+  `max_turns`/`char_limit` 40/12,000 → 100/30,000; replaced the `message[:2000]` truncation stub
+  with real LLM summarization for promoted-turn episodes. Left `stm.turns` prompt-reading (true
+  in-session recall) and multi-turn episode batching as open follow-ups.
+- **2026-08-05 (Phase 2 follow-up — narrative-chain linking):** Wired `detect_narrative_links`
+  into the write path via a new `narrative_chain` table + `_link_narrative_chains`. Found and
+  fixed a blocking bug: `entity_refs` was always `[]`, capping the link score below threshold even
+  at perfect similarity — fixed by extracting entities in the same per-turn summarization call.
+  Left reading chains back into generation unwired (no consumer exists downstream yet).
+- **2026-08-05 (Phase 2 follow-up — User World Model):** Wired `profile`/`relationship_graph`/
+  `life_context` write (`merge_uwm_update`) and read (`uwm_provider` → `build_persona`) paths.
+  Caught and fixed a bug pre-ship: an earlier merge version produced a meaningless `UWM_UPDATED`
+  audit-chain entry on every turn after the first real signal. Deliberately excluded
+  `communication_model` (already owned live by Layer 4's `style_learning.py`, avoiding a fork) and
+  deferred `psychological_model` as a higher-stakes decision pending user sign-off.
+- **2026-08-05 (Phase 2 follow-up — Identity Memory):** Fixed a doc-level schema gap
+  (`evidence_against` promoted to `list[IdentityEvidence]` so multi-session evidence accumulation
+  is actually computable). Wired boot-time seeding, one-combined-call contradiction detection, and
+  read-into-prompt. Caught and fixed a bug pre-ship: the belief-rewrite generator defaulted to an
+  offline placeholder string that would have been persisted as Nova's literal belief; wired a real
+  second LLM call and added a fail-safe (no rewrite rather than corrupted text). Raised seeded
+  centralities so single strongly-worded disagreements can't overwrite a trait outright.
+- **2026-08-09 (follow-up, product decision confirmed with the user):** Built
+  `psychological_model` extraction (previously deferred as higher-stakes) after explicit user
+  sign-off — folded into the existing UWM extraction call as a fourth JSON key, with the same
+  strict evidentiary bar as the other three. Verified `known_triggers`' nested-dataclass field
+  doesn't hit the bare-`list` serde bug that affected other layers. Closed the write side only;
+  the read side (generation reading `psychological_model` back out) remains unwired pending a
+  concrete reason to change generation behavior based on it.
 
 ---
 
-*This document specifies Layer 2 completely. All eight sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (User World Model schema, contradiction detection mechanism, clustering algorithm, audit trail, cross-session linking) are resolved. Live wiring status as of the most recent audit pass is tracked in §§20–24 and `docs/POLISH_BACKLOG.md`; no behavior of Layer 2 requires assumptions or inferences from other documents.*
+*This document specifies Layer 2 completely. All eight sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (User World Model schema, contradiction detection mechanism, clustering algorithm, audit trail, cross-session linking) are resolved. Live wiring status as of the most recent audit pass is tracked in §19 and `docs/POLISH_BACKLOG.md`; no behavior of Layer 2 requires assumptions or inferences from other documents.*

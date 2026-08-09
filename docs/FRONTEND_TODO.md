@@ -54,9 +54,13 @@ level up, in whatever owns the message list (`frontend/lib/hooks/useChatStream.t
 reply arrived." Reset the counter to 1 the moment a Nova message is received; increment it on each
 user send before Nova has replied again. `is_burst = burst_count > 1`.
 
-**`is_reply_to_proactive`**: only meaningful once Layer 6 actually has a push delivery channel
-(`docs/PENDING_WORK.md` Layer 6 — "no delivery pipeline exists at all" today). Wire this field once
-that exists; until then it should always be sent as `false` (the current default), not fabricated.
+**`is_reply_to_proactive`**: Layer 6 now has a real push delivery channel (`GET /proactive/stream`
+SSE + `frontend/app/proactive/page.tsx`, 2026-08-09 — see `docs/layer-6-architecture.md`'s Live
+Wiring Status). `ChatRequest.is_reply_to_proactive` and `make_proactive_response_writer`
+(`api/state.py`) are already wired server-side to close the SC-5 response-tracking loop; what's
+still missing is the frontend actually setting this field true when the user replies to a
+delivered proactive item (e.g. from the `/proactive` page) rather than a normal chat turn. Until
+that wiring lands it should be sent as `false` (the current default), not fabricated.
 
 ## Wiring into the API client
 

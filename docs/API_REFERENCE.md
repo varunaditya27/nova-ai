@@ -411,6 +411,10 @@ Drops the pending action. `{ "denied": "<request_id>" }`; `404` if unknown.
 Durable audit of executed actions.
 `{ action_id, tool_name, operation, action_type, outcome, result_summary, undone }`
 
+### `POST /tools/undo/{action_id}` → `{ "undone": bool }`
+Exposes `ToolManager.undo_action` (implemented and tested before it had a route). `false` if the
+tool/action has no reverse operation or the action wasn't found.
+
 ---
 
 ## Sync (Layer 12 — zero-knowledge)
@@ -468,6 +472,6 @@ Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
 | GET | `/sessions` | — |
 | GET | `/proactive` | 6 |
 | GET | `/longitudinal/summaries`, `/longitudinal/latest` | 10 |
-| GET/POST | `/tools/pending`, `/tools/confirm/{id}`, `/tools/deny/{id}`, `/tools/history` | 8 |
+| GET/POST | `/tools/pending`, `/tools/confirm/{id}`, `/tools/deny/{id}`, `/tools/history`, `/tools/undo/{id}` | 8 |
 | POST/GET | `/sync/push`, `/sync/pull`, `/sync/status` | 12 |
 | POST | `/admin/jobs/{name}` | infra |

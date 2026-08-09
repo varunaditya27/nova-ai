@@ -1244,9 +1244,12 @@ One model call. Two classification outputs. This is the correct optimization.
 
 ---
 
-## 16. Implementation Notes (as-built)
+## 16. Live Wiring Status (current state)
 
-This section records how the shipped code in `backend/layer3_reasoning/` realises the spec above, and the few places where the as-built differs from or sharpens the text. **The code is the single source of truth**; this doc and `config/layer3.yaml` mirror it.
+This section records how the shipped code in `backend/layer3_reasoning/` realises the spec above,
+where the as-built differs from or sharpens the text, and the current state of every input/output
+wire into and out of it. **The code is the single source of truth**; this doc and
+`config/layer3.yaml` mirror it.
 
 ### 16.1 Module Map
 
@@ -1271,8 +1274,8 @@ The single public entry point is `packet_builder.build_emotion_intent_packet(...
 
 The non-deterministic/heavy dependencies are injected as plain callables so the entire layer runs and is unit-tested with zero external services:
 
-- `llm_fn(message) -> LLMClassificationOutput` — SC-1 and SC-3 each call this once with the same prompt shape via `api/assembly.py::_json_classifier` — two LLM calls per turn today, not the single shared call §14.2 describes (`docs/POLISH_BACKLOG.md`). When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
-- `alert_fn(CrisisAlert) -> None` — the crisis emitter to Layer 11 (Safety Agent) (§3.6), designed to fire **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5), surviving even an LLM failure (verified by test) since it's fired from the heuristic pre-filter result. **As-built (Polish Phase 3): not wired in production** — `api/assembly.py` never passes an `alert_fn`, so this push never fires live. Crisis safety is unaffected: the orchestrator reads `EmotionIntentPacket.crisis_active` directly off the returned packet (pull, not push) and ORs it with Layer 11's independent SC-2 scan — see §17.
+- `llm_fn(message) -> LLMClassificationOutput` — see **SC-1/SC-3** below for the live call-sharing status. When `None`, the layer degrades to heuristics with confidence capped at 0.65 (§12).
+- `alert_fn(CrisisAlert) -> None` — the crisis emitter to Layer 11 (Safety Agent) (§3.6), designed to fire **before** any fallible work and before the packet completes, preserving the "parallel, never sequential" property (§15.5), surviving even an LLM failure (verified by test) since it's fired from the heuristic pre-filter result. **Not wired in production** — `api/assembly.py` never passes an `alert_fn`, so this push never fires live. Crisis safety is unaffected: the orchestrator reads `EmotionIntentPacket.crisis_active` directly off the returned packet (pull, not push) and ORs it with Layer 11's independent SC-2 scan (see **Orchestrator wiring** below). Tracked in `docs/POLISH_BACKLOG.md`.
 
 The default in-process behaviour (no `llm_fn`) is pure-stdlib — the spec's NumPy/SQLite mention in §14.1 is an aspirational backend; the BES arithmetic is implemented in plain Python and the metadata reads are abstracted behind the injected memory inputs.
 
@@ -1287,128 +1290,141 @@ The earlier (pre-implementation) scaffold placed `semantic_planner.py` (Agent 4a
 
 ### 16.6 Test Coverage
 
-96 unit tests across `tests/unit/test_emotion_classifier.py`, `test_background_state.py`, `test_intent_classifier.py`, `test_mismatch_detector.py`, `test_empathy_hypothesis.py`, `test_mode_resolver.py`, and `test_packet_builder.py` cover the §14.3 testing requirements: every crisis-keyword path, the neutral skip-LLM path, prior/prosody integration direction and magnitude, BES trend slope sign, the "I'm fine" + high-prior mismatch, the full posture-selection table, all eight conversation modes, the parallel crisis-alert emission (including under LLM failure), the refinement-skip conditions, and `EmotionIntentPacket` completeness on degraded inputs.
+96+ unit tests across `tests/unit/test_emotion_classifier.py`, `test_background_state.py`, `test_intent_classifier.py`, `test_mismatch_detector.py`, `test_empathy_hypothesis.py`, `test_mode_resolver.py`, and `test_packet_builder.py` cover the §14.3 testing requirements: every crisis-keyword path, the neutral skip-LLM path, prior/prosody integration direction and magnitude, BES trend slope sign, the "I'm fine" + high-prior mismatch, the full posture-selection table, all eight conversation modes, the parallel crisis-alert emission (including under LLM failure), the refinement-skip conditions, and `EmotionIntentPacket` completeness on degraded inputs. Live-wiring regression coverage lives in `tests/unit/api/test_assembly_turn.py::test_real_layer3_wiring_*`, exercising the real `build_emotion_intent_packet` output through the real orchestrator specifically so the bug class below can't recur silently.
 
-## 17. Live wiring status (Phase 3 polish pass, 2026-08-04)
+### 16.7 Orchestrator wiring — live and correct today
 
-Two critical bugs were found and fixed here — both attribute-name mismatches between
-`EmotionIntentPacket`'s real fields and what `backend/pipeline/conversation_orchestrator.py`
-read off it. Neither was caught by the existing 1360+ tests because every orchestrator-level
-test mocks the `classify` step with a hand-built object carrying whatever attribute name the
-orchestrator code happened to read — the mocks matched the bug, not the real schema.
+`backend/pipeline/conversation_orchestrator.py` reads two fields off `EmotionIntentPacket` to
+route traffic and veto for crisis: `route_system()` reads `conversation_mode` (System 2 —
+Groq/llama-3.3-70b, Agent 4a + Agent 4b — is selected whenever mode/content warrants it), and
+`_is_crisis()` reads `crisis_active`, ORed with Layer 11's independent SC-2 scan. Both are correct
+today, but each was shipped for a time reading the wrong attribute name off the packet
+(`.mode`/`.crisis_flag`, neither of which exists on the real schema) — a bug class worth
+remembering: because every orchestrator-level test mocked the `classify` step with a hand-built
+object carrying whatever attribute name the orchestrator happened to read, the mocks matched the
+bug rather than the real schema, so 1360+ passing tests never caught either mismatch. The
+`route_system` bug meant System 2 was never selected for any message in production, regardless of
+emotional weight; the `_is_crisis` bug meant Layer 3's half of the crisis OR never fired (verified
+concretely: "I just can't go on anymore" — a Layer-3 `SUICIDAL_KEYWORDS` hit at confidence 0.97 —
+does not match any Layer-11 SC-2 lexical pattern, so before the fix it produced a normal response
+end-to-end). Both are now one-line-correct; the test mocks in `tests/integration/conftest.py`,
+`test_safety_override.py`, and `test_full_turn_system2.py` use the real field names, and the
+regression tests in §16.6 exist specifically to prevent recurrence. This is the direct reason
+CLAUDE.md's engineering principle "every wiring/bug fix needs a test through the real orchestrator"
+exists — mocked-step tests are structurally blind to this exact bug shape.
 
-- **`route_system()` read `emotion_intent.mode`; the real field is `conversation_mode`.**
-  Since `EmotionIntentPacket` has no `mode` attribute, this always defaulted to `"casual"` —
-  **System 2 (Groq/llama-3.3-70b, Agent 4a + Agent 4b Emotion Refiner) was never selected in
-  production, for any message, regardless of emotional weight or content.** Every turn ran
-  System 1 only. Fixed by reading `conversation_mode`.
-- **`_is_crisis()` read `emotion_intent.crisis_flag`; the real field is `crisis_active`.**
-  The OR-semantics invariant ("if SC-2 detects a crisis **or** Layer 3 raised the crisis flag")
-  was silently one-sided: Layer 3's contribution never fired, regardless of how confidently it
-  detected a crisis. Verified concretely — the message "I just can't go on anymore" (a Layer-3
-  `SUICIDAL_KEYWORDS` hit, confidence 0.97) does **not** match any Layer-11 SC-2 lexical
-  pattern, so before this fix it produced a normal (non-crisis) response end-to-end. Fixed by
-  reading `crisis_active`. Layer 11's own independent SC-2 scan was never affected by this bug
-  and continued providing its half of the OR the whole time.
+### 16.8 SC-1 (Primary Emotion Classifier) / SC-3 (Intent Classifier): live, genuinely sharing one LLM call
 
-Both are one-line fixes in `backend/pipeline/conversation_orchestrator.py`; the test mocks in
-`tests/integration/conftest.py`, `test_safety_override.py`, and `test_full_turn_system2.py`
-were updated to use the real field names, and two new tests
-(`tests/unit/api/test_assembly_turn.py::test_real_layer3_wiring_*`) exercise the actual
-`build_emotion_intent_packet` output through the real orchestrator specifically so this class
-of bug can't recur silently.
+`api/assembly.py::classify` forwards every real Layer 1 input `build_emotion_intent_packet` needs
+(`circadian_band`, `composite_prior`, `prior_confidence`, `signal_mismatch_flag`) from the real
+`InputPerceptionPacket` — previously only `message`/`llm_fn` were passed, with the rest defaulting
+to neutral/zero. `implicit_intensity` is deliberately **not** forwarded: Layer 1 pins it at exactly
+`0.10` live, and `heuristic_prefilter`'s neutral-skip gate is `< 0.1` — forwarding it would disable
+that gate on every turn. Even with `composite_prior` forwarded, `integrate_prior`'s
+prior-adjustment branch (`prior_confidence > 0.5 and composite_prior > 0.6`) still cannot fire in
+production: with `implicit_intensity` pinned at 0.10, the realistic ceiling for `composite_prior`
+is `0.39` (checked directly against `backend/layer1_input/assembler.py::compute_composite_prior`),
+never above 0.6 — this branch stays dormant until Layer 1's implicit-signal frontend gap closes
+(`docs/POLISH_BACKLOG.md`, `docs/FRONTEND_TODO.md`).
 
-**Also fixed:** `api/assembly.py::classify` was calling `build_emotion_intent_packet` with only
-`message` and `llm_fn` — every other input (`circadian_band`, `composite_prior`,
-`prior_confidence`, `signal_mismatch_flag`) defaulted to neutral/zero even though Layer 1
-computes real values for all four. Now forwarded from the real `InputPerceptionPacket`. **Not**
-forwarded: `implicit_intensity` — Layer 1 pins it at exactly `0.10` live (§16, Layer 1 doc), and
-`heuristic_prefilter`'s neutral-skip gate is `< 0.1`; forwarding it would disable that gate on
-every single turn. **Caveat verified, not assumed:** even with `composite_prior` now forwarded,
-`integrate_prior`'s prior-adjustment branch (`prior_confidence > 0.5 and composite_prior > 0.6`)
-still cannot fire in production — with `implicit_intensity` pinned at 0.10, the realistic
-ceiling for `composite_prior` is `0.39` (checked directly against
-`backend/layer1_input/assembler.py::compute_composite_prior`), never above the 0.6 threshold.
-This branch stays dormant until Layer 1's implicit-signal gap (`docs/POLISH_BACKLOG.md`) closes.
-
-**Not fixed, tracked in `docs/POLISH_BACKLOG.md`:** `alert_fn` (the async CrisisAlert push to
-Layer 11) is never wired — crisis safety is unaffected (see above) but the specific "immediate
-async notification" behavior §3.6 and §16.3 describe doesn't happen; `llm_fn` is called twice
-per turn (once each for SC-1 and SC-3) rather than the single shared call §14.2 describes;
-`relationship_depth` and `advice_frustration_count` are never forwarded either.
-
-## 18. BES inputs wired live (Phase 3 polish pass, follow-up, 2026-08-07)
-
-Layer 2's UWM/episodic-memory work (§22-24 of the Layer 2 doc) unblocked the BES gap this
-document's §17 flagged as dormant. `api/assembly.py::classify` now forwards:
-
-- **`episodic_memories`** — `memory_store.active_episodic(user_id)`, the same store `recall`
-  already uses; drives the 14-day valence trend (§4.2).
-- **`active_stressors`** — `uwm.life_context.active_stressors` off the same `uwm_provider`
-  Layer 2's persona directive uses; the UWM's `Stressor` dataclass is exactly the shape
-  `compute_stressor_load` expects, so no adapter/translation was needed.
-
-**Not forwarded:** `psychological_model` stays `None` — the UWM narrow-slice scope decision
-(Layer 2 §23) deliberately excluded `psychological_model` from extraction, so there is nothing
-real to forward yet; this closes automatically if that scope is ever revisited.
-
-**Bug found and fixed in review:** the first version of this wiring passed real, timezone-aware
-`EpisodicMemory.created_at` values (stamped `datetime.now(timezone.utc)` by
-`make_state_update_writer`) into `compute_background_state`, whose own `now` default is naive
-(`datetime.utcnow()`). `_recent()`'s `(now - m.created_at).days` then raises
-`TypeError: can't subtract offset-naive and offset-aware datetimes` on every turn once any real
-episodic memory exists — caught by `_safe()`'s blanket exception handling, so the BES silently
-degraded to `insufficient_data` with zero visible error. Caught via
-`test_real_layer3_wiring_forwards_episodic_memories_to_background_state`, which failed with
-`stressor_load=0.0`/`bes_label=insufficient_data` despite 3 real, strongly negative episodes.
-Fixed by having `classify` pass an explicit `now=datetime.now(timezone.utc)` into
-`build_emotion_intent_packet` — narrowly scoped to this call site rather than changing
-`background_state.py`'s own default, since the naive-`datetime.utcnow()` pattern is shared by
-several other layers (5, 10, 12) and reconciling it project-wide is out of scope here.
-
-**[done, 2026-08-09] SC-1/SC-3 now genuinely share one LLM call.** Previously deferred (2026-08-07)
-as real engineering work, not a wiring fix — revisited once the user set a "complete end-to-end"
-bar. The schema was already shaped for this: `LLMClassificationOutput` (§14.2) has always carried
-both the emotion and intent halves in one object, but `classify_emotion`/`classify_intent` each
-independently called `llm_fn(message)`, discarding the half they didn't need — two network round
-trips per turn where the doc specifies one.
-
-Fixed by giving both classifiers an additional `llm_output: Optional[LLMClassificationOutput]`
-parameter — when provided, it's used directly and `llm_fn` is never called; existing callers that
-only pass `llm_fn` are unaffected. `build_emotion_intent_packet` now decides once, upfront,
-whether either half actually needs the LLM (mirroring each classifier's own skip condition
-exactly: emotion needs it unless the heuristic resolved to pure-neutral; intent needs it unless
+SC-1 and SC-3 now genuinely share **one** LLM call per turn, matching §14.2's spec — this was
+initially deferred as real engineering work rather than a wiring fix, then built once the user set
+a "complete end-to-end" bar. `LLMClassificationOutput` (§14.2) always carried both the emotion and
+intent halves in one object, but `classify_emotion`/`classify_intent` each independently called
+`llm_fn(message)`, discarding the half they didn't need — two network round trips where the spec
+calls for one. Fixed by giving both classifiers an additional `llm_output:
+Optional[LLMClassificationOutput]` parameter (used directly when provided, `llm_fn` never called;
+existing `llm_fn`-only callers unaffected); `build_emotion_intent_packet` decides once, upfront,
+whether either half actually needs the LLM (mirroring each classifier's own skip condition:
+emotion needs it unless the heuristic resolved to pure-neutral, intent needs it unless
 `rule_classify` confidently matched), fires at most one shared call, and hands the same parsed
-result to both. Each classifier's own degrade/skip/crisis-preservation logic is untouched —
+result to both. Each classifier's degrade/skip/crisis-preservation logic is untouched —
 `classify_emotion`'s hard rule that a heuristic crisis is never overridden by a calmer LLM read
-runs exactly as before, just against a result that may now be shared rather than exclusive.
+runs exactly as before, against a result that may now be shared. Verification, given the §16.7 bug
+history in this exact area: `test_safety_override.py` passed unchanged before/after; seven new
+`test_packet_builder.py` tests prove the call count directly (exactly one call when either/both
+halves are ambiguous, zero when neither is, one even when only one half needs it) and that a
+crisis surfaced only by the shared call still reaches `crisis_active`/the Layer 11 alert; a live
+crisis message against the real orchestrator (real Postgres/Ollama) confirmed `crisis_active:
+true`, `crisis_tier: "tier_2"`, `conversation_mode: "crisis"`, and a genuine safety-protocol
+response replacing normal generation. The motivation is spec-conformance, not latency — a live
+turn makes 6-7 LLM calls total (classification + generation + several post-turn writers), so
+merging two into one is a small win against that total, not the dominant cost.
 
-**Verification, given how much has already gone wrong in this exact area** (CLAUDE.md records two
-prior silently-dead bugs here — the System 2 routing and crisis-veto OR-branch attribute-name
-mismatches): `tests/integration/test_safety_override.py` passed before and after unchanged; seven
-new tests in `tests/unit/test_packet_builder.py` prove the call count directly (exactly one call
-when either/both halves are ambiguous, zero when neither is, one even when only one half needs
-it) and that a crisis surfaced only by the shared LLM call — not the heuristic — still reaches
-`crisis_active`/the Layer 11 alert; and a live crisis message run against the real orchestrator
-(real Postgres/Ollama, not mocks) confirmed `crisis_active: true`, `crisis_tier: "tier_2"`,
-`conversation_mode: "crisis"`, and a genuine safety-protocol response replacing normal generation.
+### 16.9 SC-2 (Background Emotional State Tracker): live
 
-Real motivation is spec-conformance, not latency: a live turn makes 6-7 LLM calls total (emotion
-classification pre-merge + intent classification pre-merge + generation + several post-turn
-writers), so merging two of those into one is a small win, not the dominant cost. `advice_
-frustration_count` still has no real source anywhere (needs a new tracked counter, Layer 4/5
-feature work) and stays unforwarded; `composite_prior`'s gate remains blocked on Layer 1's
-implicit-signal frontend gap. Neither is affected by this fix.
+`api/assembly.py::classify` forwards `episodic_memories` (`memory_store.active_episodic(user_id)`,
+the same store `recall` uses; drives the 14-day valence trend, §4.2) and `active_stressors`
+(`uwm.life_context.active_stressors` off the same `uwm_provider` Layer 2's persona directive uses
+— the UWM's `Stressor` dataclass matches `compute_stressor_load`'s expected shape exactly, no
+adapter needed). This was unblocked by Layer 2's UWM/episodic-memory work (Layer 2 doc §19,
+formerly §22–24). `psychological_model` stays `None`: nothing extracts it as an input to Layer 3
+yet (Layer 2's UWM does now populate `psychological_model` on the write side — see Layer 2 doc §19
+— but Layer 3's BES input isn't wired to read it), so this closes automatically whenever that
+wiring is added. A real bug was caught here before shipping: the first version passed real,
+timezone-aware `EpisodicMemory.created_at` values into `compute_background_state`, whose own `now`
+default is naive `datetime.utcnow()` — `_recent()`'s date-subtraction then raised `TypeError` on
+every turn once any real episodic memory existed, silently caught by `_safe()`'s blanket exception
+handling, so the BES degraded to `insufficient_data` with zero visible error (caught via a test
+that failed with `stressor_load=0.0` despite 3 real, strongly negative episodes). Fixed by having
+`classify` pass an explicit `now=datetime.now(timezone.utc)` into `build_emotion_intent_packet` —
+scoped narrowly to this call site rather than changing `background_state.py`'s own default, since
+the naive-`datetime.utcnow()` pattern is shared by several other layers (5, 10, 12) and
+reconciling it project-wide was out of scope here.
 
-**Follow-up (2026-08-09): `relationship_depth` now forwarded live.** Its natural source,
-`RelationshipState.tie_strength`, used to stay pinned at `0.0` forever because nothing called
-Layer 4's real `compute_session_delta`/`update_tie_strength` — fixed at the root, in Layer 4
-(`docs/layer-4-architecture.md` §18). `api/assembly.py::classify` now reads
-`relationship_provider(user_id).tie_strength` and forwards it into `build_emotion_intent_packet`,
-reaching SC-4 Mismatch's `relationship_depth < 0.3` posture gate and SC-5 Empathy Hypothesis for
-real. `advice_frustration_count` still has no real source anywhere in the codebase (needs a new
-tracked counter, Layer 4/5 feature work) and stays unforwarded. `composite_prior`'s gate remains
-blocked on Layer 1's implicit-signal gap, unaffected by this fix.
+### 16.10 SC-4 (Mismatch Detector) / SC-5 (Empathy Hypothesis): live, including `relationship_depth`
+
+`relationship_depth` is now forwarded live: its natural source, `RelationshipState.tie_strength`,
+used to stay pinned at `0.0` forever because nothing called Layer 4's real
+`compute_session_delta`/`update_tie_strength` — fixed at the root in Layer 4
+(`docs/layer-4-architecture.md` §18, not duplicated here). `api/assembly.py::classify` reads
+`relationship_provider(user_id).tie_strength` and forwards it, reaching SC-4's `relationship_depth
+< 0.3` posture gate and SC-5 Empathy Hypothesis for real.
+
+### 16.11 SC-6 (Conversation Mode Resolver): live, no open gaps
+
+Consumes the outputs of SC-1 through SC-5 deterministically per §8; no separate wiring gap of its
+own has been found.
+
+### 16.12 Known remaining gaps
+
+- **`alert_fn`** (async CrisisAlert push to Layer 11) is never wired — see §16.3. Crisis safety is
+  unaffected because the orchestrator pulls `crisis_active` directly; only the "immediate async
+  notification" behavior described in §3.6/§16.3 doesn't happen live.
+- **`advice_frustration_count`** has no real source anywhere in the codebase — it needs a new
+  tracked counter, which is Layer 4/5 feature work, not a wiring fix — and stays unforwarded.
+- **`composite_prior`'s prior-adjustment branch** stays dormant, gated on Layer 1's
+  implicit-signal frontend gap (§16.8 above).
+- **`psychological_model`** isn't read into the BES yet (§16.9 above).
+
+---
+
+## 17. Decision Log
+
+- **2026-08-04 (Phase 3 polish pass):** Found and fixed two silent attribute-name-mismatch bugs
+  in `conversation_orchestrator.py` — `route_system()` reading a nonexistent `.mode` instead of
+  `conversation_mode` (System 2 was never selected in production for any message), and
+  `_is_crisis()` reading a nonexistent `.crisis_flag` instead of `crisis_active` (Layer 3's half of
+  the crisis-detection OR never fired). Neither was caught by 1360+ existing tests because
+  orchestrator-level mocks matched the bug, not the real schema. Also wired `classify()` to
+  forward `circadian_band`/`composite_prior`/`prior_confidence`/`signal_mismatch_flag` from the
+  real `InputPerceptionPacket` (previously defaulted to neutral/zero); deliberately did not
+  forward `implicit_intensity` (would disable the neutral-skip gate). Logged `alert_fn`, the
+  double LLM call, and `relationship_depth`/`advice_frustration_count` as not-yet-fixed.
+- **2026-08-07 (Phase 3 follow-up):** Wired real BES inputs (`episodic_memories`,
+  `active_stressors`) once Layer 2's UWM/episodic-memory work unblocked them. Found and fixed a
+  naive-vs-aware datetime bug that silently degraded the BES to `insufficient_data` on every turn
+  once real episodic memories existed (caught by a test expecting a real stressor load, not zero).
+  `psychological_model` stayed unforwarded (Layer 2 scope at the time).
+- **2026-08-09 (done):** Made SC-1/SC-3 genuinely share one LLM call per turn (matching §14.2),
+  after initially deferring it as real engineering work rather than a quick wiring fix — revisited
+  once the user set a "complete end-to-end" bar. Verified with new call-count tests and a live
+  crisis-message run through the real orchestrator, given the two prior silent bugs found in this
+  exact area (2026-08-04 entry above).
+- **2026-08-09 (follow-up):** Forwarded `relationship_depth` live, once its root cause
+  (`tie_strength` pinned at 0.0 because nothing called Layer 4's real tie-strength update) was
+  fixed in Layer 4. `advice_frustration_count` remains unforwarded — no counter exists anywhere in
+  the codebase to source it from.
 
 ---
 

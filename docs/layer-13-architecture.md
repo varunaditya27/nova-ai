@@ -1587,224 +1587,167 @@ What the user experiences across the cold start period:
 
 ---
 
-## 12. As-Built Implementation Notes
+## 12. Live Wiring Status (current state)
 
-This section records how the specification above maps onto the shipped, fully-tested code in
-`backend/layer13_onboarding/`. The implementation is **pure Python stdlib** (dataclasses +
-str-`Enum`, `re`, `datetime`, `uuid`) — no third-party dependencies, no LLM calls in any
-extractor or policy (matching the <20ms / <60ms performance targets in §10). Tests live in
-`tests/unit/` and run on `/usr/bin/python3.11` (66 tests for this layer; full suite 1369 passing).
+The implementation is **pure Python stdlib** (dataclasses + str-`Enum`, `re`, `datetime`, `uuid`)
+— no third-party dependencies, no LLM calls in any extractor or policy (matching the <20ms / <60ms
+performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1369
+passing). Module map: schemas (§4.2/§5.1/§6.2) in `schemas.py`; SC-1 passive (§4.5) in
+`passive_elicitation.py` (`PassiveElicitationEngine.extract()` + 8 `_extract_*` methods); SC-1
+active (§4.3-§4.4) in `active_elicitation_queue.py` (`INITIAL_ELICITATION_ITEMS`,
+`ElicitationQueue.next_surfaceable_item()`, `ElicitationSurfacingPolicy.can_surface()`); SC-2 (§5)
+in `context_constructor.py` (`make_initial_state()`, `ColdStartContextBuilder.process_message()`,
+`generate_first_message()`) and `graduation_evaluator.py` (`GraduationEvaluator.evaluate()` /
+`.execute_graduation()`); SC-3 (§6) in `feature_pacing.py`
+(`FEATURE_INTRODUCTION_REGISTRY`, `FeaturePacingController.is_feature_active()` /
+`.queue_introduction_if_ready()` / `.get_all_active_features()`); the §7 coordinator in
+`cold_start_engine.py` (`ColdStartEngine.on_session_start()` / `.on_message()` /
+`.on_session_end()` / `.deactivate()`). All 5 files faithfully implement their spec sections with
+zero bugs in the units themselves — the gaps below were entirely about production callers, not
+correctness of the underlying code.
 
-### 12.1 Module map
-
-| Spec component | Module | Public surface |
-|---|---|---|
-| Schemas (§4.2, §5.1, §6.2) | `schemas.py` | `ElicitationItem`, `PassiveSignalBundle` (+ 8 signal dataclasses), `InitialState`/`InitialStateUpdate`, `PersonalityVector`, `EmotionalBaseline`, `CommunicationStyleProfile`, `ColdStartBehaviorConfig`, `GraduationCriterion`/`GraduationResult`/`GraduationHandoff`, `IntroductionStyle`, `FeatureReadinessProfile` (+ prereq dataclasses), `FeatureIntroductionEvent`, directive dataclasses |
-| SC-1 passive (§4.5) | `passive_elicitation.py` | `PassiveElicitationEngine.extract()` + 8 `_extract_*` methods |
-| SC-1 active (§4.3-§4.4) | `active_elicitation_queue.py` | `INITIAL_ELICITATION_ITEMS`, `ElicitationQueue.next_surfaceable_item()`, `ElicitationSurfacingPolicy.can_surface()` |
-| SC-2 (§5) | `context_constructor.py` | `make_initial_state()`, `ColdStartContextBuilder.process_message()`, `generate_first_message()` |
-| SC-2 graduation (§5.4) | `graduation_evaluator.py` | `GraduationEvaluator.evaluate()` / `.execute_graduation()` |
-| SC-3 (§6) | `feature_pacing.py` | `FEATURE_INTRODUCTION_REGISTRY`, `FeaturePacingController.is_feature_active()` / `.queue_introduction_if_ready()` / `.get_all_active_features()` |
-| Coordinator (§7) | `cold_start_engine.py` | `ColdStartEngine.on_session_start()` / `.on_message()` / `.on_session_end()` / `.deactivate()` |
-
-### 12.2 Deviations from the pseudocode (deliberate, behavior-preserving)
-
-- **`make_initial_state()` factory** replaces the dataclass-with-defaults `InitialState` from §5.1.
-  Python shares mutable default values across instances; a factory guarantees each user gets an
-  independent state (regression-tested in `test_each_user_gets_independent_state`).
-- **`generate_first_message(time_of_day, persona=None)`** keeps the persona shaping
-  template-based (no LLM) per the §5.2 note that "Persona only adjusts the precise wording, not
-  the structure," and on any failure returns the §9 hard fallback `"Hey. What's on your mind?"`.
-- **Semantic facts seeded during cold start are plain dicts**, not `SemanticFact` objects, so
-  Layer 13 stays decoupled from Layer 2's concrete schema; Layer 2 ingests them at write time.
-- **Extractor exception-safety is centralized** in `PassiveElicitationEngine.extract()` (§9): a
-  single failing extractor is logged and skipped, the rest of the `PassiveSignalBundle` is intact.
-- **Graduation handoff hooks** (`activate_proactivity_engine`, `activate_longitudinal_full_mode`,
-  `trigger_first_chapter_creation`, `set_personality_drift_gate`) are implemented as methods on
-  `ColdStartEngine` that model what wiring into the live Layers 6/10/4 would do; in isolation they
-  log and mutate overlay state. **`ColdStartEngine` itself has no production caller** (see §13) —
-  these hooks do not run in production today. `on_session_end()` wraps both `evaluate()` and
-  `execute_graduation()` so any failure leaves the user in cold start (never a partial activation),
-  exactly as §9 requires — a correctness property of the unit, verified in tests, independent of
-  whether the unit is wired in.
-
-### 12.3 Invariants enforced in code
-
-- **Safety is never gated**: `FeaturePacingController.is_feature_active("crisis_resource_awareness", …)`
-  short-circuits to `True` before any prerequisite check, and the registry entry carries zero
-  technical/relational prereqs (`test_crisis_always_active_even_at_session_zero`).
-- **Earn before asking**: `can_surface()` requires an active natural trigger **and** enforces
-  `MAX_ELICITATION_PER_SESSION = 1` in the first `EARLY_PERIOD_SESSIONS = 14`.
-- **Graduation is silent**: `execute_graduation()` returns a `GraduationHandoff` with no
-  user-facing message and flips `cold_start` off as a background state change.
+- **SC-1 Active Elicitation** — live and fully reconciled with the spec. `api/elicitation.py`
+  (`select_elicitation`) runs the same two real gates `ColdStartEngine.on_message` specifies, in
+  the same order: `ElicitationQueue.next_surfaceable_item` finds the highest-priority candidate
+  whose trigger fired, then `ElicitationSurfacingPolicy.can_surface` (the spec's real two-tier
+  register check + rate limit) makes the final call — `elicitation_count_this_session` is derived
+  from the existing `asked_this_session` boolean rather than adding new counter state (an earlier
+  version of this route reimplemented a stricter, ad hoc inline gate instead of calling
+  `can_surface()`; that divergence is now closed). `detect_triggers`
+  (`api/elicitation.py`'s own regex-based trigger detection) is intentionally kept as-is — it's
+  not a reimplementation of anything in `backend/layer13_onboarding/`, since no module there does
+  text-based trigger detection at all; they all expect a caller to have already produced
+  `active_triggers`. Wired via `api/state.make_cold_start_provider` → orchestrator `cold_start`
+  hook → `api/assembly.py`'s `_elicitation_directive`, weaving at most one surfaced question into
+  the planner prompt per turn (never front-loaded); `PostgresOnboardingStore` persists which
+  inference targets have been surfaced so nothing repeats. A lexical `crude_emotional_intensity`
+  heuristic stands in for Layer 3's real classification because `_apply_cold_start_overlay` runs
+  before `classify()` in `conversation_orchestrator.py` — there is no real emotional-intensity
+  signal available yet at that point in the turn, so this is a structural ordering constraint, not
+  an oversight.
+- **SC-1 Passive Elicitation** — live. `PassiveElicitationEngine` (all 8 extractors — vocabulary
+  register, emotional style, topic approach, disclosure comfort, named people, life context,
+  urgency, communication style) now has a real production caller:
+  `api/state.py::make_cold_start_writer` (post-turn, joins the writer chain after
+  `make_onboarding_writer`) runs `PassiveElicitationEngine.extract` +
+  `ColdStartContextBuilder.process_message` → `InitialState.apply_update` against a persisted
+  `InitialState` every turn while `cold_start_active`, via new
+  `infra/db/initial_state_store.py::PostgresInitialStateStore` (JSONB, singleton row per user,
+  same shape as `RelationshipState`/`FormatProfile`). `session_history` is read from the real
+  `PostgresMessageStore` (this session's prior user messages), not reconstructed or invented. This
+  closed the single highest-value gap found in this layer: the two active-elicitation questions
+  that ask the user something directly (`"Hey — what should I call you?"` for `user_handle`,
+  `"Are you a student, or are you working?"` for `life_phase`) previously had their answers woven
+  into that one turn's prompt and then discarded — `PostgresOnboardingStore.record_elicitation`
+  persisted only the inference-target name (so the question was never re-asked), never the user's
+  actual reply, so Nova asked "what should I call you?" once per user and never learned the
+  answer. Now `ColdStartContextBuilder`'s existing regex-match of a stated name ("I'm Priya") into
+  `user_handle` has somewhere real to land, the next time the user states their name in any
+  message — not only as a direct reply to that specific question. A bug was caught while wiring
+  this in: `InitialState.named_relationships` was a bare `list` with no `[NamedPersonSignal]`
+  parameter — the same serde-breaking pattern found and fixed in Layers 7/9/10 during the same
+  session — fixed before it was ever exercised against a real Postgres round-trip. Proven by
+  `tests/unit/api/test_state.py::test_cold_start_writer_captures_user_handle_from_a_real_message`.
+- **SC-2 Cold Start Handling (`ColdStartContextBuilder`/`make_initial_state`)** — live, via the
+  same `make_cold_start_writer` path described above. Production cold-start state is now the rich,
+  progressively-populated `InitialState` the spec is built around, not just a session counter.
+  `make_initial_state()` is a factory rather than a dataclass-with-defaults `InitialState`
+  (Python shares mutable default values across instances; a factory guarantees each user gets an
+  independent state — regression-tested in `test_each_user_gets_independent_state`).
+  `generate_first_message(time_of_day, persona=None)` keeps persona shaping template-based (no
+  LLM) per the §5.2 note that "persona only adjusts the precise wording, not the structure," and
+  on any failure returns the §9 hard fallback `"Hey. What's on your mind?"`. Semantic facts seeded
+  during cold start are plain dicts, not `SemanticFact` objects, so Layer 13 stays decoupled from
+  Layer 2's concrete schema — Layer 2 ingests them at write time. Extractor exception-safety is
+  centralized in `PassiveElicitationEngine.extract()` (§9): a single failing extractor is logged
+  and skipped, the rest of the `PassiveSignalBundle` stays intact.
+- **SC-2 Graduation (`GraduationEvaluator`)** — live, with the original session-counter path kept
+  as a deliberate fallback. Historically this evaluator had zero callers, and — unlike a typical
+  "simplification standing in for the richer evaluator" — its 7 required criteria were genuinely
+  *unreachable*: the fields it checks (`user_handle`, `life_phase`,
+  `communication_style_profile`, `emotional_baseline_calibrated`, `primary_topic_areas`) were
+  populated exclusively by `ColdStartContextBuilder`, which nothing called. Two of those fields had
+  no producer anywhere in Layer 13 at all — `emotional_baseline_calibrated` and
+  `primary_topic_areas` (2+) — so `should_graduate` could never become `True` through any live
+  path even after wiring the rest. Rather than inventing new NLP/extraction logic for these
+  (nothing in the spec grounds them precisely), both are derived from signals already computed
+  elsewhere: `emotional_baseline_calibrated` becomes `True` once
+  `PassiveElicitationEngine`'s emotional-style extractor reports `confidence >= 0.8` (already a
+  real signal, scaled by session history length, reaching 1.0 at 10+ messages); `primary_topic_areas`
+  is the count of distinct `topic_tags` across the user's real, persisted episodic memories (Layer
+  2 already tags every episode). `make_cold_start_writer` now runs
+  `GraduationEvaluator().evaluate(state)` every turn and, when `should_graduate`, calls
+  `PostgresOnboardingStore.graduate_now()` to end cold start immediately — ahead of
+  `make_onboarding_writer`'s bare `session_index >= graduation_sessions` (default 5) schedule,
+  which is **deliberately kept as a fallback, not replaced**: if a genuinely terse user never
+  triggers enough real signal to satisfy every criterion, they still graduate at
+  `graduation_sessions` rather than staying stuck in cold start forever. Both paths write to the
+  same `cold_start_active` flag, so whichever fires first wins. Graduation itself stays silent as
+  specified: `execute_graduation()` returns a `GraduationHandoff` with no user-facing message and
+  flips `cold_start` off as a background state change. Proven end to end by
+  `tests/unit/api/test_state.py::test_cold_start_writer_graduates_early_when_real_criteria_are_all_met`
+  (a fully-populated `InitialState` graduates the moment the last required criterion —
+  `total_exchange_count >= 20` — is crossed, ahead of the 50-session fallback threshold used in
+  that test) and `test_cold_start_writer_calibrates_emotional_baseline_and_stops_after_graduation`
+  (the writer is a genuine no-op once `cold_start_active` is `False` — never resurrects a graduated
+  user).
+- **SC-3 Feature Introduction Pacing (`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY`)**
+  — correctly unwired. No feature anywhere in Nova is gated or introduced via this mechanism
+  (confirmed by a full grep across `api/`, `infra/`, `background/`), and building one just to give
+  this a caller would be scope invention, not a wiring fix — this stays a genuine "no feature needs
+  it yet" case, not a gap. Safety is still never gated even though this module has no caller:
+  `FeaturePacingController.is_feature_active("crisis_resource_awareness", …)` short-circuits to
+  `True` before any prerequisite check, and the registry entry carries zero technical/relational
+  prereqs (`test_crisis_always_active_even_at_session_zero`) — a correctness property of the unit
+  itself, independent of whether it's wired in. `can_surface()`'s "earn before asking" invariant
+  (an active natural trigger **and** `MAX_ELICITATION_PER_SESSION = 1` within the first
+  `EARLY_PERIOD_SESSIONS = 14`) is likewise a property of the unit, exercised live via SC-1 above.
+- **Coordinator (`ColdStartEngine`, §7)** — has zero production callers; production reimplements a
+  thin equivalent directly in `api/state.py` + `api/elicitation.py` rather than instantiating this
+  class. This turned out to be a complete, correct, already-tested in-memory coordinator with
+  nowhere to persist its state across turns/restarts — the fix needed for the rest of this section
+  was persistence and a real per-turn caller, not new coordination logic. Graduation handoff hooks
+  (`activate_proactivity_engine`, `activate_longitudinal_full_mode`,
+  `trigger_first_chapter_creation`, `set_personality_drift_gate`) remain logging-only stubs on
+  `ColdStartEngine` that model what wiring into the live Layers 6/10/4 would do — the real
+  activation of those systems already happens elsewhere, gated on the same `cold_start_active`
+  flag directly (e.g. `make_proactive_writer` already checks it), so these hooks were never
+  load-bearing to begin with. `on_session_end()` wraps both `evaluate()` and `execute_graduation()`
+  so any failure leaves the user in cold start rather than a partial activation, exactly as §9
+  requires — verified in tests, independent of whether the class itself is wired in. A stale claim
+  that this class was "wired by the orchestrator in production" (present in both the module's own
+  docstring and an earlier revision of this doc) has been corrected — it changes only what the
+  code and doc honestly claim, not runtime behavior.
 
 ---
 
 *This document specifies Layer 13 completely. All three sub-components — SC-1 Progressive Elicitation (ElicitationItem and ElicitationQueue schemas with full population, priority taxonomy, three surfacing rules with enforcement logic, PassiveElicitationEngine with 8 fully implemented extractors for vocabulary register, emotional expression style, topic approach, self-disclosure comfort, named people, life context, urgency, and communication style, three-phase elicitation timeline), SC-2 Cold Start Handling (complete InitialState schema with population defaults and rationale for every value, ColdStartBehaviorConfig with all 7 behavioral constraints, first message template with requirements and anti-patterns, ColdStartContextBuilder with full message processing and personality vector drift algorithm, GraduationEvaluator with 7 required criteria as enforceable predicates, execute_graduation() handoff sequence), SC-3 Feature Introduction Pacing (IntroductionStyle enum with definitions, FeatureReadinessProfile and sub-schemas, complete Feature Introduction Registry with 11 features from personality adaptation through retrospective including safety exception, FeaturePacingController with is_feature_active() and queue_introduction_if_ready() logic) — are fully specified. The Cold Start Engine coordination architecture with on_session_start/on_message/on_session_end lifecycle, onboarding experience arc table, error handling for 9 failure cases, performance targets for all 8 operations, and 5 design principles with their enforcement mechanisms are all explicitly defined. No behavior of Layer 13 requires assumptions or inferences from other documents.*
 
-### Live integration update (2026-07-07) — active elicitation is live per-turn
+## 13. Decision Log
 
-Active elicitation now runs in the live turn. `api/elicitation.py` maps the message + session
-position to the elicitation items' natural triggers and asks the `ElicitationQueue` for one
-highest-priority surfaceable question (rate-limited to one/session in the early period,
-distress-suppressed, never repeated — surfaced targets persist in `PostgresOnboardingStore`).
-`api/state.make_cold_start_provider` sets `pending_elicitation`, the orchestrator passes `session_id`
-to the `cold_start` hook, and `api/assembly.plan` weaves the question into the planner directive
-(never front-loaded). Feature-pacing/progressive feature introduction remains a follow-up. See
-`docs/API_REFERENCE.md`.
-
----
-
-## 13. Live wiring status (Phase 13 polish pass, 2026-08-04)
-
-Zero bugs found in the module itself — all 5 files (`passive_elicitation.py`,
-`context_constructor.py`, `graduation_evaluator.py`, `feature_pacing.py`, `cold_start_engine.py`)
-faithfully implement their spec sections, and all 66 unit/integration tests for this layer pass
-(full suite: 1369 passed, 10 skipped). Two stale claims were fixed inline (not behavior — see
-below). This is the most unwired layer of the entire 13-layer audit pass: of the whole module,
-**only the active-elicitation queue has a production caller**, and even that is a lighter-weight
-reimplementation rather than the spec'd coordinator.
-
-**What's live:** `api/elicitation.py` (`select_elicitation`) calls
-`active_elicitation_queue.py`'s `INITIAL_ELICITATION_ITEMS` + `ElicitationQueue
-.next_surfaceable_item()` directly, with its own trigger-detection regexes and a lexical
-`crude_emotional_intensity` heuristic (Layer 3's real classification hasn't run yet at the point
-the cold-start hook fires — confirmed: `_apply_cold_start_overlay` runs before `classify()` in
-`conversation_orchestrator.py`, so there's no real emotional-intensity signal to read). Wired via
-`api/state.make_cold_start_provider` → orchestrator `cold_start` hook → `api/assembly.py`'s
-`_elicitation_directive`, which weaves at most one surfaced question into the planner prompt per
-turn. `PostgresOnboardingStore` persists which inference targets have been surfaced (so nothing
-repeats) and a session-scoped one-question limit.
-
-**What's unwired — everything else:**
-- **`ElicitationSurfacingPolicy`** (the spec's own three-condition surfacing gate) has no
-  caller — `api/elicitation.py` reimplements equivalent logic ad hoc instead of calling
-  `can_surface()`. The reimplementation is *stricter*, not looser (a permanent per-session
-  boolean rate limit vs. the spec's `EARLY_PERIOD_SESSIONS = 14`-scoped one, and it doesn't
-  distinguish priority-2 items at the 0.80 distress threshold), so this is a design divergence
-  worth reconciling, not a safety gap. **Reconciled — see §14.1.**
-- **`PassiveElicitationEngine`** (all 8 extractors — vocabulary register, emotional style, topic
-  approach, disclosure comfort, named people, life context, urgency, communication style) has
-  zero production callers. None of Nova's "infer before asking" philosophy runs live. **Wired —
-  see §14.2.**
-- **`ColdStartContextBuilder`/`make_initial_state`** (§5.1's `InitialState`, personality-vector
-  drift, semantic-fact seeding) has zero callers. Production cold-start state is just
-  `PostgresOnboardingStore`'s flat `{session_index, counted_session_keys}` — a session counter,
-  not the rich, progressively-populated `InitialState` the rest of the spec is built around.
-  **Wired — see §14.2.**
-- **`GraduationEvaluator`** (7 required criteria: sessions, exchanges, handle known, life phase
-  known, comm-style established, emotional baseline calibrated, 2+ topic areas) has zero callers.
-  Production graduation is `PostgresOnboardingStore.record_turn`'s bare `session_index >=
-  graduation_sessions` (default 5) — and this isn't merely a simplification standing in for the
-  richer evaluator, **it's the only graduation logic that can possibly run**: the fields
-  `GraduationEvaluator` checks (`user_handle`, `life_phase`, `communication_style_profile`,
-  `emotional_baseline_calibrated`, `primary_topic_areas`) are populated exclusively by
-  `ColdStartContextBuilder`, which nothing calls. The spec'd graduation criteria are not just
-  unwired, they are unreachable in the current system. **Wired, with the session-counter path kept
-  as a fallback — see §14.3-§14.4.**
-- **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY`** has zero callers, as the
-  "Live integration update" note above already flagged — confirmed here with a full grep across
-  `api/`, `infra/`, `background/`. No feature in Nova is gated or introduced via this mechanism.
-- **`ColdStartEngine`** (the §7 coordinator that ties SC-1/SC-2/SC-3 together) has zero
-  callers. Production reimplements a thin equivalent directly in `api/state.py` +
-  `api/elicitation.py` rather than instantiating this class. Two stale claims that this class was
-  "wired by the orchestrator in production" — one in the module's own docstring, one in §12.2
-  above — were corrected this pass; neither changes runtime behavior, only what the code and doc
-  honestly claim about it.
-
-**A consequence worth flagging on its own:** the two active-elicitation questions that *do* ask
-the user something directly (`"Hey — what should I call you?"` for `user_handle`,
-`"Are you a student, or are you working?"` for `life_phase`) have their answers woven into the
-model's prompt for that one turn and then **discarded** — `PostgresOnboardingStore
-.record_elicitation` persists only the inference-target name (so the question is never re-asked),
-never the user's actual reply. Confirmed by grep: no code path in `api/` or `infra/db/
-onboarding_store.py` ever writes `user_handle` or `life_phase` anywhere. Nova asks "what should I
-call you?" once per user, and never learns the answer. This was the single highest-value gap in
-this layer — **fixed, see §14.2.**
-
-See `docs/POLISH_BACKLOG.md` for the larger structural items — **all resolved in the follow-up
-below, except `FeaturePacingController`, which stays unwired: there is still no feature anywhere
-in Nova that needs pacing/gating, so there is nothing for it to wire to.**
-
-## 14. Passive elicitation + real graduation wired (follow-up, 2026-08-09)
-
-Scoped explicitly with the user before building — this is comparable in size to the Layer 5/10
-builds. `ColdStartEngine` itself turned out to be a complete, correct, already-tested in-memory
-coordinator with nowhere to persist its state across turns/restarts — the fix was persistence and
-a real per-turn caller, not new coordination logic.
-
-### 14.1 Elicitation surfacing reconciled
-
-`api/elicitation.py::select_elicitation` previously reimplemented a single, looser inline gate.
-It now runs the same two real gates `ColdStartEngine.on_message` does, in the same order:
-`ElicitationQueue.next_surfaceable_item` finds the highest-priority candidate whose trigger fired,
-then `ElicitationSurfacingPolicy.can_surface` (fuller two-tier register check + the real rate
-limit) makes the final call — `elicitation_count_this_session` is derived from the existing
-`asked_this_session` boolean rather than adding new counter state. `detect_triggers`
-(`api/elicitation.py`'s own regex-based trigger detection) is kept as-is: it's not a
-reimplementation of anything in `backend/layer13_onboarding/` — no module there does text-based
-trigger detection at all; they all expect a caller to have already produced `active_triggers`.
-
-### 14.2 Passive elicitation wired — answers now captured
-
-New `infra/db/initial_state_store.py::PostgresInitialStateStore` persists a real `InitialState`
-per user (JSONB, singleton row, same shape as `RelationshipState`/`FormatProfile`). New
-`api/state.py::make_cold_start_writer` (post-turn, joins the writer chain after
-`make_onboarding_writer`) runs the real `PassiveElicitationEngine.extract` +
-`ColdStartContextBuilder.process_message` → `InitialState.apply_update` against it every turn
-while `cold_start_active`. This closes the layer's single highest-value gap directly:
-`ColdStartContextBuilder` already regex-matches a stated name ("I'm Priya") into `user_handle` —
-Nova asking "what should I call you?" now actually has somewhere for the answer to land, the very
-next time the user states their name in any message, not only as a direct reply to that question.
-`session_history` is read from the real `PostgresMessageStore` (this session's prior user
-messages), not reconstructed or invented.
-
-**Bug caught in the same pass**: `InitialState.named_relationships` was a bare `list` (no
-`[NamedPersonSignal]` parameter) — the same serde-breaking pattern fixed in Layers 7/9/10 this
-session. Fixed before it was ever exercised against a real Postgres round-trip.
-
-Proven by `tests/unit/api/test_state.py::
-test_cold_start_writer_captures_user_handle_from_a_real_message`.
-
-### 14.3 Two ungrounded graduation criteria — resolved without inventing new extraction logic
-
-`GraduationEvaluator` requires `emotional_baseline_calibrated` and `primary_topic_areas` (2+), but
-**no code path anywhere in Layer 13 ever populates either field** — `ColdStartContextBuilder.
-process_message` never produces those keys. This meant `should_graduate` could never become `True`
-through any live path, even with everything else wired. Rather than inventing new NLP/extraction
-logic for these (which nothing in the spec grounds precisely), both are derived from signals
-already computed elsewhere:
-
-- `emotional_baseline_calibrated`: `True` once `PassiveElicitationEngine`'s own emotional-style
-  extractor reports `confidence >= 0.8` — that confidence is already a real signal, scaled by
-  session history length (reaches 1.0 at 10+ messages); no new heuristic invented.
-- `primary_topic_areas`: the count of distinct `topic_tags` across the user's real, persisted
-  episodic memories (Layer 2 already tags every episode) — reusing real upstream data rather than
-  building a new topic classifier.
-
-### 14.4 Graduation now genuinely evaluates, with a safety-net fallback kept
-
-`make_cold_start_writer` runs `GraduationEvaluator().evaluate(state)` every turn and, when
-`should_graduate`, calls a new `PostgresOnboardingStore.graduate_now()` to end cold start
-immediately — ahead of `make_onboarding_writer`'s bare session-counter schedule, which is
-deliberately **kept as a fallback**, not replaced: if a genuinely terse user never triggers enough
-real signal to satisfy every criterion, they still graduate at `graduation_sessions` rather than
-staying stuck in cold start forever. Both paths write to the same `cold_start_active` flag, so
-whichever fires first wins.
-
-Proven end to end by `tests/unit/api/test_state.py::
-test_cold_start_writer_graduates_early_when_real_criteria_are_all_met` (a fully-populated
-`InitialState` graduates the moment the last required criterion — `total_exchange_count >= 20` —
-is crossed, ahead of the 50-session fallback threshold used in that test) and
-`test_cold_start_writer_calibrates_emotional_baseline_and_stops_after_graduation` (the writer is a
-genuine no-op once `cold_start_active` is `False` — never resurrects a graduated user).
-
-### 14.5 Still correctly unwired
-
-`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` — no feature in Nova is gated or
-introduced via this mechanism, and building one just to give this a caller would be scope
-invention, not a wiring fix. `ColdStartEngine`'s own `activate_proactivity_engine`/
-`activate_longitudinal_full_mode`/`trigger_first_chapter_creation` hooks remain logging-only
-stubs, unchanged — the real activation of those systems already happens elsewhere, gated on the
-same `cold_start_active` flag (e.g. `make_proactive_writer` already checks it directly), so these
-hooks were never load-bearing to begin with.
+- **2026-07-07:** Active elicitation wired live per-turn — `api/elicitation.py` maps the message +
+  session position to the elicitation items' natural triggers and asks `ElicitationQueue` for one
+  highest-priority surfaceable question (rate-limited to one/session in the early period,
+  distress-suppressed, never repeated). Feature-pacing/progressive feature introduction flagged as
+  a follow-up at this point.
+- **2026-08-04 (Phase 13 polish pass):** Audited `backend/layer13_onboarding/` — zero bugs in the
+  module itself, but found this the most unwired layer of the whole 13-layer pass: only the
+  active-elicitation queue had a production caller, and even that was a looser ad hoc
+  reimplementation rather than the spec'd `ElicitationSurfacingPolicy.can_surface()`. Identified
+  the highest-value gap: `user_handle`/`life_phase` answers were asked for and then discarded,
+  never persisted. Identified that `GraduationEvaluator`'s criteria were unreachable (not just
+  unwired) since only `ColdStartContextBuilder` populates the fields it checks, and nothing calls
+  that builder. Corrected two stale "wired by the orchestrator" claims (module docstring + this
+  doc) to match reality.
+- **2026-08-09 (follow-up, scoped explicitly with the user before building — comparable in size to
+  the Layer 5/10 builds):** Reconciled `api/elicitation.py`'s elicitation-surfacing gate with the
+  real `ElicitationSurfacingPolicy.can_surface()`. Wired `PassiveElicitationEngine` and
+  `ColdStartContextBuilder` via a new `PostgresInitialStateStore` + `make_cold_start_writer`,
+  closing the discarded-answer gap directly. Derived the two previously-unreachable graduation
+  criteria (`emotional_baseline_calibrated`, `primary_topic_areas`) from signals already computed
+  elsewhere rather than inventing new extraction logic, making `GraduationEvaluator` genuinely
+  reachable for the first time, while deliberately keeping the session-counter graduation path as
+  a fallback for terse users. Caught and fixed a serde bug (`InitialState.named_relationships`
+  missing its type parameter) before it hit a real Postgres round-trip — the same bug class found
+  in Layers 7/9/10 this session. Confirmed `FeaturePacingController` stays correctly unwired: no
+  feature in Nova needs pacing/gating yet, so there is nothing to wire it to.

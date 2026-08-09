@@ -48,8 +48,10 @@ Legend — **why deferred**: `DECISION` (product choice), `DESIGN` (needs a desi
 ## 5. Transport & delivery  — `ROADMAP`
 - **WebSocket** transport — SSE (`/chat/stream`) is live and sufficient; WS is the future bidirectional
   upgrade (interrupts, live voice).
-- **Proactive push channel** — `/proactive` is **poll-only**; there is no server push / notification
-  channel. A frontend polls it. Real push needs WS or web-push infra.
+- **Proactive push channel** — done (2026-08-09): `GET /proactive/stream` (SSE, bounded ~25min
+  lifetime relying on `EventSource` auto-reconnect) + `useProactiveStream`/`app/proactive/page.tsx`
+  consume it live, alongside the existing poll. True OS-level push notification (outside an open
+  tab) still needs web-push infra — that part remains deferred.
 - **Speech-to-text (voice input)** — `/voice` is TTS **output** only; there is no transcription of
   spoken user input. Needs an STT model/endpoint.
 

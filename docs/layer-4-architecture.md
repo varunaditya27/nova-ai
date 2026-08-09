@@ -1195,371 +1195,206 @@ Implementation: `role_abandonment` detected → `recommended_action = "refuse_gr
 
 ---
 
-## 15. Implementation Notes (as-built)
+## 15. Live Wiring Status (current state)
 
-This section records how the specification above is realized in `backend/layer4_persona/`. The code is the single source of truth; §1–14 are the design intent. Where the implementation deviates from the design text, the reason is given here.
+This section records how the specification above is realized in `backend/layer4_persona/` and
+`api/assembly.py`, and what actually runs on a live turn today. The code is the single source of
+truth; §1–14 are the design intent.
 
 ### 15.1 Module map
 
 | Spec sub-component | Module | Key entry point |
 |---|---|---|
-| SC-1 Persona State Resolver | `persona_resolver.py` | `resolve_persona_state(...)`, `CORE_IDENTITY_ANCHORS` |
+| SC-1 Persona State Resolver | `persona_resolver.py` | `resolve_persona_state(...)`, `CORE_IDENTITY_ANCHORS`, `_ANCHOR_OVERRIDE_HINTS` |
 | SC-2 Relationship State Manager | `relationship_manager.py` | `compute_relationship_state(...)`, `compute_session_delta`, `update_tie_strength`, `stage_for_sessions` |
 | SC-3 Tone & Style Calibrator | `tone_calibrator.py` | `calibrate_voice(...)`, `MODE_BASE_PARAMETERS`, `CIRCADIAN_ADJUSTMENTS` |
 | SC-4 Persona Drift Detector | `drift_detector.py` | `detect_drift(...)`, `compute_position_consistency` |
 | SC-5 Semantic Planner (Agent 4a) | `semantic_planner.py` | `generate_semantic_draft(...)`, `validate_advice_gate`, `strip_advice`, `extract_key_claims` |
 | SC-6 Emotion Refiner (Agent 4b) | `emotion_refiner.py` | `refine_emotion(...)`, `should_skip_refinement`, `validate_factual_preservation`, `reinsert_claims` |
 | PersonaPacket + FinalResponsePacket orchestration | `packet_builder.py` | `build_final_response_packet(...)`, `assemble_persona_packet` |
+| Live adapter (actual call path) | `api/assembly.py` | `build_persona()`, `plan()`, `refine()` |
 | All dataclasses / enums | `schemas.py` | — |
 
-### 15.2 Type reuse and dependency direction
+### 15.2 Type reuse, dependency injection, and test coverage
 
-The pipeline runs L1 → L2 → L3 → L4, so Layer 4 imports rather than redefines upstream types: `ConversationMode`, `ConversationTurn`, `ScoredMemory`, `UWMContextSnapshot`, `CommunicationModel`, `PsychologicalModel` from Layer 2; `EmotionIntentPacket`, `BackgroundEmotionalState`, `BESLabel`, `EmotionLabel`, `IntentLabel`, `AdviceGate` from Layer 3. This keeps a single source of truth for the shared vocabulary.
+The pipeline runs L1 → L2 → L3 → L4, so Layer 4 imports rather than redefines upstream types:
+`ConversationMode`, `ConversationTurn`, `ScoredMemory`, `UWMContextSnapshot`, `CommunicationModel`,
+`PsychologicalModel` from Layer 2; `EmotionIntentPacket`, `BackgroundEmotionalState`, `BESLabel`,
+`EmotionLabel`, `IntentLabel`, `AdviceGate` from Layer 3.
 
-### 15.3 Dependency injection for offline testability
+The two LLM calls — SC-5 Semantic Planner and SC-6 Emotion Refiner — are injected as plain
+callables (`planner_llm_fn` / `refiner_llm_fn`, each `str -> str`). The optional embedding
+similarity check in factual validation is likewise injected (`similarity_fn`, `(str, str) ->
+float`); the offline default uses claim-token *coverage* (recall of claim tokens by the best
+refined sentence) at the same §8.6 0.65 threshold, not embedding cosine — this is real, working
+validation (confirmed by `test_real_layer4_wiring_refine_emotion_reinserts_a_dropped_factual_claim`),
+not a stub, and an embedding-based `similarity_fn` was tried and reverted (see §16 2026-08-09
+entries) for lack of evidence the default under-performs. With no callables supplied, the layer
+degrades exactly as §12 prescribes and still emits a valid, non-empty packet. The pipeline wires
+the real Groq/Ollama endpoints and embedding model at runtime.
 
-The two LLM calls — SC-5 Semantic Planner and SC-6 Emotion Refiner — are injected as plain callables (`planner_llm_fn` / `refiner_llm_fn`, each `str -> str`). The optional embedding similarity check in factual validation is likewise injected (`similarity_fn`, `(str, str) -> float`). With no callables supplied, the layer degrades exactly as §12 prescribes and still emits a valid, non-empty packet — which is what the unit suite exercises. The pipeline wires the real Groq/Ollama endpoints and embedding model at runtime.
+`PsychologicalModel` fields the design text reads (`humor_receptivity`, `preferred_interaction_style`,
+`known_sensitivities`) don't exist on the implemented Layer 2 schema; the resolver derives the same
+signals from fields that do: humor receptivity → `CommunicationModel.uses_humor`; technical comfort
+→ `CommunicationModel.vocabulary_complexity ∈ {high, advanced, technical}`; directness preference →
+`CommunicationModel.prefers_direct_answers`; warmth nudge → `PsychologicalModel.preferred_support_style`;
+known sensitivities → descriptions of `PsychologicalModel.known_triggers`.
 
-### 15.4 UWM field reconciliation (§3.4, §5.3)
+Other behavioral deviations from the design text: `nova_stated_position` (§6.3 Check 3) is supplied
+as `nova_recent_positions: list[str]` (see §15.5 below) rather than read off `ConversationTurn`,
+which doesn't carry a per-turn stated position; drift detection runs pre-draft on the user
+message/history (catching role abandonment and capitulation, which must gate generation) rather
+than exactly as §6's `pending_draft_intent` sequencing describes; `VoiceParameters.self_disclosure_depth`
+caps at `moderate` even at the `close` stage while `RelationshipState.self_disclosure_ceiling`
+separately records the qualitative `deep`; and the May-28 scaffold's `PersonalityVector` /
+post-session `drift_controller` / `prompt_builder` design was replaced by `persona_resolver` (per-
+session resolution), `drift_detector` (per-turn guard), and prompt construction living inside
+`semantic_planner`/`emotion_refiner` — those scaffold types don't exist in the as-built layer.
 
-The design text reads several signals off `PsychologicalModel` that the implemented Layer 2 schema does not carry (`humor_receptivity`, `preferred_interaction_style`, `known_sensitivities`). The resolver derives the same signals from fields that **do** exist:
+81 unit tests across seven files exercise every sub-component and the orchestrator
+(`test_persona_resolver.py`, `test_relationship_manager.py`, `test_tone_calibrator.py`,
+`test_drift_detector.py`, `test_semantic_planner.py`, `test_emotion_refiner.py`,
+`test_layer4_packet_builder.py`), plus real-wiring integration tests in
+`tests/unit/api/test_assembly_turn.py` referenced by name below.
 
-- humor receptivity → `CommunicationModel.uses_humor`
-- technical comfort → `CommunicationModel.vocabulary_complexity ∈ {high, advanced, technical}`
-- directness preference → `CommunicationModel.prefers_direct_answers`
-- warmth nudge → `PsychologicalModel.preferred_support_style`
-- known sensitivities → descriptions of `PsychologicalModel.known_triggers`
+### 15.3 Per sub-component, current state
 
-This keeps the resolver runnable against the real UWM without inventing schema fields.
+**SC-1 Persona State Resolver — live, and no longer build-time-constant.** `build_persona()` calls
+`resolve_persona_state(identity_memory_entries=..., session_context=...)` for real and stores the
+result on `PersonaPacket.persona_state`. `load_core_anchors` now applies `_ANCHOR_OVERRIDE_HINTS` —
+a per-anchor `(IdentityCategory, keyword_hints)` map — so a real Identity Memory belief overrides an
+anchor's `value` only when it sits in the matched category *and* its statement contains one of the
+anchor's hint keywords (category narrows the search, the keyword confirms topical relevance; ties
+break on centrality). This is deliberately narrow: a naive "closest belief in the same category"
+match would let an unrelated personality-trait belief override `humor_style` just because both are
+tagged `PERSONALITY_TRAIT`. No matching belief leaves the anchor's constant unchanged — most of the
+7 anchors have no real correspondent in the default identity seed, and an honest `None` beats a
+forced, misleading match. Only `value` is overridden; `centrality`/`immutable` stay the anchor's own
+constants (they drive resolver logic tuned to the anchors' abstract 0–1 scale, not a belief's
+independently calibrated centrality); `name` is excluded from the map entirely, always immutable.
+`known_sensitivities` still returns `[]` for every user (needs `psychological_model`, out of the UWM
+narrow-slice scope) and Identity Memory separately reaches the prompt via `_identity_directive`
+(Layer 2 doc §24) regardless of this path.
 
-### 15.5 Behavioral deviations from the design text
+**SC-2 Relationship State Manager — live, tie strength is a real moving number.**
+`build_persona()` calls `compute_relationship_state(persisted=rel)` (deliberately without
+`communication_model` — passing it would let `_apply_style_calibration` overwrite the EMA-learned
+params `style_learning.py` already owns live, a documented latent trap) which stamps the
+stage-derived gates (`memory_reference_policy`, `self_disclosure_ceiling`,
+`follow_up_question_ceiling`, `direct_noticing_allowed`) that `record_turn` itself never computed.
+Tie strength is computed for real: `record_turn` accumulates per-turn signals
+(`emotional_intensity` from Layer 3's `EmotionClassification.intensity`; `had_vulnerability_moment`
+as `intensity > 0.6 and valence < 0`, the same 0.6 threshold `compute_session_delta` uses for
+`max_emotional_intensity`) and applies `compute_session_delta` retroactively the moment a new
+`session_key` is observed, i.e. at the boundary of the session that just ended — there is no
+explicit "session end" event in a continuous-chat product to hang a one-shot update on.
+`explicit_trust_signals_count` and `repair_occurred` have no real detector anywhere and stay at
+their falsy defaults (an honest degradation, not a fabricated signal — `compute_session_delta`'s
+additive `0.02` floor plus real vulnerability/intensity bumps is still a non-constant delta).
+`api/assembly.py::classify` forwards `tie_strength` as `relationship_depth` into Layer 3's
+`build_emotion_intent_packet`, reaching SC-4 Mismatch's `relationship_depth < 0.3` hard gate and
+SC-5 Empathy Hypothesis. `advice_frustration_count` remains unforwarded — no real counter exists
+anywhere (Layer 3 doc).
 
-- **`nova_stated_position` (§6.3 Check 3).** The implemented `ConversationTurn` does not carry a per-turn stated position, so `detect_drift` accepts `nova_recent_positions: list[str]` directly (supplied by the Layer 2 State Updater, which annotates positions) rather than reading them off session history. This decouples the guard from how positions are stored.
-- **Drift timing.** §6 places SC-4 before SC-5 with a `pending_draft_intent`. The orchestrator runs `detect_drift` pre-draft on the *user message* and recent positions — which is what catches role abandonment (critical) and capitulation, the two checks that must gate generation. The draft-content checks (fabricated emotion, harmful validation) operate on `pending_draft_intent` and are available to callers that pass draft text in. A critical drift short-circuits both planners with `GRACEFUL_REFUSAL_TEXT` so capitulating planner output can never reach the user.
-- **Self-disclosure depth.** `VoiceParameters.self_disclosure_depth` is capped at `moderate` (the enum's ceiling) even at the `close` stage, while `RelationshipState.self_disclosure_ceiling` records the qualitative `deep`. The Refiner uses the voice cap; the relationship ceiling governs gating.
-- **Factual preservation default.** §8.6 specifies embedding cosine ≥ 0.65. The offline default uses claim-token *coverage* (recall of claim tokens by the best refined sentence) at the same 0.65 threshold; an embedding `similarity_fn` can be injected to match production exactly. Reinsertion is rule-based (verbatim append with a soft transition) and never calls the LLM.
-- **Scaffold relocation.** The May-28 scaffold modelled this layer as a learned `PersonalityVector` plus a post-session `drift_controller` (belief-update gate) and a `prompt_builder`. Those modules were removed: per-session persona resolution is `persona_resolver`; the per-turn identity guard is `drift_detector` (distinct from the scaffold's post-session belief-update gate, which is a Layer 2 State-Updater concern); prompt construction lives inside `semantic_planner` / `emotion_refiner`. The scaffold's `PersonalityVector`/`BuiltPrompt` types do not exist in the as-built layer.
+**SC-3 Tone & Style Calibrator — live.** `build_persona()` calls `calibrate_voice(...)` with the
+real conversation mode, circadian band, relationship state, persona state, and background state,
+storing the result on `PersonaPacket.voice_parameters`.
 
-### 15.6 Test coverage
+**SC-4 Persona Drift Detector — live, with a hard override for critical drift.** `plan()` runs
+`detect_drift` twice: pre-draft (Checks 2/3, on the user message/history) so a role-abandonment
+directive reaches the planner prompt on every turn including System 1, and post-draft (Check 1,
+fabricated emotion in the actual draft). When Check 2 (role abandonment) fires,
+`recommended_action == REFUSE_GRACEFULLY` with `risk_level = CRITICAL` is a genuine hard stop:
+`plan()` returns `GRACEFUL_REFUSAL_TEXT` immediately without calling the planner LLM at all, and
+`refine()` forces `skip=True` regardless of `should_skip_refinement`'s policy — matching
+`build_final_response_packet`'s own §12 behavior, previously only a soft prompt nudge. Check 3
+(sycophantic capitulation) is no longer permanently inert: `PostgresMessageStore.recent_by_role`
+(new) plus `api/state.py::make_nova_positions_provider` supply real cross-turn Nova-reply history
+(5 most recent, oldest-first) to both `detect_drift` calls — the detection logic (`len(positions) >=
+3`, lexical-Jaccard variance `> 0.6` + polarity-flip) was already real and tested; only the input
+was missing. Checks 1 and 2 always worked without this input.
 
-81 unit tests across seven files exercise every sub-component and the orchestrator:
-`test_persona_resolver.py` (11), `test_relationship_manager.py` (12), `test_tone_calibrator.py` (13), `test_drift_detector.py` (10), `test_semantic_planner.py` (11), `test_emotion_refiner.py` (15), `test_layer4_packet_builder.py` (9). Coverage includes: core-anchor immutability and the §12 UWM-unavailable fallback; stage-boundary gating and asymptotic tie-strength growth; the full mode × circadian × BES-drift × persona-constraint calibration chain; all four identity-under-pressure rules (incl. the polarity-flip capitulation signal); advice-gate stripping; the five-condition refinement skip; factual reinsertion; and the hard §12 guarantees (always non-empty packet, graceful refusal override, degradation under LLM failure).
+**SC-5 Semantic Planner — live**, with its full real input set now reaching the prompt:
+`ctx.recalled_memories`, `advice_gate`/`prefers_no_advice` (from `ctx.emotion_intent`), and
+`circadian_band` are all forwarded by `plan()`. `semantic_planner._format_memories` was fixed to
+read `EpisodicMemory.summary` (not the nonexistent `.content`) — the old fallback would have
+rendered a raw `ScoredMemory` dataclass repr (embedding floats, `recall_score`) directly in the LLM
+prompt, violating the "no raw scores to the LLM" invariant; this was latent until memories were
+wired through, not a separate bug.
+
+**SC-6 Emotion Refiner — live.** `refine()` calls the real `emotion_refiner.refine_emotion` — the
+actual five-condition skip policy, factual-preservation validation against `key_claims`, and claim
+reinsertion — instead of a fixed `"Rephrase this warmly..."` prompt with no factual guarantee.
+Because `refine_emotion`'s own skip policy can now return the draft unchanged even on a System 2
+turn, `ctx.refined` means "the refinement stage was invoked this turn," not "the text changed";
+the finer-grained `RefinementOutput.refinement_applied` isn't currently surfaced on `ctx`.
+
+**`build_final_response_packet` (the whole-function orchestrator) — deliberately not wired
+wholesale.** Every real sub-component it calls (`persona_resolver`, `compute_relationship_state`,
+`tone_calibrator`, `drift_detector`, `generate_semantic_draft`, `refine_emotion` including
+`should_skip_refinement`) is already invoked for real via the three `api/assembly.py` hooks above.
+Replacing those three working, individually-tested hooks with one monolithic call that doesn't
+decompose cleanly into the orchestrator's `build_persona`/`plan`/`refine` contract would be
+reimplementation for its own sake with no functional gain — its internal System 1/2 skip decision
+would also collide with the orchestrator's own routing. This was re-investigated (not just assumed)
+before being left as-is.
+
+**Per-user persona-param learning — live.** The four communication-style calibration params
+(`formality_preference`, `response_length_preference`, `question_tolerance`,
+`unsolicited_advice_tolerance`) are learned per user in the live turn by
+`backend/layer4_persona/style_learning.py` (EMA-updated per message: length → verbosity;
+casual/formal markers → formality; `?` → question tolerance; advice-seeking → advice tolerance),
+applied via `PostgresRelationshipStore.record_turn(user_message=…)`, folded into the persona
+instruction by `build_persona`, and exposed on `GET /relationship`.
+
+### 15.4 Test coverage for the live-wiring claims
+
+`tests/unit/api/test_assembly_turn.py` proves each of the above through the real orchestrator, not
+mocked steps: `test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt`,
+`test_real_layer3_wiring_relationship_depth_reaches_mismatch_posture`,
+`test_real_layer4_wiring_drift_detector_flags_role_abandonment_as_a_hard_refusal` (System 2) and
+`..._drift_hard_refusal_fires_on_system1_turns_too` (System 1),
+`test_real_layer4_wiring_sc4_check3_reaches_the_planner_with_real_stance_history` and
+`..._stays_inert_with_no_position_history`, and
+`test_real_layer4_wiring_identity_override_reaches_persona_state`.
 
 ---
 
-*This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation. No behavior of Layer 4 requires assumptions or inferences from other documents.*
+*This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation and current live-wiring state. No behavior of Layer 4 requires assumptions or inferences from other documents.*
 
-## 16. Live wiring status (Phase 4 polish pass, 2026-08-04)
+## 16. Decision Log
 
-`backend/layer4_persona/` itself is clean — all 81 tests pass, every sub-component has a real
-implementation matching §15's reconciliation notes, no dead code inside the module. The finding
-this phase is structural: **the real orchestrator (`packet_builder.build_final_response_packet`,
-which runs SC-1 through SC-6) has zero production callers.** `api/assembly.py` runs a separate,
-much thinner path instead — grep confirms `build_final_response_packet`, `refine_emotion`,
-`detect_drift`, `calibrate_voice`, and `resolve_persona_state` are called only from tests.
-
-### 16.1 What actually runs live
-
-`api/assembly.py`'s `build_persona()` hand-assembles a `PersonaPacket()` with only
-`relationship_state` (the raw persisted state, ungated) and a hand-written `persona_instruction`
-sentence (stage + learned style directive). `plan()` calls `semantic_planner.generate_semantic_draft`
-directly (real SC-5 code). `refine()` does **not** call `emotion_refiner.refine_emotion` — it sends
-a fixed prompt, `"Rephrase this warmly without changing any facts:\n\n" + draft`, straight to the
-System 2 LLM.
-
-Net effect: SC-1 (Persona State Resolver — identity anchors, warmth/humor/directness levels),
-SC-3 (Tone & Style Calibrator — the mode × circadian × BES-drift voice-parameter chain), and SC-4
-(Persona Drift Detector — all four §11 identity-under-pressure rules) never run in production. This
-is an identity-consistency gap, not a safety hole: Layer 11's SC-1 Ethical Guardrails still runs
-post-generation on every response (harmful output has a net), but role-abandonment requests,
-sycophantic capitulation, and fabricated-emotion phrasing are not caught pre-generation the way §11
-specifies.
-
-### 16.2 Fixed this phase (small, provable, same shape as prior wiring fixes)
-
-- **Recalled memories never reached the planner prompt.** `ConversationOrchestrator` populates
-  `ctx.recalled_memories` from the real Layer 2 recall every turn, but `plan()` never passed it to
-  `generate_semantic_draft` — the planner prompt always read "(no specific memories recalled)"
-  regardless of what Layer 2 actually found. Fixed: `plan()` now forwards `ctx.recalled_memories`.
-- **`advice_gate` / `prefers_no_advice` never reached the planner.** Same shape — Layer 3 computes
-  both every turn; `plan()` silently dropped them, so the advice gate was always the function
-  default (`"open"`) live, even in `crisis`/`emotional_support` modes. Fixed: forwarded from
-  `ctx.emotion_intent`.
-- **`circadian_band` never reached the planner.** Minor relative to the above two, forwarded for
-  consistency with `classify()`'s Phase-3 fix.
-- **`semantic_planner._format_memories` read the wrong field and could leak raw scores.**
-  `EpisodicMemory`'s content field is `summary`, not `content`; the old code's `getattr(..., "content",
-  "") or str(m)` fallback meant *any* recalled memory would have rendered as a raw `ScoredMemory`
-  dataclass repr — embedding floats and `recall_score` — directly in the LLM prompt, violating the
-  "no raw scores to the LLM" invariant. This was latent (unreachable) before the fix above, since
-  memories never reached the planner at all; fixing the field name was required before wiring
-  memories through, not optional. Verified via a new end-to-end test
-  (`test_real_layer4_wiring_forwards_recalled_memories_to_planner_prompt`) that asserts the recalled
-  summary text appears in the prompt and `"ScoredMemory"`/`"recall_score"` do not.
-- **Duplicate, boundary-inconsistent `stage_for_sessions`.** `infra/db/relationship_store.py` had its
-  own copy of the stage-threshold table instead of importing `relationship_manager.stage_for_sessions`
-  (the tested, doc-matching implementation). The duplicate disagreed at the `total_sessions == 100`
-  boundary (treated 100 as the floor of `close`; the canonical version treats 100 as the ceiling of
-  `established`, matching `_STAGE_THRESHOLDS`'s "inclusive upper bound" comment). Deduped by importing
-  from `relationship_manager`; updated the one test that encoded the old duplicate's boundary.
-
-### 16.3 Not fixed, tracked in `docs/POLISH_BACKLOG.md`
-
-Wiring `refine()` → the real `emotion_refiner.refine_emotion`, wiring `build_final_response_packet`
-wholesale, and wiring SC-1/SC-3/SC-4 (persona_resolver, tone_calibrator, drift_detector) are real
-features, not small adapters — see the backlog for why each is bigger than a drop-in forward and
-what it's blocked on.
-
-## 17. SC-1/3/4/6 wired live (Phase 4 polish pass, follow-up, 2026-08-08)
-
-§16.3's premise turned out to be only half right: `build_final_response_packet` wholesale is
-genuinely blocked (its internal System 1/2 skip decision collides with the orchestrator's own
-routing — left open, see below), but SC-1 (`resolve_persona_state`), SC-3 (`calibrate_voice`),
-SC-4 (`detect_drift`), and SC-6 (`refine_emotion`) turned out to have every real input already
-available on `ctx` by this point in the session (identity beliefs from Layer 2, `RelationshipState`
-from Layer 4/5, `background_state` from Layer 3's now-live BES, the semantic draft itself) — wired
-as same-shape adapter calls in `api/assembly.py`, not new feature work.
-
-### 17.1 What's wired
-
-- **`build_persona()`** now calls `resolve_persona_state(identity_memory_entries=..., session_context=...)`
-  for real and stores the result on `PersonaPacket.persona_state`; calls `calibrate_voice(...)` with
-  the real conversation mode, circadian band, relationship state, persona state, and background
-  state, storing the result on `PersonaPacket.voice_parameters`.
-- **`plan()`** runs `detect_drift` twice: once before generation (Checks 2/3, which read only the
-  user message/history) so a role-abandonment directive reaches the planner prompt on **every**
-  turn including System 1 (most turns — see 17.3), and once after (Check 1, fabricated emotion in
-  the actual draft), stored on `PersonaPacket.drift_check_result` for `refine()`.
-- **`refine()`** now calls the real `emotion_refiner.refine_emotion` — the actual five-condition
-  skip policy (`should_skip_refinement`), factual-preservation validation against the draft's
-  `key_claims`, and claim reinsertion — instead of a fixed `"Rephrase this warmly..."` prompt with
-  no factual guarantee at all. Proven by a test where the refiner-stage LLM drops a declarative
-  sentence outright and the final delivered text still contains it (reinserted).
-- **`build_persona()`** also now calls `compute_relationship_state(persisted=rel)` (no
-  `communication_model` passed) instead of using the raw persisted `RelationshipState` — see 17.2.
-
-### 17.2 A gap found along the way: stage gates were never stamped
-
-`infra/db/relationship_store.py::record_turn` advances message/session counters and the
-qualitative `stage` string, but never ran `_apply_stage_gates` — so `memory_reference_policy`,
-`self_disclosure_ceiling`, `follow_up_question_ceiling`, and `direct_noticing_allowed` sat at
-their dataclass defaults (`"none"`, `"surface"`, `1`, `False`) regardless of how deep the
-relationship actually was, silently defeating `calibrate_voice`'s stage-register step
-(`_apply_stage_register`) and `generate_semantic_draft`'s memory-reference-policy line. Fixed by
-calling `compute_relationship_state(persisted=rel)` in `build_persona` — it's deterministic and
-idempotent over the persisted counters (recomputes the same `stage`), so this is a pure gate-stamp,
-not a behavior change to the counters themselves. `communication_model` is deliberately never
-passed: doing so would let `_apply_style_calibration` overwrite the EMA-learned params
-`style_learning.py` already owns live — see the still-open Layer 4 backlog item on this exact trap.
-`PersonaPacket.memory_reference_policy` (a separate top-level field `generate_semantic_draft`'s
-prompt reads directly) is now set from the stamped gate.
-
-### 17.3 Two qualifiers that keep this claim honest
-
-- **SC-1 does not yet make Nova's persisted self-model influence her expression.**
-  `persona_resolver.load_core_anchors(identity_memory_entries=...)` accepts the identity beliefs
-  parameter but its own docstring says it's accepted "for forward-compatibility" and the body
-  never reads it — it always returns the same build-time anchor constants. So `resolve_persona_state`
-  runs for real on the real call path (SC-1 "is live" in that sense), but `PersonaState` comes out
-  identical for every user and every turn except `known_sensitivities` (always `[]` — needs
-  `psychological_model`, out of the UWM narrow-slice scope) and mode-dependent `humor_allowed`.
-  Identity Memory still reaches the prompt — via `_identity_directive` (§24 of the Layer 2 doc),
-  a separate path — just not through `PersonaState`. Not fixed here: inventing anchor-merge logic
-  inside `load_core_anchors` would be exactly the "reimplement rather than wire to the real module"
-  anti-pattern CLAUDE.md warns against; that module's own author left this as declared future work.
-- **SC-4 Check 3 (sycophantic capitulation) is permanently inert.** It needs
-  `nova_recent_positions` (≥3 tracked stances across turns) and nothing in the codebase tracks
-  Nova's stance history across turns. Checks 1 (fabricated emotion) and 2 (role abandonment) work
-  fully without it.
-
-### 17.4 `ctx.refined` no longer means "text was rewritten"
-
-Before this pass, `refine()` always called the LLM and returned its output, so
-`ctx.refined = True` (set unconditionally by `run_system2`) and "the Emotion Refiner ran" were the
-same fact. Now `refine_emotion`'s own skip policy can return the draft **unchanged**
-(`RefinementOutput.refinement_applied = False`) even on a System 2 turn (e.g. a neutral exchange
-that still routed to System 2 for another reason). `ctx.refined` was kept as "the refinement stage
-was invoked this turn" (unaffected — matches the existing Phase-3 regression test asserting
-`out.refined is True`), not "the text changed"; `refinement_applied` is available on the
-`RefinementOutput` if a future caller needs the finer-grained fact but isn't currently surfaced
-on `ctx`.
-
-### 17.5 Still not fixed, tracked in `docs/POLISH_BACKLOG.md`
-
-`build_final_response_packet` wholesale — its internal System 1/2 skip decision would collide with
-the orchestrator's own routing, a design question, not a wiring fix.
-
-### Live integration update (2026-07-07) — per-user persona-param learning
-
-The four communication-style calibration params (`formality_preference`,
-`response_length_preference`, `question_tolerance`, `unsolicited_advice_tolerance`) are now **learned
-per user in the live turn**. `backend/layer4_persona/style_learning.py` EMA-updates them from each
-message (length → verbosity; casual/formal markers → formality; `?` → question tolerance;
-advice-seeking → advice tolerance) and emits a plain-language `persona_style_directive` (no raw
-scores to the LLM). The relationship writer applies it (`PostgresRelationshipStore.record_turn(
-user_message=…)`), `api/assembly.build_persona` folds the directive into the persona instruction, and
-`GET /relationship` exposes the learned params. See `docs/API_REFERENCE.md`.
-
-## 18. Follow-up (2026-08-09): real tie-strength wiring
-
-§17.2 noted `compute_session_delta`/`update_tie_strength` (real, tested functions in
-`relationship_manager.py`) had zero callers — `RelationshipState.tie_strength` stayed pinned at
-`0.0` forever in production, which was also the root cause of Layer 3's `relationship_depth`
-forwarding gap (`docs/layer-3-architecture.md`).
-
-**The design problem:** `compute_session_delta` takes a `SessionSummary` — signals aggregated
-*across a whole session* (`had_vulnerability_moment`, `explicit_trust_signals_count`,
-`total_messages`, `max_emotional_intensity`, `repair_occurred`) — and the module's own docstring
-says tie strength updates "at session end." But `record_turn` runs on *every turn*, and this is a
-continuous-chat product with no explicit "session end" event to hang a one-shot batch update on.
-
-**The fix:** `infra/db/relationship_store.py::record_turn` now accumulates two real per-turn
-signals into the payload dict — outside the `RelationshipState` dataclass, the same convention
-already used for `_counted_session_keys` (`_current_session_key`,
-`_current_session_message_count`, `_current_session_max_intensity`,
-`_current_session_had_vulnerability`) — and applies the accumulated session's `compute_session_delta`
-the moment a *new* `session_key` is observed, i.e. retroactively for the session that just ended.
-This mirrors how `total_sessions` already detects session boundaries by `session_key` change, so it
-needed no new boundary-detection concept.
-
-**Signal sources** (`api/state.py::make_relationship_writer`), both derived from Layer 3's
-already-computed `EmotionClassification` for the turn, not new detectors:
-- `emotional_intensity` — `ctx.emotion_intent.primary_emotion.intensity`, the packet's own
-  normalised `(valence, arousal)` magnitude property.
-- `had_vulnerability_moment` — `intensity > 0.6 and valence < 0`: a conservative, internally
-  consistent reading of the same signal (high intensity + negative valence), using the same `0.6`
-  threshold `compute_session_delta` itself already applies to `max_emotional_intensity`.
-
-`explicit_trust_signals_count` and `repair_occurred` have no real detector anywhere in the
-codebase and are left at their falsy defaults — an honest degradation (same pattern as Layer 10's
-`life_events=[]` and Layer 13's derived graduation criteria), not a fabricated signal. Because
-`compute_session_delta` is purely additive (a `0.02` floor plus optional bumps), a session with
-real vulnerability/intensity signals but no trust/repair data still yields a real, non-constant
-delta — categorically different from forwarding a hardcoded zero.
-
-**Reaches `relationship_depth` for real:** `api/assembly.py::classify` now reads
-`relationship_provider(user_id).tie_strength` and forwards it as `relationship_depth` into
-`build_emotion_intent_packet`, reaching SC-4 Mismatch (`select_mismatch_posture`'s
-`relationship_depth < 0.3` → unconditional `hold_and_watch` gate) and SC-5 Empathy Hypothesis.
-`advice_frustration_count` remains unforwarded — no real counter exists anywhere yet (Layer 3 doc).
-
-**Tests:** `tests/unit/infra/test_relationship_store.py` (`test_tie_strength_stays_zero_until_
-the_session_that_earned_it_ends`, `test_tie_strength_delta_reflects_real_session_signals`) prove
-the accumulator/boundary logic directly; `tests/unit/api/test_assembly_turn.py::
-test_real_layer3_wiring_relationship_depth_reaches_mismatch_posture` proves the end-to-end wiring
-through the real `classify()` closure by asserting an observable posture change (never a raw
-score) between `tie_strength=0.0` and `tie_strength=0.5`.
-
-## 19. Follow-up (2026-08-09): `build_final_response_packet`'s critical-drift override
-
-§17.5 flagged `build_final_response_packet` (the real orchestrator function) as having zero
-production callers because wiring it wholesale would collide with the orchestrator's own
-System 1/2 routing decision (both would independently decide whether the Emotion Refiner runs).
-
-**Re-investigated before building anything:** a full read of `build_final_response_packet`
-against `api/assembly.py`'s `build_persona()`/`plan()`/`refine()` showed every real sub-component
-it calls — `persona_resolver`, `relationship_manager.compute_relationship_state`,
-`tone_calibrator`, `drift_detector`, `generate_semantic_draft` (Agent 4a), `refine_emotion`
-(Agent 4b, including `should_skip_refinement`'s real 5-condition policy) — is **already** called
-for real from those three hooks (§17.2, §17.3). Wiring the monolithic function wholesale would
-mean ripping out three working, individually-tested orchestrator hooks to replace them with one
-call that doesn't decompose cleanly into the orchestrator's `build_persona`/`plan`/`refine`
-contract — exactly the kind of reimplementation-for-its-own-sake CLAUDE.md warns against, with no
-functional gain, since the same real functions already run.
-
-**The one real gap found:** `build_final_response_packet` has a critical-drift early-return
-(§12) that `plan()` didn't replicate. When SC-4's Check 2 (role abandonment, e.g. "forget you're
-an AI", "stop being nova") fires, `detect_drift` returns `recommended_action =
-RecommendedAction.REFUSE_GRACEFULLY` with `risk_level = CRITICAL` — this is meant as a **hard
-stop**, never reaching the planner or refiner LLM at all, per the architecture's own reasoning:
-a role-abandonment/jailbreak attempt is exactly the case where the planner LLM can't be trusted
-to comply with a nudge. Before this fix, `plan()` only folded `drift.planner_directive` into the
-planner's `response_instruction` as one more piece of text the LLM was *hoped* to follow — a soft
-nudge, not the hard override the architecture specifies.
-
-**The fix**, entirely inside the existing three-hook design (per the answered scoping question —
-"orchestrator decides," i.e. System 1's structural refiner-skip and System 2's always-refine stay
-exactly as they are):
-- `plan()`: when `pre_drift.recommended_action == RecommendedAction.REFUSE_GRACEFULLY`, return
-  `GRACEFUL_REFUSAL_TEXT` (the same constant `build_final_response_packet` uses) immediately,
-  without ever calling the planner LLM. Stashes `pre_drift` onto
-  `ctx.persona_packet.drift_check_result` so `refine()` (System 2 only) can see it too.
-- `refine()`: force `skip=True` whenever `drift_check_result.recommended_action ==
-  REFUSE_GRACEFULLY`, regardless of `should_skip_refinement`'s 5-condition policy — a hard refusal
-  must never be softened, rephrased, or have its wording second-guessed by the refiner, the same
-  invariant `build_final_response_packet` enforces by returning before the refiner is ever
-  reached.
-
-**Tried and reverted:** also considered passing a real `similarity_fn` (embedding cosine
-similarity via the injected `embed` client) into `refine_emotion`'s factual-preservation check,
-since CLAUDE.md's Layer 4 summary mentions "embedding cosine similarity." Investigation showed
-`validate_factual_preservation`'s own default (`similarity_fn=None` → token-overlap `_coverage`)
-is already real, working validation — not a stub — confirmed by the pre-existing, still-passing
-`test_real_layer4_wiring_refine_emotion_reinserts_a_dropped_factual_claim`. Passing an
-embedding-based `similarity_fn` broke that test: `FakeLLM.embed()`'s crude length-based stub isn't
-a stand-in for real semantic similarity, and there was no evidence the token-overlap default is
-actually failing in production to justify the swap risk. Reverted; left as a possible future
-enhancement, not a gap to close.
-
-**Tests:** `test_real_layer4_wiring_drift_detector_flags_role_abandonment_as_a_hard_refusal`
-(System 2 path) and `test_real_layer4_wiring_drift_hard_refusal_fires_on_system1_turns_too`
-(System 1 path) both replace the prior softer-directive tests and assert the planner/refiner LLM
-is never invoked and the response is exactly `GRACEFUL_REFUSAL_TEXT`, through the real
-orchestrator (`tests/unit/api/test_assembly_turn.py`).
-
-## 20. Follow-up (2026-08-09): SC-4 Check 3 stance tracking + SC-1 identity-anchor mapping
-
-Two more §17 pending items, closed the same pass as §18-19.
-
-### 20.1 SC-4 Check 3 (sycophantic capitulation) — no longer permanently inert
-
-§17.2's finding was "no cross-turn Nova-stance history is tracked anywhere." Re-investigated: the
-history already *is* tracked — every Nova reply is persisted per-session in the real conversation-
-message log (`infra/db/message_store.py`) — Check 3 just never had a reader wired to it.
-
-- `PostgresMessageStore.recent_by_role(session_key, role, limit)` (new) — the last N message
-  contents for one role within one session, oldest-first (so `positions[0]` reads as "the earlier
-  position," matching `detect_drift`'s own `planner_directive` wording).
-- `api/state.py::make_nova_positions_provider` — wraps it for Nova's own replies, 5 most recent.
-- `api/assembly.py::plan()` — both `detect_drift` calls (pre-draft and post-draft) now receive
-  real `nova_recent_positions` from this provider instead of a hardcoded `[]`. Fetched once per
-  turn, reused for both passes.
-
-Check 3's own gate (`len(positions) >= 3`, variance `> 0.6` via lexical Jaccard distance +
-polarity-flip) is unchanged — this closes the *input* gap, not the detection logic, which was
-already real and tested.
-
-**Tests:** `tests/unit/infra/test_message_store.py` (`recent_by_role` ordering/scoping),
-`tests/unit/api/test_assembly_turn.py::test_real_layer4_wiring_sc4_check3_reaches_the_planner_
-with_real_stance_history` (a real capitulation-shaped position sequence trips the check and its
-directive reaches the planner prompt) and `..._stays_inert_with_no_position_history` (no
-provider → no false positive, proving the wiring doesn't fabricate a finding).
-
-### 20.2 SC-1 `PersonaState` — no longer build-time-constant
-
-§17.2/§17.3 found `persona_resolver.load_core_anchors(identity_memory_entries=None)` completely
-ignored its own parameter, and flagged inventing a mapping between Layer 4's 7 fixed anchor keys
-and Layer 2's free-text `IdentityMemory` (`category`/`statement`) as "new business logic," left
-open. Built now, deliberately narrow to avoid the failure mode that made this hard: a naive
-"closest belief in the same category" match would happily override `humor_style` with an
-unrelated personality-trait belief just because both are `PERSONALITY_TRAIT`, producing a
-plausible-looking but wrong override.
-
-**The design:** `_ANCHOR_OVERRIDE_HINTS` maps each non-immutable anchor to `(IdentityCategory,
-keyword_hints)`. An anchor only gets overridden when a belief in the matched category's
-*statement* actually contains one of the anchor's hint keywords — category narrows the search,
-the keyword match confirms actual topical relevance. Ties within a category break on centrality
-(already the "how strongly held" signal, same scale the anchors' own constants use). No matching
-belief → the anchor's constant, unchanged — most of the 7 anchors have no real correspondent in
-the default identity seed (e.g. no belief about humor exists), and that has to stay an honest
-`None` rather than a forced, misleading match. Only `value` is overridden; `centrality`/
-`immutable` stay the anchor's own constants, since those drive downstream resolver logic tuned to
-the anchors' abstract 0-1 scale, not a belief's independently-calibrated centrality. `name` is
-excluded from the map entirely — always the immutable constant.
-
-**Tests:** `tests/unit/test_persona_resolver.py` — no-topical-match stays at the constant,
-a real topical match overrides `value`, `name` is never touched, highest-centrality wins among
-multiple category matches, and one end-to-end test through `resolve_persona_state` itself (not
-just `load_core_anchors`) proving the override reaches `PersonaState.character_description`.
-`tests/unit/api/test_assembly_turn.py::test_real_layer4_wiring_identity_override_reaches_persona_
-state` proves the same through the real `build_persona()` closure.
+- **2026-08-04 (Phase 4 polish pass):** Found `build_final_response_packet` (the real SC-1–SC-6
+  orchestrator) had zero production callers — `api/assembly.py` ran a much thinner hand-assembled
+  path instead, so SC-1/SC-3/SC-4 never ran live and `refine()` used a fixed rephrase prompt.
+  Fixed as small, provable adapter gaps: forwarded `recalled_memories`, `advice_gate`/
+  `prefers_no_advice`, and `circadian_band` to the planner; fixed `_format_memories` reading the
+  wrong field (`content` vs `summary`), which had been silently leaking raw `ScoredMemory` reprs
+  into the prompt; deduped a second, boundary-inconsistent copy of `stage_for_sessions` in
+  `infra/db/relationship_store.py` (disagreed with the canonical version at `total_sessions == 100`).
+- **2026-08-08 (Phase 4 follow-up):** Wired SC-1/SC-3/SC-4/SC-6 live as adapter calls in
+  `build_persona()`/`plan()`/`refine()` — every real input was already available on `ctx`. Found
+  and fixed a related gap: relationship stage gates were never stamped because `record_turn` never
+  ran `_apply_stage_gates`; fixed via `compute_relationship_state(persisted=rel)`, deliberately
+  never passing `communication_model` to avoid clobbering the EMA-learned style params. Flagged two
+  remaining qualifiers: SC-1 identity beliefs didn't yet influence `PersonaState`, and SC-4 Check 3
+  was permanently inert for lack of cross-turn stance history.
+- **2026-07-07:** Per-user persona-param learning wired — `style_learning.py` EMA-updates the four
+  communication-style params live and surfaces them on `GET /relationship`.
+- **2026-08-09:** Real tie-strength wiring — `compute_session_delta`/`update_tie_strength` had zero
+  callers, so `tie_strength` stayed pinned at `0.0` forever (also the root cause of Layer 3's
+  `relationship_depth` forwarding gap). Fixed via per-turn signal accumulation in `record_turn` plus
+  session-boundary detection by `session_key` change; now reaches Layer 3's Mismatch/Empathy via
+  `relationship_depth`.
+- **2026-08-09:** `build_final_response_packet`'s critical-drift override — found `plan()`/
+  `refine()` only soft-nudged drift instead of hard-stopping on role abandonment; fixed with a
+  `GRACEFUL_REFUSAL_TEXT` short-circuit plus forced refiner skip. Re-investigated wiring
+  `build_final_response_packet` wholesale and confirmed it isn't needed (would replace three tested
+  hooks with a non-decomposing monolith for no functional gain). Also tried and reverted an
+  embedding-based `similarity_fn` for factual validation — the token-overlap default already works
+  and the swap broke an existing passing test with no evidence of a real production failure.
+- **2026-08-09:** SC-4 Check 3 stance tracking + SC-1 identity-anchor mapping. Added
+  `PostgresMessageStore.recent_by_role` + `make_nova_positions_provider` to unblock Check 3 (the
+  history was already persisted, just never read). Built `_ANCHOR_OVERRIDE_HINTS`, a keyword-gated
+  category map, so SC-1 can override anchor values from real Identity Memory beliefs without
+  over-matching unrelated beliefs in the same category.

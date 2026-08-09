@@ -890,10 +890,12 @@ These principles are constraints that must be honored in every implementation de
 
 ---
 
-## 15. Implementation Notes (as-built)
+## 15. Live Wiring Status (current state)
 
 Layer 1 is implemented end-to-end in `backend/layer1_input/`. The core path (SC-1, SC-2, SC-5)
-is pure-Python, zero-dependency, and fully deterministic, honouring §14 principle 1.
+is pure-Python, zero-dependency, and fully deterministic, honouring §14 principle 1. Every
+schema field, function, and backend Protocol has a real caller — the module code contains no
+dead code.
 
 **Module map:**
 
@@ -920,7 +922,7 @@ without touching pipeline code.
 Protocols with in-memory default implementations; production SQLite/SQLCipher stores (§8) swap
 in by dependency injection. Layer 1 only reads — the Layer 2 State Updater owns all writes (§13).
 
-**Reconciliations applied during implementation** (the doc above already reflects these):
+**Schema reconciliations baked into the spec above:**
 - `ClientMetadata` gained `last_nova_message_was_proactive` / `is_reply_to_proactive` (§12.2).
 - `InputPerceptionPacket` gained the `cold_start_profile` / `timezone_confidence` flags (§7.3).
 - `UserBehaviorBaseline` formalises the latency/length/gap rolling histories (§8).
@@ -934,213 +936,171 @@ in by dependency injection. Layer 1 only reads — the Layer 2 State Updater own
 requirements: full 24-hour band mapping, all seven gap boundaries, every anomaly condition,
 thread-priority ordering, fuzzy-label buckets, the intensity formula, multimodal/prosody
 success **and** degraded paths, full-assembly completeness, and the §11 always-emit guarantee.
-Live-wiring coverage (below) lives in `tests/unit/api/test_assembly_turn.py` and
+Live-wiring coverage lives in `tests/unit/api/test_assembly_turn.py` and
 `tests/unit/api/test_state.py`, not this package — it tests how `api/assembly.py`/`api/state.py`
 drive `process_input_event`, not Layer 1 itself.
 
-## 16. Live wiring status (Phase 1 polish pass, 2026-08-04)
+**SC-1 — Temporal Resolver: fully live.** `api/state.py::make_temporal_profile_provider` derives
+a real `UserTemporalProfile`/`UserBehaviorBaseline` from state Layers 4/5 and the message log
+that already persist (`PostgresRelationshipStore.total_sessions`, `PostgresMessageStore.first()`
+/ `.last_interaction_at()` / bounded `.history()`) — no new table was needed. `api/assembly.py::
+perceive` wires it via a `_SingleProfileStore` adapter. Real session count, `last_session_end`
+(so `gap_category`/`is_new_session`/anomaly detection reflect actual timing), a rolling circadian
+`typical_bands` histogram, and `message_length_median_chars` flow into every turn;
+`cold_start_profile` is `False` once a user has any history instead of always `True`.
+`average_session_frequency_days` is deliberately the mean gap *between* session-start
+timestamps, not `relationship_age_days / total_sessions` — that simpler formula is a materially
+different, wrong quantity that silently defeats `detect_temporal_anomaly`'s cadence check by
+making its threshold far tighter than the user's real cadence. `typical_bands` only populates
+once the bounded recent-history sample has 10+ banded messages; otherwise a low-confidence
+histogram would flag every not-yet-seen band as "atypical" the moment `total_sessions` crosses
+the anomaly-detection floor (5). Both derivations are bounded to `message_store.history`'s
+200-row cap — an approximation of recent behavior, not a precise lifetime statistic. `session_id`
+comes from the orchestrator's `ctx.session_id` (`PipelineSteps.perceive`'s fourth argument),
+not a freshly minted random UUID per message.
 
-Layer 1's module code (`backend/layer1_input/`) is complete, tested in isolation, and contains
-no dead code — every schema field, function, and backend Protocol has a real caller. Auditing
-the *live* `/chat` path (`api/assembly.py::perceive`), however, found that most of Layer 1's
-signal was inert in production: `process_input_event` was called with `attachments=[]` hardcoded
-and a throwaway `ClientMetadata()`, and no `profile_store`/`thread_store` were injected. Every
-turn therefore looked cold-start, with a fixed `implicit_emotional_intensity_score` and no due
-threads, regardless of actual conversation history.
-
-**Fixed in this pass:**
-- **Temporal profile.** `api/state.py::make_temporal_profile_provider` derives a
-  `UserTemporalProfile`/`UserBehaviorBaseline` from state Layers 4/5 and the message log already
-  persist (`PostgresRelationshipStore.total_sessions`, `PostgresMessageStore.first()` /
-  `.last_interaction_at()` / bounded `.history()`) — no new table. `api/assembly.py::perceive`
-  wires it via a `_SingleProfileStore` adapter. Real session count, `last_session_end` (so
-  `gap_category`/`is_new_session`/anomaly detection reflect actual timing), a rolling circadian
-  `typical_bands` histogram, and `message_length_median_chars` now flow into every turn;
-  `cold_start_profile` is `False` once a user has any history instead of always `True`.
-  `average_session_frequency_days` is the mean gap *between* session-start timestamps, not
-  `relationship_age_days / total_sessions` (a materially different, and wrong, quantity — the
-  latter silently defeats `detect_temporal_anomaly`'s cadence check by making its threshold far
-  tighter than the user's real cadence). `typical_bands` is only populated once the bounded
-  recent-history sample has 10+ banded messages, otherwise a low-confidence histogram would flag
-  every not-yet-seen band as "atypical" the moment `total_sessions` crosses the anomaly-detection
-  floor (5). Both derivations are bounded to `message_store.history`'s 200-row cap — an
-  approximation of recent behavior, not a precise lifetime statistic.
-  **Caveat (resolved in §17 below):** at the time of this pass, the histogram bucketed by the
-  *stored* (UTC) hour, matching `timezone_offset_hours` defaulting to `0.0` (never populated) —
-  consistent only because nothing set a real offset yet. §17 sets a real offset and fixes this
-  derivation (and three others found to have the same gap) to match.
-- **`session_id`.** The orchestrator already carries `ctx.session_id`; `perceive`'s contract
-  (`PipelineSteps.perceive`) now receives it as a fourth argument instead of Layer 1 minting a
-  fresh random UUID every single message.
-
-**Still not wired (documented, not fixed, this pass — see CLAUDE.md's follow-up list):**
-- **Narrative threads (§3.5).** Nothing in the codebase ever constructs a `NarrativeThread` —
-  `due_threads` is always `[]` and `backend/layer6_proactivity/intake.py::on_thread_due` is an
-  orphaned consumer. This needs a detector (likely LLM-based, spotting "future_event" /
-  "intention_commitment" open loops in conversation) plus a persisted store — a real follow-up
-  feature, not a wiring gap.
-- **Implicit signals (SC-2) and multimodal/voice (SC-3/SC-4).** `ClientMetadata`'s behavioral
-  fields (typing-start time, deletion count, burst) and any `AttachmentPayload`s are only ever
-  their defaults/`[]` in the live path, because `ChatRequest` (`api/schemas.py`) carries neither —
-  the client doesn't send them. SC-2 therefore always scores a fixed low intensity, and SC-3/SC-4
-  never fire. Fixing this is a frontend-contract change (new optional `ChatRequest` fields +
-  client instrumentation), out of scope for a backend-only pass.
-- **`config/layer1.yaml`.** Now loaded into the merged config dict (`api/state.py::build_app_state`
-  reads all thirteen `layerN.yaml` files), but no function in this package reads `config['layer1']`
-  yet — every threshold in `temporal_resolver.py`/`implicit_signals.py`/etc. is still a hardcoded
-  module constant. The YAML's stated purpose ("re-tuned without a code change") isn't realized
-  until those constants become config-driven parameters. **Closed in §17 below.**
-
-## 17. Config wiring + local timezone (Phase 1 follow-up, 2026-08-04)
-
-Closes two of the four items §16 logged as "not fixed this pass": `config/layer1.yaml` is now
-fully live, and the UTC-only timezone caveat is resolved for this (single-user, personal) deployment.
-Narrative threads and the `ChatRequest` behavioral-signal gap remain open — both are real feature
-work, not wiring, per §16 above.
-
-- **`config/layer1.yaml` is fully wired.** New `backend/layer1_input/config.py::Layer1Config` is a
-  frozen dataclass holding every tunable value this package reads (circadian bands/priors, gap
-  buckets, anomaly thresholds, latency thresholds, intensity-formula weights, assembler
-  conflict-resolution thresholds and composite weights, multimodal/prosody confidence floors,
-  thread-surfacing limits). `Layer1Config.from_dict(app_config)` builds one from `config['layer1']`
-  at startup (`api/state.py::build_app_state`), falling back field-by-field to the same defaults
-  that were previously hardcoded — verified by an exact round-trip assertion
-  (`Layer1Config.from_dict(load_config('layer1.yaml')) == Layer1Config()`) so this wiring changes
-  no behavior until someone actually edits the YAML. Every function in `temporal_resolver.py`,
-  `implicit_signals.py`, `assembler.py`, `multimodal_normalizer.py`, `prosody_extractor.py`, and
-  `thread_tracker.py` now takes an optional `cfg: Layer1Config` parameter (defaulting to
-  `Layer1Config()`, so all existing unit tests — which call these functions directly with no
-  `cfg` — are unaffected); `process_input_event` takes `config: Optional[Layer1Config]` and
-  threads it through every sub-component call. The module-level constants that used to hold these
-  values directly (`ANOMALY_MIN_SESSIONS`, `_CIRCADIAN_MOOD_PRIOR`, `LOW_VULNERABILITY_PRIOR`,
-  etc.) were removed rather than kept as compatibility shims — nothing referenced them once the
-  call sites read from `cfg`/`_DEFAULT`. `map_circadian_band` changed from a hardcoded if/elif
-  chain to a generic range-lookup over `cfg.circadian_bands` (verified hour-by-hour equivalent to
-  the old logic for the default config). The two keys with no code path reading them
-  (`multimodal.document_extract_max_chars`, `prosody.calibration_min_samples`) and the two that
-  were never computed backend-side in the first place (`burst_window_seconds`,
-  `latency_deviation_flag`) are called out as decorative in `config/layer1.yaml`'s header rather
-  than silently ignored.
-- **Timezone: fixed to IST (UTC+5:30) for this single-user deployment.** No per-user timezone
-  capture exists (§16's original point stands for any future multi-user deployment), but for a
-  personal deployment a fixed offset is the correct answer rather than a further gap. New
-  `config['system']['timezone_offset_hours']` (`config/defaults.yaml`, default `5.5`) threads into
-  `UserTemporalProfile.timezone_offset_hours` (`api/assembly.py::perceive`, including the
-  cold-start fallback path — previously only the wired-profile branch would have carried it) and
-  into `api/state.py::make_temporal_profile_provider`'s historical `typical_bands` histogram,
-  closing the exact divergence §16 warned about ("the live band and the historical histogram will
-  silently diverge" the moment a real offset exists) — verified end-to-end: the same UTC timestamp
-  produces `"evening"` with no offset and `"late_night"` with `+5.5`, in both the live circadian
-  band and the historical histogram.
-  **The same fix was also needed in three places outside this package** that independently derive
-  local-time meaning from a stored UTC timestamp — found by grepping for `.hour`/`.date()`/
-  `weekday()` across `api/`/`background/` once the divergence pattern was understood: the Digital
-  Desk's greeting (`api/routes/continuity.py::_greeting`), the calendar heatmap's day bucketing
-  (`infra/db/message_store.py::day_activity` — rewritten to bucket in Python rather than
-  `func.date(...)`, since SQLite and Postgres have no portable shared syntax for a fractional-hour
-  SQL-side shift), and Layer 10's day-of-week pattern detector's date derivation
-  (`background/_adapters.py::_as_date`, feeding `episodic_records`/`emotional_records`/
-  `session_records`, consumed by `detect_behavioral_patterns`'s "emotional dip on Sundays" check
-  and `longitudinal_summary_job.py`'s week-boundary computation). All four now take the same
-  `timezone_offset_hours`/`cfg` parameter sourced from `config['system']['timezone_offset_hours']`.
-  A fifth site was found *inside this package itself*: `make_fuzzy_labeler`'s same-day/yesterday
-  disambiguation (§3.6) compared `now.date() == ts.date()` on two raw-UTC instants — the one path
-  by which temporal information reaches the LLM (the CLAUDE.md fuzzy-label invariant), live on
-  every turn. Fixed by threading the same `timezone_offset_hours` through it, sourced from
-  `profile.timezone_offset_hours` in `service.py` (the same value already used to compute
-  `local_dt`, so no new parameter was needed at the call site).
-  `api/streaming.py::_circadian_band` (the `/chat/stream` typing-pacing overlay) still reads raw
-  UTC — it's a separate, bespoke circadian approximation already flagged in Layer 9's polish pass
-  as duplicate-but-cosmetic (pacing feel only, not a data-attribution bug), so it was left alone
-  here. `backend/layer6_proactivity/timing_gate.py`'s daily-cap day-boundary and
-  `backend/layer13_onboarding/passive_elicitation.py`'s temporal-pattern extractor also read raw
-  UTC hours, but both are unwired (zero production callers — confirmed in their own layer audits),
-  so there is no live call site to fix; noted in `docs/POLISH_BACKLOG.md` for whoever wires them.
-  `infra/db/message_store.py::day_activity` has one remaining documented edge case: `start`/`end`
-  filter the underlying UTC timestamps, not the returned local-date keys, so a message just inside
-  `end` can bucket into a local date one day past `end`'s calendar date (e.g. 22:00 UTC is 03:30
-  IST the next day) — acceptable for a calendar heatmap where the caller (`GET /calendar`) already
-  defaults to an open-ended range, called out in the function's docstring rather than silently
-  left as a surprise.
-
----
-
-## 18. Follow-up (2026-08-09): real implicit signals + narrative-thread detection
-
-### 18.1 Implicit signals (SC-2) — real plumbing, backend-only this pass
-
-§16 flagged `ChatRequest` as only carrying `message`/`session_id`, so SC-2's implicit-signal
-scoring and SC-3/SC-4 (multimodal/voice) were always neutral/inactive live. Closed in two parts:
-
-- **`response_latency_ms` is now genuinely real, with zero frontend change.** `Session` gained a
-  `last_delivered_at` column, stamped by `make_state_update_writer`'s post-turn `Session` upsert
-  with this turn's real `ctx.now`. `api/state.py::make_session_last_delivered_provider` reads it
-  back (handling SQLite's tzinfo-stripping round-trip the same way
-  `make_temporal_profile_provider::_as_utc` already does). `api/assembly.py::perceive` passes it
-  as `ClientMetadata.nova_last_delivered_at`; `compute_latency` only needs that plus `received_at`
-  (`user_typing_started_at` is an optional refinement, not required) — so this signal moves for
-  real on every turn regardless of frontend work.
-- **The rest of `ClientMetadata`** (`user_typing_started_at`, `deletion_occurred`,
-  `deletion_count`, `peak_draft_length_chars`, `final_draft_length_chars`, `is_burst`,
-  `burst_count`, `is_reply_to_proactive`) is real, additive plumbing awaiting a producer: added to
-  `api/schemas.py::ChatRequest` (all optional, backward compatible), threaded through
-  `api/routes/chat.py` → `ConversationOrchestrator.run_turn(client_metadata=...)` →
-  `TurnContext.client_metadata` → `PipelineSteps.perceive(..., client_metadata=...)` →
-  a real `ClientMetadata(...)`. No client sends non-default values yet — `docs/FRONTEND_TODO.md`
-  is the scoped spec for that half, deliberately not built this pass (explicit backend-only scope
-  decision). Hand-computed `compute_composite_prior`'s formula to confirm the latency signal alone
-  cannot close Layer 3's `composite_prior > 0.6` gate (tops out ~0.50 even at the most extreme
-  circadian band); the deletion/burst fields specifically are needed for that, so
-  `docs/FRONTEND_TODO.md` documents exactly what unlocks it.
-- **SC-3/SC-4 (multimodal/voice) stay correctly unwired.** No image/voice/document backend is
-  implemented anywhere in this codebase — `multimodal_normalizer.py`'s
-  `ImageBackend`/`VoiceBackend`/`DocumentBackend` are injectable Protocols with zero concrete
-  implementations. Attachments stay `[]`, same as before. A separate infra project (build the
-  backends first), not an implicit-signals gap — tracked in `docs/POLISH_BACKLOG.md`.
-
-### 18.2 Narrative-thread detection (§3.5) — real end-to-end
-
-§16 also flagged `due_threads` as always `[]`: `thread_tracker.py`'s `ThreadStore` Protocol is
-read-only by design (`get_all` only — its own docstring says thread *records* are created by "the
-Layer 2 State Updater," i.e. a post-turn writer, not `perceive()` itself), and nothing in the
-codebase ever called `.add()`/`.save()` on any store, nor did `perceive()` ever pass a real
-`thread_store=` (it always fell back to `process_input_event`'s fresh, empty
-`InMemoryThreadStore()` default).
-
-Closed with three new pieces, mirroring `backend/layer7_goals/goal_extractor.py`'s precedent:
-
-- **`backend/layer1_input/thread_extractor.py`** (new) — `extract_thread(message, llm_fn, now,
-  source_session_id)`: keyword pre-filter (`should_run_extractor`) → LLM call → JSON parse with
-  fallback → confidence gate (`< 0.6` → `None`) → enum-validated `thread_type`/`importance_tier`
-  (invalid values fall back to `FACTUAL_PENDING`/`MEDIUM`, never raise) → a real `NarrativeThread`.
-  Failure-tolerant by construction (any LLM/parse failure → `None`), same degradation contract as
-  `extract_goal`.
-- **`infra/db/thread_store.py::PostgresThreadStore`** (new) — implements both the real write side
-  the Protocol never specified (`save`, `mark_status`) and the `get_all(status=)` read method
-  `thread_tracker.due_candidates`/`get_due_threads` need, backed by a new `NarrativeThreadRow` ORM
-  model (`infra/db/models/narrative_thread.py`, indexed `thread_id`/`status`/`follow_up_due_at`).
-- **Wiring** (`api/state.py`): `make_thread_provider` gives `perceive()` a real per-user
-  `PostgresThreadStore` (so `due_threads` reflects real persisted, overdue threads);
-  `make_thread_writer` (post-turn) extracts and saves a thread from the turn's message;
-  `make_thread_proactive_writer` (post-turn) hands each due thread on `ctx.input_packet` to the
-  real `backend/layer6_proactivity/intake.py::on_thread_due` — previously zero production callers
-  — upserting an idempotent `ProactiveItem` (deterministic `item_id`, same pattern as
-  `api/proactive_gen.py::goal_checkin_item`), so Layer 6's outreach queue finally receives real
-  Layer 1 candidates.
-
-**Tests:** `tests/unit/test_thread_extractor.py` (extraction contract, all degradation paths),
-`tests/unit/infra/test_thread_store.py` (store round-trip + the real `thread_tracker.
-due_candidates` consuming it, not a mock), `tests/unit/api/test_state.py` (writer round-trips
-through the real store, proactive writer's real-queue idempotency), and
+**SC-1 — Narrative threads (§3.5): fully live.** `backend/layer1_input/thread_extractor.py`
+implements `extract_thread(message, llm_fn, now, source_session_id)`: keyword pre-filter
+(`should_run_extractor`) → LLM call → JSON parse with fallback → confidence gate (`< 0.6` →
+`None`) → enum-validated `thread_type`/`importance_tier` (invalid values fall back to
+`FACTUAL_PENDING`/`MEDIUM` rather than raising) → a real `NarrativeThread`; failure-tolerant by
+construction, mirroring `backend/layer7_goals/goal_extractor.py::extract_goal`'s degradation
+contract. `infra/db/thread_store.py::PostgresThreadStore` implements the write side the
+`ThreadStore` Protocol never specified (`save`, `mark_status`) plus the `get_all(status=)` read
+method `thread_tracker.due_candidates`/`get_due_threads` need, backed by
+`infra/db/models/narrative_thread.py::NarrativeThreadRow` (indexed `thread_id`/`status`/
+`follow_up_due_at`). Wired via `api/state.py`: `make_thread_provider` gives `perceive()` a real
+per-user store so `due_threads` reflects real persisted, overdue threads; `make_thread_writer`
+(post-turn) extracts and saves a thread from the turn's message; `make_thread_proactive_writer`
+(post-turn) hands each due thread on `ctx.input_packet` to
+`backend/layer6_proactivity/intake.py::on_thread_due` — previously an orphaned consumer with zero
+production callers — upserting an idempotent `ProactiveItem` (deterministic `item_id`, same
+pattern as `api/proactive_gen.py::goal_checkin_item`), so Layer 6's outreach queue receives real
+Layer 1 candidates. Tests: `tests/unit/test_thread_extractor.py`,
+`tests/unit/infra/test_thread_store.py`, `tests/unit/api/test_state.py`, and
 `tests/unit/api/test_assembly_turn.py::test_real_layer1_wiring_due_thread_reaches_input_packet`
 (end-to-end through the real `perceive()` closure).
 
-### 18.3 A drift-detector gap found and fixed while investigating Layer 4
+**SC-2 — Implicit Signal Extractor: partially live.** `response_latency_ms` is genuinely real
+with zero frontend change needed: `Session` gained a `last_delivered_at` column, stamped by
+`make_state_update_writer`'s post-turn `Session` upsert with the turn's real `ctx.now`;
+`api/state.py::make_session_last_delivered_provider` reads it back (handling SQLite's
+tzinfo-stripping round-trip the same way `make_temporal_profile_provider::_as_utc` does);
+`api/assembly.py::perceive` passes it as `ClientMetadata.nova_last_delivered_at`, and
+`compute_latency` needs only that plus `received_at` (`user_typing_started_at` is an optional
+refinement, not required) — so this signal moves for real on every turn. The rest of
+`ClientMetadata` (`user_typing_started_at`, `deletion_occurred`, `deletion_count`,
+`peak_draft_length_chars`, `final_draft_length_chars`, `is_burst`, `burst_count`,
+`is_reply_to_proactive`) is real, additive plumbing with no producer yet: it is threaded end to
+end (`api/schemas.py::ChatRequest`, all optional/backward-compatible → `api/routes/chat.py` →
+`ConversationOrchestrator.run_turn(client_metadata=...)` → `TurnContext.client_metadata` →
+`PipelineSteps.perceive(..., client_metadata=...)` → a real `ClientMetadata(...)`), but no client
+sends non-default values — that half is scoped in `docs/FRONTEND_TODO.md` as a deliberate
+backend-only-this-pass decision, not an oversight. A hand-computed check of
+`compute_composite_prior`'s formula confirmed the latency signal alone cannot close Layer 3's
+`composite_prior > 0.6` gate (tops out ~0.50 even at the most extreme circadian band) — the
+deletion/burst fields are specifically needed for that, which is why `docs/FRONTEND_TODO.md`
+calls them out explicitly.
 
-The critical-drift (`REFUSE_GRACEFULLY`) hard override that `plan()`/`refine()` were missing
-in `api/assembly.py` (found while investigating this layer's `build_final_response_packet`
-pending item) is a Layer 4 fix, not a Layer 1 one — documented in
-`docs/layer-4-architecture.md` §19, not duplicated here.
+**SC-3/SC-4 — Multimodal Normalizer / Voice Prosody Extractor: correctly unwired.** No
+image/voice/document/prosody backend is implemented anywhere in this codebase —
+`multimodal_normalizer.py`'s `ImageBackend`/`VoiceBackend`/`DocumentBackend` and
+`prosody_extractor.py`'s `ProsodyBackend` are injectable Protocols with zero concrete
+implementations, and `ChatRequest` carries no `AttachmentPayload`s. Attachments stay `[]` and
+these sub-components never fire. This is a genuine, separate infra project (build the backends
+first), not a wiring gap — tracked in `docs/POLISH_BACKLOG.md`.
+
+**`config/layer1.yaml`: fully wired.** `backend/layer1_input/config.py::Layer1Config` is a frozen
+dataclass holding every tunable value this package reads (circadian bands/priors, gap buckets,
+anomaly thresholds, latency thresholds, intensity-formula weights, assembler
+conflict-resolution thresholds and composite weights, multimodal/prosody confidence floors,
+thread-surfacing limits). `Layer1Config.from_dict(app_config)` builds one from `config['layer1']`
+at startup (`api/state.py::build_app_state`), falling back field-by-field to the same defaults
+that were previously hardcoded — verified by an exact round-trip assertion
+(`Layer1Config.from_dict(load_config('layer1.yaml')) == Layer1Config()`), so wiring it changed no
+behavior until someone actually edits the YAML. Every function in `temporal_resolver.py`,
+`implicit_signals.py`, `assembler.py`, `multimodal_normalizer.py`, `prosody_extractor.py`, and
+`thread_tracker.py` takes an optional `cfg: Layer1Config` parameter (defaulting to
+`Layer1Config()`, so pre-existing unit tests that call these functions with no `cfg` are
+unaffected); `process_input_event` takes `config: Optional[Layer1Config]` and threads it through
+every sub-component call. The old module-level constants (`ANOMALY_MIN_SESSIONS`,
+`_CIRCADIAN_MOOD_PRIOR`, `LOW_VULNERABILITY_PRIOR`, etc.) were removed rather than kept as
+compatibility shims, since nothing referenced them once call sites read from `cfg`/`_DEFAULT`.
+`map_circadian_band` changed from a hardcoded if/elif chain to a generic range-lookup over
+`cfg.circadian_bands` (verified hour-by-hour equivalent to the old logic for the default config).
+Two keys have no code path reading them (`multimodal.document_extract_max_chars`,
+`prosody.calibration_min_samples`) and two were never computed backend-side in the first place
+(`burst_window_seconds`, `latency_deviation_flag`) — all four are called out as decorative in
+`config/layer1.yaml`'s header rather than silently ignored.
+
+**Timezone: fixed to IST (UTC+5:30) for this single-user deployment.** No per-user timezone
+capture exists — that remains a real gap for any future multi-user deployment — but for a
+personal deployment a fixed offset is the correct answer rather than a further gap.
+`config['system']['timezone_offset_hours']` (`config/defaults.yaml`, default `5.5`) threads into
+`UserTemporalProfile.timezone_offset_hours` (`api/assembly.py::perceive`, including the
+cold-start fallback path) and into `api/state.py::make_temporal_profile_provider`'s historical
+`typical_bands` histogram, so the live circadian band and the historical histogram never
+diverge — verified end-to-end: the same UTC timestamp produces `"evening"` with no offset and
+`"late_night"` with `+5.5`, consistently in both. The same UTC-vs-local bug pattern was found
+(by grepping for `.hour`/`.date()`/`weekday()` across `api/`/`background/`) and fixed in four
+other places that independently derive local-time meaning from a stored UTC timestamp: the
+Digital Desk's greeting (`api/routes/continuity.py::_greeting`); the calendar heatmap's day
+bucketing (`infra/db/message_store.py::day_activity`, rewritten to bucket in Python rather than
+`func.date(...)` since SQLite and Postgres share no portable fractional-hour SQL-side shift
+syntax); Layer 10's day-of-week pattern detector's date derivation (`background/_adapters.py::
+_as_date`, feeding `episodic_records`/`emotional_records`/`session_records`, consumed by
+`detect_behavioral_patterns`'s "emotional dip on Sundays" check and
+`longitudinal_summary_job.py`'s week-boundary computation); and, inside this package itself,
+`make_fuzzy_labeler`'s same-day/yesterday disambiguation (§3.6), which compared
+`now.date() == ts.date()` on two raw-UTC instants — the one path by which temporal information
+reaches the LLM (the CLAUDE.md fuzzy-label invariant), live on every turn, fixed by threading
+`profile.timezone_offset_hours` through it from `service.py` (the same value already used to
+compute `local_dt`, so no new call-site parameter was needed). Two sites were deliberately left
+alone: `api/streaming.py::_circadian_band` (the `/chat/stream` typing-pacing overlay) still reads
+raw UTC — a separate, bespoke circadian approximation already flagged in Layer 9's polish pass as
+duplicate-but-cosmetic (pacing feel only, not a data-attribution bug); and
+`backend/layer6_proactivity/timing_gate.py`'s daily-cap day-boundary and
+`backend/layer13_onboarding/passive_elicitation.py`'s temporal-pattern extractor also read raw
+UTC hours but have zero production callers (confirmed in their own layer audits), so there is no
+live call site to fix — noted in `docs/POLISH_BACKLOG.md` for whoever wires them.
+`infra/db/message_store.py::day_activity` has one remaining documented edge case: `start`/`end`
+filter the underlying UTC timestamps, not the returned local-date keys, so a message just inside
+`end` can bucket into a local date one day past `end`'s calendar date (e.g. 22:00 UTC is 03:30
+IST the next day) — acceptable for a calendar heatmap where the caller (`GET /calendar`) already
+defaults to an open-ended range, called out in the function's docstring rather than left as a
+silent surprise.
+
+**Cross-reference:** the critical-drift (`REFUSE_GRACEFULLY`) hard override that `plan()`/
+`refine()` were missing in `api/assembly.py` was found while investigating this layer's
+`build_final_response_packet` pending item, but is a Layer 4 fix — documented in
+`docs/layer-4-architecture.md` §19, not here.
+
+## 16. Decision Log
+
+- **2026-08-04 (Phase 1 polish pass):** Audited the live `/chat` path and found most of Layer 1's
+  signal was inert in production — `process_input_event` always got `attachments=[]` and a
+  throwaway `ClientMetadata()`, with no `profile_store`/`thread_store` injected, so every turn
+  looked cold-start. Fixed the temporal profile (real session/gap/anomaly data) and `session_id`
+  threading; logged narrative threads, implicit signals (SC-2)/multimodal (SC-3/SC-4), and
+  `config/layer1.yaml` as still-unwired for follow-up.
+- **2026-08-04 (Phase 1 follow-up, same day):** Closed `config/layer1.yaml` wiring via
+  `Layer1Config` (round-trip-verified, no behavior change until the YAML is edited), and fixed
+  the timezone to IST for this single-user deployment — plus the same UTC-vs-local bug found and
+  fixed in three other call sites (continuity greeting, calendar heatmap, Layer 10 day-of-week
+  detector) and one inside this package (`make_fuzzy_labeler`). Left `api/streaming.py`'s
+  circadian approximation alone (cosmetic) and two unwired call sites (Layer 6 timing gate, Layer
+  13 passive elicitation) as notes for whoever wires them later.
+- **2026-08-09 (follow-up):** Made `response_latency_ms` real via a new `Session.
+  last_delivered_at` column, with zero frontend change required. Threaded the rest of
+  `ClientMetadata` end to end as additive, backward-compatible plumbing with no producer yet
+  (scoped to `docs/FRONTEND_TODO.md`, deliberate backend-only decision — confirmed via the
+  composite-prior formula that latency alone can't close Layer 3's crisis-adjacent gate; deletion
+  /burst fields are what's needed). Confirmed SC-3/SC-4 stay correctly unwired (no backend exists
+  anywhere in the codebase). Built narrative-thread detection (§3.5) end to end: `thread_extractor.py`,
+  `PostgresThreadStore`, and wiring into Layer 6's `on_thread_due` intake.
+- **2026-08-09 (found during Layer 4 investigation):** The critical-drift hard-override gap
+  belongs to Layer 4, not Layer 1 — documented in `docs/layer-4-architecture.md` §19 instead of
+  duplicated here.
 
 ---
 

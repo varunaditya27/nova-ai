@@ -1456,187 +1456,149 @@ def generate_export(request: DataExportRequest) -> ExportPackage:
 
 ---
 
-## 13. Implementation Notes (as-built)
+## 13. Live Wiring Status (current state)
 
-- **Module map:** SC-1 `encryption_manager.py` (key hierarchy + authenticated encryption) +
-  `integrity_verifier.py` (Merkle tamper detection, §3.4); SC-2 `selective_deletion.py` (§4); SC-3
-  `memory_audit.py` (transparency view + query + provenance, §5) + `correction_interface.py` (the
-  six corrections, §5.5); SC-4 `sync_coordinator.py` (zero-knowledge deltas + conflict resolution,
-  §6); `privacy_agent.py` (coordinator: consent, deletion lifecycle, audit, integrity, §7);
-  `schemas.py`.
-- **Crypto (stdlib-honest):** the spec mandates AES-256-GCM / SQLCipher / Argon2id with keys in the
-  Secure Enclave. The test runtime is stdlib-only, so `encryption_manager` implements a *real*
-  authenticated-encryption construction from stdlib primitives — PBKDF2-HMAC-SHA256 (master key),
-  RFC-5869 HKDF (derived key hierarchy), a SHA-256 counter-mode keystream, and HMAC-SHA256
-  encrypt-then-MAC with constant-time verification. It genuinely round-trips, detects tampering, and
-  rejects wrong keys. **Production swaps the cipher for AES-256-GCM** behind the same key hierarchy;
-  the sync key uses Argon2id in production (PBKDF2 here). PBKDF2 iterations default to 600k
-  (tests pass a lower value for speed).
-- **Dependency injection:** all stores (memory/semantic/identity/personality/longitudinal/safety/
-  goal), the embedder, and the certificate signer are injected, so the layer runs and is tested
-  fully offline with no database, network, or sync server.
-- **Surgical deletion:** `dry_run_deletion` computes the full `CascadeImpactReport` (semantic facts
-  → delete/update/flag, personality impact, longitudinal references) before anything is touched;
-  execution secure-zeros content before removal and emits a signed `DeletionCertificate`.
-- **Zero-knowledge sync:** `build_delta` encrypts the operations payload on-device; tests assert the
-  ciphertext contains no plaintext and that a wrong key cannot decrypt. Conflict resolution is
-  per-memory-type (episodic insert / semantic last-write-wins / identity hold-for-user / personality
-  weighted-merge / longitudinal keep-more-complete).
-- **Deviations from the May-28 scaffold (reconciled):** the scaffold's older `forget_*` deletion
-  names are replaced by the authoritative six-type taxonomy. The Memory Audit module is implemented
-  as `memory_audit.py`; note `tests/unit/test_memory_audit.py` belongs to **Layer 2** (the audit
-  trail) — Layer 12's audit tests live in `test_memory_audit_view.py`. The full SQLCipher
-  STORE_ARCHITECTURE, Secure-Enclave key storage, and on-disk DB files are deployment concerns
-  beyond the unit layer; the algorithms (key derivation, integrity, deletion, sync, audit) are
-  implemented and tested here.
-- **Test coverage:** 62 unit tests across `test_encryption_manager` (9), `test_integrity_verifier`
-  (7), `test_selective_deletion` (11), `test_memory_audit_view` (9), `test_correction_interface`
-  (8), `test_sync_coordinator` (10), `test_privacy_agent` (8).
+**Module map:** SC-1 `encryption_manager.py` (key hierarchy + authenticated encryption) +
+`integrity_verifier.py` (Merkle tamper detection, §3.4); SC-2 `selective_deletion.py` (§4); SC-3
+`memory_audit.py` (transparency view + query + provenance, §5) + `correction_interface.py` (the
+six corrections, §5.5); SC-4 `sync_coordinator.py` (zero-knowledge deltas + conflict resolution,
+§6); `privacy_agent.py` (coordinator: consent, deletion lifecycle, audit, integrity, §7);
+`schemas.py`. All stores (memory/semantic/identity/personality/longitudinal/safety/goal), the
+embedder, and the certificate signer are injected, so the layer runs and is tested fully offline
+with no database, network, or sync server. 62 unit tests: `test_encryption_manager` (9),
+`test_integrity_verifier` (7), `test_selective_deletion` (11), `test_memory_audit_view` (9),
+`test_correction_interface` (8), `test_sync_coordinator` (10), `test_privacy_agent` (8).
 
-## 14. Live wiring status (Phase 12 polish pass, 2026-08-04)
-
-Only **SC-2 (Selective Deletion)** has a production caller: `api/routes/memory.py`'s
-`DELETE /memory/{memory_id}` builds a `_EpisodicDeletionStore` duck-type adapter over
-`PostgresMemoryStore` and calls `create_deletion_request` → `dry_run_deletion` →
-`execute_deletion` for real, single-memory deletions. Verified end-to-end
-(`tests/unit/api/test_routes_privacy.py`): the deleted memory 404s on `GET`, disappears from
-`GET /memory/audit`, and is unrecallable through the `GET /memory/search` keyword-scan fallback
-— not just logically flagged.
-
-**Everything else in this module is complete, unit-tested (62 tests, all passing), and has zero
-production callers:**
-- **SC-1** (`encryption_manager.py`, `integrity_verifier.py`) — no code outside tests
-  instantiates `EncryptionManager` or `IntegrityVerifier`. Memory-at-rest in this codebase is
-  plain Postgres/SQLite; the spec's SQLCipher/AES-256-GCM/Secure-Enclave design is not deployed.
-- **SC-3** (`memory_audit.py`, `correction_interface.py`) — `MemoryAuditView`,
-  `AuditQueryEngine`, and the six `MemoryCorrectionType` operations have no route or caller.
-  `GET /memory/audit` (the only "audit" HTTP route) returns a flat episodic/semantic list built
-  directly in `api/routes/memory.py` — it does not use Layer 12's richer 7-section view.
-- **SC-4** (`sync_coordinator.py`) — `api/routes/sync.py` does **not** import it. **Corrected
-  2026-08-09**: this was originally framed as two divergent implementations that had "diverged,"
-  implying a reconciliation was owed. On closer read they are not competing at all — `SyncCoordinator`
-  (`build_delta`/`decrypt_delta`/`resolve_conflict`) is genuinely **client-side** code: it requires
-  a `sync_key` only a device holds, and the whole design's zero-knowledge property depends on the
-  server never seeing it, let alone decrypting or resolving conflicts on plaintext. `PostgresSyncStore`
-  is correctly the only thing the **server** — which is all this backend-only repo contains — could
-  ever call; a route that imported `SyncCoordinator` server-side would break the zero-knowledge
-  property it exists to guarantee. There is no reconciliation to make: `SyncCoordinator` has no
-  server caller by design, not by neglect, and stays exactly where a future on-device client would
-  import it from. See §15.1.
-- **`privacy_agent.py`** (the SC-1–4 coordinator, consent management) — no caller anywhere.
-
-**Fixed this pass (both in `selective_deletion.py`, no behavior change to the one live caller's
-observable output — `PostgresMemoryStore.delete_episodic` already independently zeroed `summary`
-and `embedding` regardless of what `execute_deletion` passed to `update()` first):**
-- `execute_deletion` read `getattr(record, "content", "", ...)` — a field name that doesn't exist
-  on `EpisodicMemory` (the real field is `summary`), so the "secure zero before delete" step was a
-  silent no-op for the one type of record this code path actually deletes. It also zeroed with
-  `"\x00" * len(content)` — since `content` was always `""` this never executed, but had it fired
-  against the real Postgres store it would have raised: Postgres `jsonb` rejects the NUL byte (U+0000) in
-  strings, and `EpisodicMemory` payloads are stored as JSONB. Fixed to zero whichever of
-  `content`/`summary` the record actually has, using `""` rather than NUL padding. This is
-  defense-in-depth for any future adapter whose `delete()` is a physical delete rather than
-  `PostgresMemoryStore`'s current zero-then-flag logical delete — not a fix to a live leak.
-- `dry_run_deletion`'s `summary_human_readable` always opened with `"...will also:"` even when
-  every cascade store (`semantic_store`/`personality_store`/`longitudinal_store`) was `None` — the
-  only way the API route currently calls it. A header promising a computed cascade followed by
-  zero bullets reads as "nothing else affected" when the truth is "nothing else was checked".
-  `DELETE /memory/{id}`'s `MemoryDeletionOut.cascade` field forwarded this string to API
-  consumers unchanged. Fixed to say plainly that cascade impact was not computed when no stores
-  were wired, and to say "nothing else references these memories" (rather than staying silent)
-  when stores *are* wired and genuinely find no cascade. The underlying cross-store cascade
-  wiring gap itself (semantic/personality/longitudinal stores never passed to `dry_run_deletion`)
-  was already tracked in `docs/POLISH_BACKLOG.md` — this fix only corrects what the response text
-  claims about it.
-- `/memory/integrity` verifies **`PostgresAuditTrail`** (Layer 2's SHA-256 hash chain) and
-  **`PostgresPrivacyAudit`** (`infra/db/privacy_audit.py`, a separate SHA-256 chain logging
-  deletion events) — both real, both live. Neither is Layer 12's own `integrity_verifier.py`
-  (a Merkle-tree design over on-device store files); that module has no caller, consistent with
-  the rest of SC-1.
-
-See `docs/POLISH_BACKLOG.md` for the larger structural items (deploy real encryption-at-rest, wire
-the richer audit/correction views if a UI ever needs them, decide whether cascade-store *mutation*
-is wanted — see §15.2).
-
-## 15. Sync corrected + real cascade wiring (follow-up, 2026-08-09)
-
-### 15.1 The sync "reconciliation" wasn't one
-
-See the corrected SC-4 bullet above. No code changed here — this section exists because the
-prior framing (`docs/POLISH_BACKLOG.md`, `CLAUDE.md`) was a documentation error, not a deferred
-build task, and deserves a clear record of why.
-
-### 15.2 `dry_run_deletion`'s cascade checks were unwireable as written — two real field-mismatch
-bugs found and fixed
-
-`DELETE /memory/{id}` always called `dry_run_deletion(..., semantic_store=None)` — no
-`longitudinal_store` at all — so the cascade report always said "not computed." Wiring real
-stores in surfaced two genuine bugs that would have crashed on the very first real call:
-
-- **Semantic**: the cascade loop read `fact.derived_from_episodes`/`fact.fact_id`/`fact.fact_text`
-  — none of which exist on Layer 2's real `SemanticMemory` (`supporting_episode_ids`/`memory_id`/
-  `statement`). Fixed to the real field names.
-- **Longitudinal**: the cascade loop read `s.backing_episode_ids` on a `WeeklySummary` — that field
-  only exists on `RetrospectivePacket`, a different type entirely; `WeeklySummary` has no such
-  field. Fixed to read the real per-summary episode anchor,
-  `most_emotionally_significant_moment.episode_ids`.
-- **Type mismatch, found while fixing both**: `resolve_scope`'s `target` set holds plain strings
-  for the one live deletion path (`SINGLE_MEMORY`, `str(memory_id)` from the route) but
-  `SemanticMemory.supporting_episode_ids` deserializes to real `UUID` objects — `e in target`
-  would silently never match even with the field names fixed, since `UUID(...) == "some-string"`
-  is `False` in Python. Both cascade loops now compare on `str(...)` form.
-
-`api/routes/memory.py` gained two small adapters (`_SemanticDeletionStore`,
-`_LongitudinalDeletionStore`, same duck-type-wrapping pattern as the existing
-`_EpisodicDeletionStore`) and now wires both into the live `DELETE /memory/{id}` call. Proven end
-to end by `tests/unit/api/test_routes_privacy.py::
-test_delete_memory_reports_a_real_semantic_cascade`: a semantic fact whose only supporting
-episode is the one being deleted is correctly reported.
-
-**Scope, stated plainly**: this only fixes `dry_run_deletion`'s *reporting* — `execute_deletion`
-itself still only mutates the primary episodic store. Deciding what "handle the cascade" should
-mean mechanically (delete the now-unsupported semantic fact outright? flag it for the user to
-review? re-derive it?) is a real product decision, not made here. Personality-vector cascade
-(`personality_store.simulate_removal_impact`) stays permanently unreported — no real "personality
-vector" store exists anywhere in this codebase to check against; the parameter is accepted and
-skipped, not stubbed.
-
-### 15.3 SC-3 audit/correction routes wired; cascade *mutation* now real (2026-08-09, product
-decisions confirmed with the user)
-
-Three genuinely out-of-scope items from §15.1/15.2 are now closed:
-
-- **`GET /memory/audit/full`**, **`GET /memory/audit/query`**, **`POST /memory/{id}/correct`**
-  wire `memory_audit.generate_audit_view`/`query` and `correction_interface.apply_correction` live
-  for the first time (`api/routes/memory.py`). Doing so surfaced the same class of field-mismatch
-  bug as §15.2: `_to_auditable_fact` read `f.fact_id`/`fact_text`/`category`/`source_episode_ids`
-  — none of which exist on the real `SemanticMemory` (`memory_id`/`statement`/`memory_type`/
-  `supporting_episode_ids`) — and would have raised `AttributeError` on the first real call.
+- **SC-1 On-Device Memory (encryption)** — algorithms implemented and tested, **not deployed**;
+  this is a genuine undeployed infra project, not a wiring gap. The spec mandates AES-256-GCM /
+  SQLCipher / Argon2id with keys in the Secure Enclave; the test runtime is stdlib-only, so
+  `encryption_manager` implements a *real* authenticated-encryption construction from stdlib
+  primitives instead — PBKDF2-HMAC-SHA256 (master key), RFC-5869 HKDF (derived key hierarchy), a
+  SHA-256 counter-mode keystream, and HMAC-SHA256 encrypt-then-MAC with constant-time
+  verification. It genuinely round-trips, detects tampering, and rejects wrong keys. Production
+  would swap the cipher for AES-256-GCM behind the same key hierarchy and use Argon2id for the
+  sync key (PBKDF2 iterations default to 600k here; tests pass a lower value for speed). No code
+  outside tests instantiates `EncryptionManager` or `IntegrityVerifier` today — memory-at-rest in
+  this codebase is plain Postgres/SQLite, and the SQLCipher/Secure-Enclave design remains a
+  deployment project.
+- **SC-2 Selective Deletion** — fully live, the one sub-component with a real production caller
+  end to end. `api/routes/memory.py`'s `DELETE /memory/{memory_id}` builds a
+  `_EpisodicDeletionStore` duck-type adapter over `PostgresMemoryStore` and calls
+  `create_deletion_request` → `dry_run_deletion` → `execute_deletion` for real, single-memory
+  deletions — verified end-to-end (`tests/unit/api/test_routes_privacy.py`): the deleted memory
+  404s on `GET`, disappears from `GET /memory/audit`, and is unrecallable through the
+  `GET /memory/search` keyword-scan fallback, not just logically flagged. Two adapter-layer bugs
+  were found and fixed while wiring this in (both in `selective_deletion.py`, no behavior change
+  to the live caller's observable output since `PostgresMemoryStore.delete_episodic` already
+  independently zeroed `summary`/`embedding` regardless): `execute_deletion` read
+  `getattr(record, "content", ...)`, a field that doesn't exist on `EpisodicMemory` (the real
+  field is `summary`), making the "secure zero before delete" step a silent no-op — fixed to zero
+  whichever of `content`/`summary` the record actually has, using `""` rather than the original
+  `"\x00" * len(content)` NUL-padding (Postgres `jsonb` rejects NUL bytes, and `EpisodicMemory`
+  payloads are JSONB, so the original code would have raised had it ever actually run against
+  real content); and `dry_run_deletion`'s `summary_human_readable` always opened with
+  `"...will also:"` even when no cascade stores were wired, misleadingly reading as "nothing else
+  affected" rather than "nothing else was checked" — fixed to state plainly whether cascade impact
+  was computed at all. **Cascade reporting is now real** (not just the primary-store delete):
+  `api/routes/memory.py` wires `_SemanticDeletionStore` and `_LongitudinalDeletionStore` adapters
+  (same duck-type pattern as `_EpisodicDeletionStore`) into `dry_run_deletion`, after fixing two
+  field-mismatch bugs found in the process — the semantic cascade loop read
+  `fact.derived_from_episodes`/`fact.fact_id`/`fact.fact_text` (real fields:
+  `supporting_episode_ids`/`memory_id`/`statement`), and the longitudinal cascade loop read
+  `s.backing_episode_ids` on `WeeklySummary` (that field only exists on `RetrospectivePacket`; the
+  real per-summary anchor is `most_emotionally_significant_moment.episode_ids`) — plus a type
+  mismatch where `resolve_scope`'s `target` set holds plain strings but
+  `SemanticMemory.supporting_episode_ids` deserializes to `UUID` objects, so `e in target` would
+  silently never match even with field names fixed (`UUID(...) == "some-string"` is `False` in
+  Python); both loops now compare on `str(...)` form. Proven by
+  `tests/unit/api/test_routes_privacy.py::test_delete_memory_reports_a_real_semantic_cascade`.
+  **Cascade mutation is also real**, not just reporting: product decision (2026-08-09) was redact
+  in place rather than hard-delete — `selective_deletion.redact_cascade` strips the deleted
+  episode's id from every affected semantic fact's `supporting_episode_ids` (a fact left with zero
+  remaining support is deprecated and its `statement` cleared, the same "logical deletion, row
+  retained for proof" invariant the memory-deletion path itself uses), and a weekly summary whose
+  `most_emotionally_significant_moment` pointed only at the deleted episode has that field
+  cleared; wired into `DELETE /memory/{id}` right after `execute_deletion`. Personality-vector
+  cascade (`personality_store.simulate_removal_impact`) stays permanently unreported — no real
+  "personality vector" store exists anywhere in this codebase to check against; the parameter is
+  accepted and skipped, not stubbed.
+- **SC-3 Memory Audit + Correction** — live. `GET /memory/audit/full`, `GET /memory/audit/query`,
+  and `POST /memory/{id}/correct` wire `memory_audit.generate_audit_view`/`query` and
+  `correction_interface.apply_correction` for real (`api/routes/memory.py`); the older flat
+  `GET /memory/audit` route remains a separate, simpler episodic/semantic list built directly in
+  the route rather than Layer 12's richer 7-section view. Wiring the real routes surfaced the same
+  class of field-mismatch bug as SC-2's cascade work: `_to_auditable_fact` read
+  `f.fact_id`/`fact_text`/`category`/`source_episode_ids`, none of which exist on the real
+  `SemanticMemory` (`memory_id`/`statement`/`memory_type`/`supporting_episode_ids`) — fixed.
   `IdentityMemory` (`belief_id`/`category`/no `confidence`) is a different real shape again, so it
-  now gets its own converter, `_to_auditable_identity`, rather than forcing one function to
-  duck-type two incompatible real schemas. The correction interface had the same problem in the
-  other direction: five of its six correction types wrote field names
-  (`content`/`is_anchored`/`is_user_downgraded`/`auto_expiry_date`/`is_user_confirmed`/
-  `last_corrected_at`) that don't exist on `EpisodicMemory` at all — silently no-op'd by
-  `update_episodic`'s `hasattr` guard. `EpisodicMemory` gained those five fields (all additive,
-  default `False`/`None`, safe for the existing JSONB payload), and `EDIT` now writes both
-  `content` and `summary` (mirrors `execute_deletion`'s existing dual-field secure-zero, since the
-  real field is `summary`). Persisting the field alone left EXPIRE incomplete, though — nothing
-  consumed `auto_expiry_date` (`memory_consolidation_job`'s `decay_sweep` predates the field). Layer
-  2's `decay_sweep` now checks it unconditionally, ahead of the strength-based decision, and
-  `ANCHOR`'s `decay_rate=0.0` was verified to actually survive the sweep untouched (both have
-  regression tests in `tests/unit/test_forgetting_engine.py`). All six correction types are now
-  genuinely functional end to end, not five out of six with the field just sitting unread.
-- **Cascade mutation** (vs. the §15.2 dry-run *reporting*): product decision, 2026-08-09 —
-  redact in place, don't hard-delete. `selective_deletion.redact_cascade` strips the deleted
-  episode's id from every affected semantic fact's `supporting_episode_ids`; a fact left with zero
-  remaining support is deprecated and its `statement` cleared (same "logical deletion, row
-  retained for proof" invariant the memory-deletion path itself already uses). A weekly summary
-  whose `most_emotionally_significant_moment` pointed only at the deleted episode has that field
-  cleared. Wired into `DELETE /memory/{id}` right after `execute_deletion`.
-- **Consent management** (`ConsentManager`) — product decision, 2026-08-09: skip. Single-user
-  local deployment, no real operation needs to be gated behind consent today; left as the
+  gets its own converter, `_to_auditable_identity`, rather than one function duck-typing two
+  incompatible schemas. The correction interface had the mirror problem: five of its six
+  correction types wrote field names (`content`/`is_anchored`/`is_user_downgraded`/
+  `auto_expiry_date`/`is_user_confirmed`/`last_corrected_at`) that don't exist on `EpisodicMemory`,
+  silently no-op'd by `update_episodic`'s `hasattr` guard — `EpisodicMemory` gained those five
+  fields (additive, default `False`/`None`, safe for the existing JSONB payload), and `EDIT` now
+  writes both `content` and `summary`. Persisting the field alone left EXPIRE incomplete: nothing
+  consumed `auto_expiry_date` until Layer 2's `decay_sweep` was updated to check it
+  unconditionally, ahead of the strength-based decision (`ANCHOR`'s `decay_rate=0.0` verified to
+  still survive the sweep untouched; both have regression tests in
+  `tests/unit/test_forgetting_engine.py`). All six correction types are now genuinely functional
+  end to end. Note: `tests/unit/test_memory_audit.py` belongs to **Layer 2** (the audit trail);
+  Layer 12's own audit tests live in `test_memory_audit_view.py`.
+- **SC-4 Cross-Platform Sync** — live, correctly split across client/server rather than merged.
+  `sync_coordinator.py` (`build_delta`/`decrypt_delta`/`resolve_conflict`) is genuinely
+  **client-side** code: it requires a `sync_key` only a device holds, and the zero-knowledge
+  property depends on the server never seeing that key, let alone decrypting or resolving
+  conflicts on plaintext. `api/routes/sync.py` correctly never imports it — `PostgresSyncStore` is
+  the only thing the **server** (all this backend-only repo contains) could ever call; importing
+  `SyncCoordinator` server-side would break the zero-knowledge guarantee it exists to provide. An
+  earlier audit pass framed this as two divergent implementations that had "diverged" and implied
+  a reconciliation was owed; on closer read they were never competing — `SyncCoordinator` has no
+  server caller by design, not by neglect, and stays exactly where a future on-device client would
+  import it from. Worth remembering as a category: not every apparent "duplicate implementation"
+  is a duplication — check whether it's actually a correct client/server split before merging.
+- **`privacy_agent.py`** (the SC-1–4 coordinator, consent management via `ConsentManager`) — has
+  no caller anywhere, and this is a deliberate scope decision, not a gap: single-user local
+  deployment has no real operation that needs to be gated behind consent today. Left as the
   in-memory-only, unwired module it already was.
+- **`/memory/integrity`** verifies **`PostgresAuditTrail`** (Layer 2's SHA-256 hash chain) and
+  **`PostgresPrivacyAudit`** (`infra/db/privacy_audit.py`, a separate SHA-256 chain logging
+  deletion events) — both real, both live. Neither is Layer 12's own `integrity_verifier.py` (a
+  Merkle-tree design over on-device store files); that module has no caller, consistent with SC-1
+  remaining undeployed.
+- **Design deviations from the original May-28 scaffold (reconciled, not a gap):** the scaffold's
+  older `forget_*` deletion names were replaced by the authoritative six-type taxonomy. The full
+  SQLCipher STORE_ARCHITECTURE, Secure-Enclave key storage, and on-disk DB files remain deployment
+  concerns beyond the unit layer; the algorithms (key derivation, integrity, deletion, sync,
+  audit) are implemented and tested here.
+
+See `docs/POLISH_BACKLOG.md` for remaining larger structural items (deploy real
+encryption-at-rest; decide whether any UI needs it beyond the now-live routes).
+
+## 14. Decision Log
+
+- **2026-08-04 (Phase 12 polish pass):** Audited `backend/layer12_privacy/` — found only SC-2
+  (Selective Deletion) had a production caller; SC-1, SC-3, SC-4, and `privacy_agent.py` were
+  complete and unit-tested but had zero callers. Fixed two `selective_deletion.py` bugs found
+  while examining the one live caller (wrong field name silently no-op'ing secure-zero; a
+  misleading "will also:" cascade message when no cascade stores were wired). Flagged SC-4's
+  apparent client/server "divergence" as needing reconciliation — later corrected (see below).
+- **2026-08-09 (follow-up):** Corrected the SC-4 framing — the client (`SyncCoordinator`) and
+  server (`PostgresSyncStore`) split is a deliberate zero-knowledge-preserving architecture, not a
+  divergent duplication needing reconciliation. No code changed; this was a documentation error in
+  `docs/POLISH_BACKLOG.md`/`CLAUDE.md` corrected at the source.
+- **2026-08-09 (follow-up):** Wired real semantic/longitudinal cascade stores into
+  `dry_run_deletion`'s reporting via two new adapters, finding and fixing two field-mismatch bugs
+  (`SemanticMemory`, `WeeklySummary`) and one string/UUID comparison bug that would have made the
+  fixed field names silently still not match. Scoped explicitly to *reporting* only —
+  `execute_deletion` still mutates only the primary episodic store at this point.
+- **2026-08-09 (follow-up, product decisions confirmed with the user):** Wired `GET
+  /memory/audit/full`, `GET /memory/audit/query`, and `POST /memory/{id}/correct` live for the
+  first time, fixing the same class of field-mismatch bugs found in the prior entry (this time in
+  `memory_audit.py`'s auditable-fact/-identity converters and `correction_interface.py`'s five
+  broken correction types) plus adding five missing fields to `EpisodicMemory` and teaching
+  `decay_sweep` to honor `auto_expiry_date`. Made cascade *mutation* real (redact-in-place, not
+  hard-delete) via `selective_deletion.redact_cascade`. Decided to leave `ConsentManager` unwired
+  — no real single-user operation needs consent-gating today.
 
 ---
 
