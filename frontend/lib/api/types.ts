@@ -150,6 +150,17 @@ export type ProactiveItem = {
   item_type: string;
   status: string;
   content_basis: string;
+  /** The real SC-4-generated delivery text — what Nova would actually say. Empty until the
+   *  background job has produced one; render this, never content_basis (an internal fragment). */
+  message: string;
+  current_priority: number;
+};
+
+/** One `item` event from GET /proactive/stream. */
+export type ProactiveStreamItem = {
+  item_id: string;
+  item_type: string;
+  message: string;
   current_priority: number;
 };
 

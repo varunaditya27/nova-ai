@@ -14,7 +14,8 @@ system:
 api:
   host: ${API_HOST:-0.0.0.0}
   port: 8000
-  cors_origins: ["http://localhost:3000"]
+  # :3001 is Next's own automatic fallback when :3000 is already taken (dev-time only).
+  cors_origins: ["http://localhost:3000", "http://localhost:3001"]
 
 llm:
   system1:

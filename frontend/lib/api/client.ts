@@ -138,6 +138,12 @@ export function getProactive(limit = 5): Promise<ProactiveItem[]> {
   return requestJson<ProactiveItem[]>(`/proactive?limit=${limit}`);
 }
 
+/** SC-5: call the moment a client actually shows a proactive item to the user, so the next reply
+ *  can be attributed to it via ChatRequest.is_reply_to_proactive. */
+export function markProactiveDelivered(itemId: string): Promise<{ item_id: string; status: string }> {
+  return requestJson(`/proactive/${encodeURIComponent(itemId)}/delivered`, { method: "POST" });
+}
+
 export function getMemoryAudit(): Promise<MemoryAuditOut> {
   return requestJson<MemoryAuditOut>("/memory/audit");
 }

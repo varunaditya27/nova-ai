@@ -1315,3 +1315,42 @@ item with `post_crisis_sensitivity` after a genuine crisis-tier safety event ear
 session — proof the gate reads real safety data, not a fixture. With the gate cleared directly
 (seeded relationship state), `generate_message_for_item` produced a real, coherent, on-topic
 message through the actual LLM and persona pipeline.
+
+## 21. Follow-up (2026-08-09): push transport (SSE) + frontend proactive UI
+
+The one piece §20 explicitly left open — product decision: build it now, including the frontend,
+rather than deferring to a later frontend-only phase.
+
+**Backend**: `GET /proactive/stream` (new, `api/routes/proactive.py`) — a bounded-lifetime
+(~25 min) Server-Sent Events connection that polls the same `build_timing_context`/`gate_passes`
+the poll route uses, and pushes an `item` frame the moment a candidate is both gate-passing *and*
+already has a real `generated_message` (never pushes `content_basis`). Deduplicates within the
+connection so a given item is only ever pushed once. Deliberately bounded rather than truly
+indefinite: a sync generator run in FastAPI's threadpool has no built-in client-disconnect
+detection, so an unbounded loop would pin a worker thread forever if the client vanished; instead
+the stream closes on its own and relies on `EventSource`'s native browser auto-reconnect. Fine for
+a single-user local deployment (one connection at a time).
+
+**Frontend** (`frontend/`, an existing Next.js app with an established design system): `app/
+proactive/page.tsx` already existed but rendered `content_basis` directly — exactly the bug the
+backend gating work was meant to prevent a *future* consumer from committing; fixed as part of
+closing this out. New `lib/hooks/useProactiveStream.ts` opens a native `EventSource` against the
+stream (bypassing the same-origin `/api/*` rewrite the JSON client uses, same reasoning as
+`useChatStream`: the dev proxy buffers SSE) and calls `POST /proactive/{id}/delivered` the moment
+each item is received, closing the SC-5 loop automatically. New pure `lib/proactive/merge.ts`
+(`mergeProactiveItems`) merges the polled baseline with live-pushed items, deduped by id,
+streamed-wins-on-overlap, sorted by priority — kept pure and separately unit-tested (5 tests)
+rather than folded into the component, so the merge/dedup logic doesn't require mocking
+`EventSource` to verify.
+
+**Verification**: `tsc --noEmit` and `eslint` clean; `vitest` (16 tests, incl. the 5 new merge
+tests) green. The Chrome DevTools MCP extension wasn't connected in this environment, so
+interactive in-browser verification used a small Playwright script instead (real Chromium, not a
+mock): seeded a real gate-passing, message-generated `ProactiveItem` directly in Postgres (an
+organic conversation reaching a gate-clearable relationship stage would take 1+ hour of local
+CPU inference — same reasoning as §20), loaded the real page against the real running backend,
+and confirmed zero console errors, the real generated message rendered (not `content_basis`), and
+`POST /proactive/{id}/delivered` fired automatically — the item's status genuinely flipped to
+`sent` in Postgres as a direct result of the browser loading the page, not a simulated event.
+CORS: `config/defaults.yaml`'s `cors_origins` gained `http://localhost:3001` (Next's own automatic
+fallback port when :3000 is already taken) alongside the existing :3000 default.

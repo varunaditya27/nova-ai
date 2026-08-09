@@ -347,8 +347,14 @@ detail: `docs/layer-6-architecture.md` §15.
   which a bare `SimpleNamespace` background-job context didn't have — silently caught by
   `build_persona`'s own try/except, degrading `voice_parameters` to defaults rather than
   crashing. No test using a stub `steps` object could have caught this; a new regression test
-  runs against the real `build_persona`. Push *transport* (SSE/notifications) remains the one
-  open piece — scoped as a frontend-phase decision. See `docs/layer-6-architecture.md` §20.
+  runs against the real `build_persona`. See `docs/layer-6-architecture.md` §20.
+- **[done, 2026-08-09]** Push transport (SSE) and the frontend consumer are built too — product
+  decision: do it now, not defer to a later frontend phase. `GET /proactive/stream` pushes
+  gate-passing, message-generated items; `frontend/app/proactive/page.tsx` was fixed to render
+  the real `message` (it previously rendered `content_basis` directly — the exact bug the gating
+  work was meant to prevent a future consumer from committing). Verified in a real browser via
+  Playwright against seeded Postgres state (the Chrome MCP extension wasn't connected in this
+  environment). See `docs/layer-6-architecture.md` §21.
 - **Three of four intake contracts are unwired**, each blocked on a different upstream layer, not
   on Layer 6 itself: `on_thread_due` needs Layer 1's narrative-thread detector (Layer 1's own
   audited gap); `on_post_distress_gap` needs a Layer 2 state-updater hook that doesn't exist yet;

@@ -133,6 +133,74 @@ def test_mark_delivered_missing_item_is_404():
     assert client.post("/proactive/nope/delivered").status_code == 404
 
 
+def test_proactive_stream_pushes_a_gate_passing_message_generated_item():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from api.routes.proactive import _stream_gen
+
+    _, factory = _client()
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):
+        rel_store.record_turn(f"s{i}")
+    PostgresProactiveQueue(factory, "local-user").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k goal", generated_message="Hope your 5K training is going well!"))
+
+    with patch("api.routes.proactive.datetime") as mock_dt, \
+         patch("api.routes.proactive.time.sleep"):
+        mock_dt.now.return_value = _NOON_UTC
+        gen = _stream_gen(factory, "local-user", {"onboarding": {"graduation_sessions": 5}})
+        frames = [next(gen), next(gen), next(gen)]   # connected, item, heartbeat
+
+    assert "event: connected" in frames[0]
+    assert "event: item" in frames[1]
+    assert "Hope your 5K training is going well!" in frames[1]
+    assert '"item_id": "p1"' in frames[1]
+    assert "event: heartbeat" in frames[2]
+
+
+def test_proactive_stream_never_pushes_an_item_without_a_generated_message():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from api.routes.proactive import _stream_gen
+
+    _, factory = _client()
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):
+        rel_store.record_turn(f"s{i}")
+    PostgresProactiveQueue(factory, "local-user").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k goal"))   # no generated_message yet
+
+    with patch("api.routes.proactive.datetime") as mock_dt, \
+         patch("api.routes.proactive.time.sleep"):
+        mock_dt.now.return_value = _NOON_UTC
+        gen = _stream_gen(factory, "local-user", {"onboarding": {"graduation_sessions": 5}})
+        frames = [next(gen), next(gen)]   # connected, heartbeat -- no item frame in between
+
+    assert "event: connected" in frames[0]
+    assert "event: heartbeat" in frames[1]
+
+
+def test_proactive_stream_does_not_repeat_an_already_pushed_item():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from api.routes.proactive import _stream_gen
+
+    _, factory = _client()
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):
+        rel_store.record_turn(f"s{i}")
+    PostgresProactiveQueue(factory, "local-user").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k goal", generated_message="a real message"))
+
+    with patch("api.routes.proactive.datetime") as mock_dt, \
+         patch("api.routes.proactive.time.sleep"):
+        mock_dt.now.return_value = _NOON_UTC
+        gen = _stream_gen(factory, "local-user", {"onboarding": {"graduation_sessions": 5}})
+        frames = [next(gen) for _ in range(5)]   # connected, item, heartbeat, heartbeat, heartbeat
+
+    assert sum("event: item" in f for f in frames) == 1
+
+
 def test_admin_trigger_integrity_job():
     client, _ = _client()
     body = client.post("/admin/jobs/integrity_check").json()

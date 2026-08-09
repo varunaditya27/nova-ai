@@ -102,10 +102,10 @@ gap was found and why it wasn't fixed inline.
 
 ## Layer 6 — Proactive Engagement Engine
 
-- **No push *transport* exists** — SC-4/5 now genuinely generate/track real messages (see below),
-  but there's still no channel to push them to a client proactively; `GET /proactive` is a
-  read-only poll. This is now scoped as a frontend-phase decision (SSE vs. other), not a backend
-  gap — see task tracking for the frontend proactive-delivery work.
+- **[done, 2026-08-09]** Push transport built: `GET /proactive/stream` (SSE) + a real frontend
+  consumer (`frontend/app/proactive/page.tsx`, `lib/hooks/useProactiveStream.ts`). Verified live
+  in a real browser (Playwright, since the Chrome MCP extension wasn't connected in this
+  environment) against seeded Postgres state. See `docs/layer-6-architecture.md` §21.
 - **[done, 2026-08-09]** `GET /proactive` now gates server-side through the real SC-3 Timing &
   Delivery Gate (`evaluate_timing_gate`) with a live `UserTimingContext` — no longer returns raw
   ungated `content_basis`. See `docs/layer-6-architecture.md` §19.

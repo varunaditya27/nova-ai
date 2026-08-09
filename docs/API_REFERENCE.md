@@ -350,6 +350,12 @@ cold-starting.
 | `message` | string (the real SC-4-generated delivery text; `""` until the background job has produced one) |
 | `current_priority` | float |
 
+### `GET /proactive/stream` → `text/event-stream`
+SC-3/SC-4 push channel. Bounded-lifetime SSE connection (~25 min; the client's `EventSource`
+auto-reconnects natively on close). Frames: `connected` (once), `heartbeat` (every ~30s),
+`item` (`{item_id, item_type, message, current_priority}`) the moment a candidate is both
+gate-passing and already has a real generated message — never pushes `content_basis`.
+
 ### `POST /proactive/{item_id}/delivered` → `{item_id, status}`
 SC-5: call this the moment a client actually shows a proactive item to the user (e.g. right after
 receiving it). Transitions the item to `sent` with a real `sent_at` timestamp, which the next
