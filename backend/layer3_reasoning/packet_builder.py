@@ -15,7 +15,7 @@ from typing import Callable, Optional
 from backend.layer3_reasoning.background_state import compute_background_state
 from backend.layer3_reasoning.emotion_classifier import classify_emotion, heuristic_prefilter
 from backend.layer3_reasoning.empathy_hypothesis import generate_empathy_hypothesis
-from backend.layer3_reasoning.intent_classifier import classify_intent
+from backend.layer3_reasoning.intent_classifier import classify_intent, rule_classify
 from backend.layer3_reasoning.mismatch_detector import detect_mismatch
 from backend.layer3_reasoning.mode_resolver import resolve_conversation_mode
 from backend.layer3_reasoning.schemas import (
@@ -172,12 +172,26 @@ def build_emotion_intent_packet(
         _emit_alert(alert_fn, pre, message, source="layer3_heuristic")
         crisis_emitted = True
 
+    # ── Shared SC-1/SC-3 LLM call (architecture doc §14.2) ────────────────────
+    # One fast small-model call serves both classifiers, not two independent inferences: fire it
+    # exactly when either half would otherwise need its own (emotion's heuristic didn't resolve
+    # to pure-neutral, or intent's rule table didn't confidently match) and hand the same parsed
+    # result to both. Each classifier still runs its own skip/degrade logic unchanged (via
+    # `llm_output=`); this only removes the duplicate network round trip.
+    emotion_needs_llm = not (pre is not None and pre.primary_label == EmotionLabel.NEUTRAL.value)
+    intent_rule = _safe(lambda: rule_classify(message), None)
+    intent_needs_llm = intent_rule is None
+    shared_llm_output = None
+    if llm_fn is not None and (emotion_needs_llm or intent_needs_llm):
+        shared_llm_output = _safe(lambda: llm_fn(message), None)
+
     # ── SC-1 Primary Emotion ──────────────────────────────────────────────────
     emotion = _safe(
         lambda: classify_emotion(
             message, implicit_intensity=implicit_intensity, circadian_band=circadian_band,
             composite_prior=composite_prior, prior_confidence=prior_confidence,
-            prosody_estimate=prosody_estimate, llm_fn=llm_fn),
+            prosody_estimate=prosody_estimate, llm_output=shared_llm_output,
+            llm_fn=None if shared_llm_output is not None else llm_fn),
         pre or EmotionClassification(
             primary_label=EmotionLabel.NEUTRAL.value, confidence=0.5,
             classification_method=ClassificationMethod.HEURISTIC_ONLY.value))
@@ -202,7 +216,9 @@ def build_emotion_intent_packet(
     # ── SC-3 Intent ───────────────────────────────────────────────────────────
     intent = _safe(
         lambda: classify_intent(
-            message, llm_fn=llm_fn, advice_frustration_count=advice_frustration_count),
+            message, llm_output=shared_llm_output,
+            llm_fn=None if shared_llm_output is not None else llm_fn,
+            advice_frustration_count=advice_frustration_count),
         IntentClassification(primary_intent=IntentLabel.CASUAL_CHAT.value))
 
     # ── SC-4 Mismatch ─────────────────────────────────────────────────────────

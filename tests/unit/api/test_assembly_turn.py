@@ -987,6 +987,60 @@ def test_real_layer4_wiring_drift_hard_refusal_fires_on_system1_turns_too():
     assert out.response_text == GRACEFUL_REFUSAL_TEXT
 
 
+def test_real_layer3_wiring_forwards_uwm_psychological_model_to_background_state():
+    """psychological_model (2026-08-09) comes off the same uwm_provider call already forwarding
+    active_stressors -- proves it reaches build_emotion_intent_packet's regulation-style
+    adjustment via the real classify() closure, not just compute_background_state directly."""
+    from datetime import datetime, timedelta, timezone
+    from backend.layer2_memory import InMemoryMemoryStore
+    from backend.layer2_memory.schemas import (
+        EmotionVector, EpisodicMemory, PsychologicalModel, UserWorldModel)
+
+    store = InMemoryMemoryStore()
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        store.save_episodic(EpisodicMemory(
+            user_id="local-user", summary=f"a mixed day {i}",
+            created_at=now - timedelta(days=i + 1),
+            emotion_vector=EmotionVector(valence=-0.3, arousal=0.4)))
+
+    uwm = UserWorldModel(user_id="local-user", psychological_model=PsychologicalModel(
+        emotional_regulation_style="minimizer"))
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm, memory_store=store,
+                                 uwm_provider=lambda uid: uwm)
+    packet = steps.classify("local-user", "just checking in", object(), [])
+
+    # A "minimizer" regulation style pulls the BES negative relative to the raw valence signal
+    # (compute_background_state's regulation-adjustment branch) -- only reachable if the real
+    # PsychologicalModel object made it through classify() into the packet builder.
+    assert packet.background_state.regulation_adjustment_applied is True
+
+
+def test_real_layer4_wiring_psychological_model_reaches_known_sensitivities():
+    """resolve_persona_state derives known_sensitivities from psychological_model.known_triggers
+    (§3.4) -- used to always be [] because build_persona always passed psychological_model=None
+    (Layer 2's UWM narrow slice never extracted one). Now that Layer 2 §25 builds real extraction,
+    build_persona must forward it through the same uwm_provider already used for the UWM
+    directive, reaching the real persona_resolver, not a mock."""
+    from types import SimpleNamespace
+    from backend.layer2_memory.schemas import PsychologicalModel, TriggerPattern, UserWorldModel
+
+    uwm = UserWorldModel(user_id="local-user", psychological_model=PsychologicalModel(
+        known_triggers=[TriggerPattern(description="being compared to a sibling")]))
+
+    llm = FakeLLM()
+    steps = build_pipeline_steps(system1=llm, system2=llm, embed=llm,
+                                 memory_store=InMemoryMemoryStore(),
+                                 uwm_provider=lambda uid: uwm)
+    ctx = SimpleNamespace(user_id="local-user", conversation_mode="casual")
+    packet = steps.build_persona(ctx)
+
+    assert "being compared to a sibling" in packet.persona_state.known_sensitivities
+    assert "being compared to a sibling" in packet.constraint_instruction
+
+
 def test_real_layer4_wiring_identity_override_reaches_persona_state():
     """SC-1's PersonaState used to be build-time-constant: load_core_anchors accepted
     identity_memory_entries but never read them. Now a real, topically-matching IdentityMemory

@@ -71,7 +71,8 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   /style_learning.py` already owns communication style live — building a second version here
   would be exactly the "divergent reimplementation pair" this file already warns about) and
   **`psychological_model`** (attachment/regulation/trigger inference — higher-stakes, separate
-  scoping decision, deferred). See `docs/layer-2-architecture.md` §23 for the full design,
+  scoping decision, deferred at the time; **[done, 2026-08-09]** the user was asked explicitly
+  and chose to build it — see §25). See `docs/layer-2-architecture.md` §23 for the full design,
   including why the read side goes through `build_persona`'s own provider rather than
   `MemoryPacket.uwm_context` (nothing forwards the full packet past `recall()`'s
   `list[memory]`-only contract — same finding as §22's narrative-chain read-side gap).
@@ -154,21 +155,25 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
   `crisis_active` directly off the returned packet, and Layer 11's own SC-2 scan already runs in
   parallel with the whole pipeline independent of any push. Wiring `alert_fn` would add no safety
   value today — leave unwired; revisit only if Layer 11 ever grows an async intake worth feeding.
-- **SC-1 and SC-3 each call `llm_fn` separately** — two LLM calls per turn, not the single shared
-  small-model call §14.2 describes. Not a correctness bug (both calls work), but a latency/cost
-  gap relative to the documented design. Would need `packet_builder.py` restructured so one LLM
-  response feeds both classifiers. [2026-08-07: explicitly deferred by the user — real
-  engineering work (prompt/parse contracts for both classifiers, partial-failure degradation),
-  not a quick wiring fix.]
+- **[done, 2026-08-09]** SC-1 and SC-3 now share one LLM call per turn instead of two.
+  [2026-08-07: explicitly deferred as real engineering work; re-opened and closed 2026-08-09 once
+  the user set a "complete end-to-end" bar.] `classify_emotion`/`classify_intent` gained an
+  `llm_output` param so a caller can hand them an already-fetched shared result instead of each
+  calling `llm_fn` itself; `build_emotion_intent_packet` now computes each classifier's own
+  ambiguity condition upfront and fires at most one shared call. Verified with 7 new tests
+  (exact call counts, crisis-from-shared-LLM still reaching the packet, heuristic crisis still
+  winning over a calmer shared read) plus a live crisis-message run against the real orchestrator.
+  See `docs/layer-3-architecture.md`'s follow-up note.
 - **[done, 2026-08-07]** BES (Background Emotional State) inputs — `episodic_memories` and
   `active_stressors` now forwarded live in `api/assembly.py::classify`
   (`memory_store.active_episodic(user_id)` / `uwm.life_context.active_stressors`), now that
   Layer 2's UWM/episodic write path is real. A serious bug was caught and fixed in the same pass:
   the first version crashed on every turn with real episodic data (naive vs. tz-aware datetime
   subtraction inside `compute_background_state`'s `_recent()`), silently swallowed by `_safe()`
-  down to `insufficient_data` — see `docs/layer-3-architecture.md` §18. `psychological_model`
-  stays unforwarded (`None`) — out of the UWM narrow-slice's scope (Layer 2 §23), not a Layer 3
-  gap.
+  down to `insufficient_data` — see `docs/layer-3-architecture.md` §18. **[done, 2026-08-09]**
+  `psychological_model` is now forwarded too, now that Layer 2 §25 built real extraction for it —
+  `classify()` pulls it off the same `uwm_provider(user_id)` call already fetching
+  `active_stressors`.
 - **[done, 2026-08-09]** `relationship_depth` now forwarded live. Its natural source,
   `RelationshipState.tie_strength`, used to stay pinned at `0.0` forever because
   `PostgresRelationshipStore.record_turn` never called `relationship_manager.compute_session_delta`/
@@ -208,8 +213,9 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
 - **[done, 2026-08-09]** SC-1's real-inputs caveat closed — `load_core_anchors` now actually reads
   `identity_memory_entries`, overriding an anchor's `value` from a real, topically-matching
   `IdentityMemory` belief (category + keyword-hint match, not a blind "closest in category"
-  guess) instead of ignoring the parameter entirely. `known_sensitivities` stays `[]` (needs
-  `psychological_model`, still out of the UWM narrow-slice scope). See
+  guess) instead of ignoring the parameter entirely. **[done, 2026-08-09]** `known_sensitivities`
+  now genuinely populates too — Layer 2 §25 built real `psychological_model` extraction, and
+  `build_persona` now fetches and forwards it into `resolve_persona_state`. See
   `docs/layer-4-architecture.md` §20.2.
 - **[done, 2026-08-09]** SC-4's Check 3 (sycophantic capitulation) is no longer permanently
   inert — "no cross-turn Nova-stance history is tracked anywhere" turned out to be wrong on

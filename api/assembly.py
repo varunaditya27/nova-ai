@@ -298,12 +298,12 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         # that gate on every single turn. See docs/POLISH_BACKLOG.md.
         #
         # BES inputs (§4): now real, since Layer 2's UWM/episodic-memory work landed.
-        # episodic_memories drives the 14-day valence trend; active_stressors comes straight off
-        # the UWM's life_context (same Stressor schema compute_stressor_load expects — no
-        # translation needed). psychological_model is NOT forwarded: the UWM narrow-slice scope
-        # decision excluded it (still unextracted, would only ever be None).
+        # episodic_memories drives the 14-day valence trend; active_stressors and (2026-08-09)
+        # psychological_model come straight off the UWM (same schemas compute_background_state/
+        # generate_empathy_hypothesis already expect — no translation needed).
         episodic_memories = []
         active_stressors = []
+        psychological_model = None
         try:
             episodic_memories = memory_store.active_episodic(user_id)
         except Exception:
@@ -313,6 +313,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 uwm = uwm_provider(user_id)
                 if uwm is not None:
                     active_stressors = uwm.life_context.active_stressors
+                    psychological_model = uwm.psychological_model
             except Exception:
                 logger.exception("BES stressor lookup failed; classifying without stressor load")
         # relationship_depth (§6, §9): now real, since infra/db/relationship_store.py's
@@ -335,6 +336,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             signal_mismatch_flag=getattr(input_packet, "signal_mismatch", False),
             episodic_memories=episodic_memories,
             active_stressors=active_stressors,
+            psychological_model=psychological_model,
             relationship_depth=relationship_depth,
             # Explicit tz-aware `now`: compute_background_state's own default is naive
             # (`datetime.utcnow()`), but real EpisodicMemory.created_at is stamped tz-aware
@@ -453,11 +455,15 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         logger.exception("style directive failed; persona without learned style")
             except Exception:
                 logger.exception("relationship provider failed; using default persona")
+        psychological_model = None
         if uwm_provider is not None:
             try:
-                directive = _uwm_directive(uwm_provider(ctx.user_id))
+                uwm = uwm_provider(ctx.user_id)
+                directive = _uwm_directive(uwm)
                 if directive:
                     packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
+                if uwm is not None:
+                    psychological_model = uwm.psychological_model
             except Exception:
                 logger.exception("UWM provider failed; persona without world-model context")
         identity_beliefs = []
@@ -471,13 +477,14 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 logger.exception("identity provider failed; persona without self-model context")
 
         # SC-1 (persona_resolver) + SC-3 (tone_calibrator): real functions, real inputs — identity
-        # beliefs above, the relationship state already loaded, and Layer 3's background_state
-        # (now live, see docs/layer-3-architecture.md §18). psychological_model/communication_model
-        # stay None: the UWM narrow-slice scope (Layer 2 §23) deliberately never extracts either,
-        # so there's nothing real to pass yet.
+        # beliefs above, the relationship state already loaded, Layer 3's background_state (now
+        # live, see docs/layer-3-architecture.md §18), and (2026-08-09) the real
+        # psychological_model fetched above. communication_model stays None: it's owned live by
+        # style_learning.py, not the UWM (Layer 2 §23) — see _apply_style_calibration's overwrite
+        # trap note in docs/POLISH_BACKLOG.md's Layer 4 entry for why that must stay this way.
         try:
             persona_state = resolve_persona_state(
-                identity_memory_entries=identity_beliefs,
+                identity_memory_entries=identity_beliefs, psychological_model=psychological_model,
                 session_context={"conversation_mode": getattr(ctx, "conversation_mode", "casual")})
             packet.persona_state = persona_state
             constraints = ["Never fabricate emotions or feelings Nova doesn't have.",

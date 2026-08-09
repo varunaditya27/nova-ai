@@ -195,16 +195,24 @@ def classify_emotion(
     prior_confidence: float = 0.0,
     prosody_estimate=None,
     llm_fn: Optional[LLMFn] = None,
+    llm_output: Optional[LLMClassificationOutput] = None,
 ) -> EmotionClassification:
-    """Full SC-1 path: heuristic → (skip | LLM + prior), with crisis preserved (§3.3, §12)."""
+    """Full SC-1 path: heuristic → (skip | LLM + prior), with crisis preserved (§3.3, §12).
+
+    ``llm_output`` lets a caller pass an already-fetched shared SC-1/SC-3 result (architecture
+    doc §14.2) instead of this function calling ``llm_fn`` itself — used by
+    ``build_emotion_intent_packet`` so emotion and intent classification share one LLM call
+    instead of two. When ``llm_output`` is given, ``llm_fn`` is never invoked. Existing callers
+    that only pass ``llm_fn`` are unaffected.
+    """
     heuristic = heuristic_prefilter(message, implicit_intensity, circadian_band, prosody_estimate)
 
     # Pure informational message → skip the LLM entirely.
     if heuristic is not None and heuristic.primary_label == EmotionLabel.NEUTRAL.value:
         return heuristic
 
-    # No LLM available → degrade gracefully (architecture doc §12).
-    if llm_fn is None:
+    # No LLM output available (pre-fetched or fetchable) → degrade gracefully (architecture doc §12).
+    if llm_output is None and llm_fn is None:
         if heuristic is not None:
             heuristic.confidence = min(heuristic.confidence, HEURISTIC_DEGRADED_CONFIDENCE_CAP)
             return heuristic
@@ -215,7 +223,7 @@ def classify_emotion(
             classification_method=ClassificationMethod.HEURISTIC_ONLY.value,
         )
 
-    llm_output = llm_fn(message)
+    llm_output = llm_output if llm_output is not None else llm_fn(message)
     clf = integrate_prior(llm_output, composite_prior, prior_confidence, prosody_estimate)
 
     # A heuristic crisis is never overridden by a calmer LLM read (§3.6 hard rule).

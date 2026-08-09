@@ -64,6 +64,62 @@ def test_update_version_and_data_sources_advance_on_real_signal():
     assert uwm.data_sources.count("api.uwm_updater") == 1   # not duplicated on repeat calls
 
 
+# ── Psychological model (§7, 2026-08-09) ─────────────────────────────────────
+def test_psychological_signals_are_merged_and_deduplicated():
+    uwm = UserWorldModel(user_id=uuid4())
+    delta = {"psychological": {
+        "attachment_signals": ["gets anxious when friends go quiet"],
+        "emotional_regulation_style": "tends to withdraw",
+        "preferred_support_style": "wants space before advice",
+        "self_efficacy_signals": ["believes they can turn this around"],
+        "identity_conflict_signals": ["unsure if this career still fits who they are"],
+        "triggers": [{"description": "being compared to a sibling", "response_type": "shuts down"}],
+    }}
+    uwm = merge_uwm_update(uwm, uwm.user_id, delta, NOW)
+    psych = uwm.psychological_model
+    assert psych.attachment_signals == ["gets anxious when friends go quiet"]
+    assert psych.emotional_regulation_style == "tends to withdraw"
+    assert psych.preferred_support_style == "wants space before advice"
+    assert psych.self_efficacy_signals == ["believes they can turn this around"]
+    assert psych.identity_conflict_signals == ["unsure if this career still fits who they are"]
+    assert len(psych.known_triggers) == 1
+    assert psych.known_triggers[0].description == "being compared to a sibling"
+    assert psych.known_triggers[0].response_type == "shuts down"
+    assert psych.derived_from_episode_count == 1
+    assert psych.last_updated == NOW
+
+    # Repeating the same signals must not duplicate list entries or the trigger.
+    uwm = merge_uwm_update(uwm, uwm.user_id, delta, NOW)
+    assert len(uwm.psychological_model.attachment_signals) == 1
+    assert len(uwm.psychological_model.known_triggers) == 1
+    assert uwm.psychological_model.derived_from_episode_count == 2
+
+
+def test_psychological_model_absent_key_is_a_no_op():
+    uwm = UserWorldModel(user_id=uuid4())
+    uwm = merge_uwm_update(uwm, uwm.user_id, {"profile": {"pronouns": "they/them"}}, NOW)
+    assert uwm.psychological_model.derived_from_episode_count == 0
+    assert uwm.psychological_model.known_triggers == []
+
+
+def test_psychological_model_round_trips_through_serde():
+    # known_triggers is list[TriggerPattern] -- the bare-list serde bug has bitten this codebase
+    # four times already (Layers 7/9/10/13); prove the nested dataclass survives a real round trip.
+    from infra.db.memory_serde import from_jsonable, to_jsonable
+
+    uwm = UserWorldModel(user_id=uuid4())
+    uwm = merge_uwm_update(uwm, uwm.user_id, {"psychological": {
+        "triggers": [{"description": "unexpected schedule changes", "response_type": "gets irritable"}],
+    }}, NOW)
+    payload = to_jsonable(uwm)
+    restored = from_jsonable(UserWorldModel, payload)
+    assert len(restored.psychological_model.known_triggers) == 1
+    trigger = restored.psychological_model.known_triggers[0]
+    assert trigger.description == "unexpected schedule changes"
+    assert trigger.response_type == "gets irritable"
+    assert trigger.trigger_id == uwm.psychological_model.known_triggers[0].trigger_id
+
+
 def test_silent_turn_is_a_no_op_even_when_a_uwm_already_exists():
     """A turn with nothing extracted must not bump update_version or write a no-op audit entry --
     only real signal should ever touch a persisted UWM (state_updater saves + audits whatever

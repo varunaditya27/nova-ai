@@ -31,11 +31,25 @@ gap was found and why it wasn't fixed inline.
   `escalation.default_region` read their own config file live. By design, wired one layer at a
   time as each is revisited — not a batch cross-cutting fix.
 
+## Layer 2 — Cognition & Memory
+
+- **STM buffer (SC-1) accumulates real turns but has no prompt-side reader** — in-session "what
+  did I say 3 messages ago" recall is still not live; `stm.turns` is written every turn and never
+  read back into generation. Real, bounded engineering work — no product decision needed.
+- **Narrative-chain linking's write path is live (SC-8) but nothing reads `active_narrative_chains`
+  back into generation** — `api/assembly.py::recall`'s hook contract only returns
+  `recalled_memories`, and there's no prompt-building consumer waiting for chains even if it did.
+  Same shape of gap as the STM item above.
+- **[done, 2026-08-09]** `psychological_model` extraction is built — folded into the existing
+  per-turn UWM LLM extraction call in `api/state.py` (no new LLM round-trip), conservatively
+  evidence-gated like every other key in that prompt. Stays on-device only, same as the rest of
+  the UWM. See `docs/layer-2-architecture.md` §25.
+
 ## Layer 3 — Emotion, Intent & Reasoning
 
-- **SC-1 and SC-3 each call `llm_fn` separately** — two LLM calls per turn, not the single shared
-  small-model call the doc specifies. Real engineering work (prompt/parse contracts for both
-  classifiers, partial-failure degradation). Explicitly deferred by the user on 2026-08-07.
+- **[done, 2026-08-09]** SC-1/SC-3 now share one LLM call per turn instead of two — re-opened and
+  closed after the user set a "complete end-to-end" bar (originally deferred 2026-08-07). See
+  `docs/layer-3-architecture.md`'s follow-up note.
 - **[done, 2026-08-09]** `relationship_depth` now forwarded live — Layer 4's `record_turn` genuinely
   computes `tie_strength` (see Layer 4 below); `classify()` reads it via `relationship_provider`.
   `advice_frustration_count` still has no real source anywhere — would need a genuinely new

@@ -1366,10 +1366,39 @@ Fixed by having `classify` pass an explicit `now=datetime.now(timezone.utc)` int
 `background_state.py`'s own default, since the naive-`datetime.utcnow()` pattern is shared by
 several other layers (5, 10, 12) and reconciling it project-wide is out of scope here.
 
-**Decision, not a gap:** SC-1/SC-3's two-LLM-calls-per-turn restructuring (§14.2's single shared
-call) was explicitly deferred to the backlog rather than implemented this pass — real
-engineering work (prompt/parse contracts for both classifiers, partial-failure degradation
-semantics), not a wiring fix, and both calls work correctly today.
+**[done, 2026-08-09] SC-1/SC-3 now genuinely share one LLM call.** Previously deferred (2026-08-07)
+as real engineering work, not a wiring fix — revisited once the user set a "complete end-to-end"
+bar. The schema was already shaped for this: `LLMClassificationOutput` (§14.2) has always carried
+both the emotion and intent halves in one object, but `classify_emotion`/`classify_intent` each
+independently called `llm_fn(message)`, discarding the half they didn't need — two network round
+trips per turn where the doc specifies one.
+
+Fixed by giving both classifiers an additional `llm_output: Optional[LLMClassificationOutput]`
+parameter — when provided, it's used directly and `llm_fn` is never called; existing callers that
+only pass `llm_fn` are unaffected. `build_emotion_intent_packet` now decides once, upfront,
+whether either half actually needs the LLM (mirroring each classifier's own skip condition
+exactly: emotion needs it unless the heuristic resolved to pure-neutral; intent needs it unless
+`rule_classify` confidently matched), fires at most one shared call, and hands the same parsed
+result to both. Each classifier's own degrade/skip/crisis-preservation logic is untouched —
+`classify_emotion`'s hard rule that a heuristic crisis is never overridden by a calmer LLM read
+runs exactly as before, just against a result that may now be shared rather than exclusive.
+
+**Verification, given how much has already gone wrong in this exact area** (CLAUDE.md records two
+prior silently-dead bugs here — the System 2 routing and crisis-veto OR-branch attribute-name
+mismatches): `tests/integration/test_safety_override.py` passed before and after unchanged; seven
+new tests in `tests/unit/test_packet_builder.py` prove the call count directly (exactly one call
+when either/both halves are ambiguous, zero when neither is, one even when only one half needs
+it) and that a crisis surfaced only by the shared LLM call — not the heuristic — still reaches
+`crisis_active`/the Layer 11 alert; and a live crisis message run against the real orchestrator
+(real Postgres/Ollama, not mocks) confirmed `crisis_active: true`, `crisis_tier: "tier_2"`,
+`conversation_mode: "crisis"`, and a genuine safety-protocol response replacing normal generation.
+
+Real motivation is spec-conformance, not latency: a live turn makes 6-7 LLM calls total (emotion
+classification pre-merge + intent classification pre-merge + generation + several post-turn
+writers), so merging two of those into one is a small win, not the dominant cost. `advice_
+frustration_count` still has no real source anywhere (needs a new tracked counter, Layer 4/5
+feature work) and stays unforwarded; `composite_prior`'s gate remains blocked on Layer 1's
+implicit-signal frontend gap. Neither is affected by this fix.
 
 **Follow-up (2026-08-09): `relationship_depth` now forwarded live.** Its natural source,
 `RelationshipState.tie_strength`, used to stay pinned at `0.0` forever because nothing called

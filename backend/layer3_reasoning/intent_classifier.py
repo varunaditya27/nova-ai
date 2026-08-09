@@ -94,9 +94,17 @@ def classify_intent(
     message: str,
     *,
     llm_fn: Optional[LLMFn] = None,
+    llm_output: Optional[LLMClassificationOutput] = None,
     advice_frustration_count: int = 0,
 ) -> IntentClassification:
-    """Full SC-3 path: rule → (use | LLM fallback), with prefers_no_advice overlaid (§5)."""
+    """Full SC-3 path: rule → (use | LLM fallback), with prefers_no_advice overlaid (§5).
+
+    ``llm_output`` lets a caller pass an already-fetched shared SC-1/SC-3 result (architecture
+    doc §14.2) instead of this function calling ``llm_fn`` itself — see
+    ``emotion_classifier.classify_emotion`` for the matching parameter and
+    ``build_emotion_intent_packet`` for the single shared call site. When ``llm_output`` is
+    given, ``llm_fn`` is never invoked.
+    """
     rule = rule_classify(message)
 
     if rule is not None:
@@ -109,8 +117,8 @@ def classify_intent(
             topic_domain=TopicDomain.OTHER.value,
             classification_method=ClassificationMethod.HEURISTIC_ONLY.value,
         )
-    elif llm_fn is not None:
-        out = llm_fn(message)
+    elif llm_output is not None or llm_fn is not None:
+        out = llm_output if llm_output is not None else llm_fn(message)
         intent = IntentClassification(
             primary_intent=out.primary_intent,
             secondary_intent=out.secondary_intent,

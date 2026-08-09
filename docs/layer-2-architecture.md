@@ -1807,6 +1807,43 @@ latency includes all of them. Acceptable for this app (local, single-user, `syst
 local model for all of these), but worth knowing before assuming `/chat` latency is dominated by
 generation alone.
 
+## 25. Follow-up (2026-08-09): `psychological_model` extraction built (product decision confirmed
+with the user)
+
+§23's UWM narrow-slice deliberately excluded `psychological_model` (attachment_signals,
+emotional_regulation_style, preferred_support_style, self_efficacy_signals,
+identity_conflict_signals, known_triggers) as higher-stakes and pending a real decision — inferring
+attachment/regulation patterns from conversation carries real amateur-psychological-profiling
+risk. The user was asked explicitly and chose to build it.
+
+Folded into the existing `_extract_uwm_signals` LLM call in `api/state.py` (no new round trip,
+per §24.5's cost note above) as a fourth JSON key, `"psychological"`, with the same "only what
+this message actually states or clearly implies, never guess or invent" instruction the other
+three keys already use — a deliberately higher evidentiary bar than a general-purpose personality
+inference would use, not a looser one. `backend/layer2_memory/uwm_updater.py::
+_merge_psychological` folds the extracted deltas into `UserWorldModel.psychological_model`,
+deduplicating signal lists and known triggers the same way `_merge_situations`/`_merge_stressors`
+already do, and bumps `model_confidence` toward 1.0 as more turns contribute (capped at 10
+turns). Stays on-device only, structurally: `sync_coordinator.py` has no knowledge of the UWM
+store at all, so this data cannot leave the device by the same mechanism the rest of the UWM
+already relies on.
+
+`PsychologicalModel.known_triggers` is `list[TriggerPattern]` — the bare-`list` serde bug that has
+bitten Layers 7/9/10/13 (a field typed as plain `list` with no item type, silently round-tripping
+nested dataclasses as raw dicts). Checked before trusting it: the field was already correctly
+parametrized, and `tests/unit/test_uwm_updater.py::test_psychological_model_round_trips_through_
+serde` proves the real round trip (not just an annotation read) reconstructs a real `TriggerPattern`
+object, not a dict.
+
+Not yet done: nothing in `build_persona`/generation reads `psychological_model` back out yet —
+this closes the write side (extraction → persistence), matching this pass's established pattern
+of closing write paths before read paths land (e.g. §22's narrative-chain linking). `persona_
+resolver.resolve_persona_state` already accepts a `psychological_model` param it's never been
+given live; wiring the read side is a small follow-up once there's a concrete reason to change
+generation behavior based on it (§4's Layer 4 doc already flags `communication_model`/
+`psychological_model` staying `None` in `build_persona` for the same "nothing real to pass yet"
+reason — half of that note is now stale).
+
 ---
 
 *This document specifies Layer 2 completely. All eight sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (User World Model schema, contradiction detection mechanism, clustering algorithm, audit trail, cross-session linking) are resolved. Live wiring status as of the most recent audit pass is tracked in §§20–24 and `docs/POLISH_BACKLOG.md`; no behavior of Layer 2 requires assumptions or inferences from other documents.*

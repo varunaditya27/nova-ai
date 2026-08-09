@@ -133,6 +133,91 @@ def test_build_packet_never_raises_on_bad_inputs():
     assert packet.conversation_mode in {m.value for m in ConversationMode}
 
 
+# ── Shared SC-1/SC-3 LLM call (architecture doc §14.2) ───────────────────────
+def _counting_llm(calls, **overrides):
+    def fn(msg):
+        calls.append(msg)
+        kwargs = dict(primary_label="anxiety", valence=-0.5, arousal=0.7, confidence=0.8,
+                     primary_intent="venting", intent_confidence=0.7)
+        kwargs.update(overrides)
+        return LLMClassificationOutput(**kwargs)
+    return fn
+
+
+def test_shared_call_fires_once_when_both_halves_are_ambiguous():
+    calls = []
+    packet = pb.build_emotion_intent_packet(
+        "I really can't handle how everything is going right now",
+        implicit_intensity=0.6, circadian_band="late_night",
+        composite_prior=0.7, prior_confidence=0.8, llm_fn=_counting_llm(calls))
+    assert len(calls) == 1
+    assert packet.llm_call_made is True
+    assert packet.intent.primary_intent == "venting"
+
+
+def test_shared_call_fires_once_when_only_emotion_is_ambiguous():
+    # "just need to vent" resolves intent by rule (VENTING, high confidence) -- only emotion
+    # needs the LLM. The shared call must still fire exactly once, not be skipped.
+    calls = []
+    pb.build_emotion_intent_packet(
+        "just need to vent, everything feels like too much today", implicit_intensity=0.5,
+        llm_fn=_counting_llm(calls))
+    assert len(calls) == 1
+
+
+def test_shared_call_fires_once_when_only_intent_is_ambiguous():
+    # A short, punctuation-free, low-intensity message resolves emotion heuristically to neutral
+    # (skips the LLM there) but has no confident intent rule match -- only intent needs the LLM.
+    calls = []
+    pb.build_emotion_intent_packet(
+        "not sure what to make of this", implicit_intensity=0.05, circadian_band="afternoon",
+        llm_fn=_counting_llm(calls))
+    assert len(calls) == 1
+
+
+def test_shared_call_never_fires_when_neither_half_is_ambiguous():
+    # Heuristic-neutral emotion + a confident rule-matched intent: no LLM call at all.
+    calls = []
+    packet = pb.build_emotion_intent_packet(
+        "just want to vent", implicit_intensity=0.05, circadian_band="afternoon",
+        llm_fn=_counting_llm(calls))
+    assert len(calls) == 0
+    assert packet.llm_call_made is False
+
+
+def test_shared_call_crisis_flag_from_llm_reaches_the_packet():
+    # The LLM half of the shared call can itself surface a crisis the heuristic prefilter
+    # missed -- must still propagate through the merged path to the packet and the alert.
+    calls = []
+    llm = _counting_llm(calls, primary_label="despair", valence=-0.9, arousal=0.3,
+                        confidence=0.9, crisis_flag=True, crisis_confidence=0.88,
+                        primary_intent="venting", intent_confidence=0.6)
+    alerts = []
+    packet = pb.build_emotion_intent_packet(
+        "everything feels pointless lately", implicit_intensity=0.7, circadian_band="late_night",
+        llm_fn=llm, alert_fn=alerts.append)
+    assert len(calls) == 1
+    assert packet.crisis_active is True
+    assert packet.crisis_confidence == 0.88
+    assert packet.conversation_mode == ConversationMode.CRISIS.value
+    assert len(alerts) == 1 and alerts[0].source == "layer3_llm"
+
+
+def test_shared_call_heuristic_crisis_still_wins_over_a_calmer_shared_llm_read():
+    # §3.6 hard rule, now exercised through the merged call path: a heuristic crisis keyword
+    # must not be overridden even if the single shared LLM response reads calm.
+    calls = []
+    calm_llm = _counting_llm(calls, primary_label="neutral", valence=0.1, arousal=0.2,
+                             confidence=0.6, crisis_flag=False, crisis_confidence=0.0,
+                             primary_intent="casual_chat", intent_confidence=0.5)
+    packet = pb.build_emotion_intent_packet(
+        "I want to kill myself", implicit_intensity=0.95, circadian_band="late_night",
+        llm_fn=calm_llm)
+    assert len(calls) == 1
+    assert packet.crisis_active is True
+    assert packet.conversation_mode == ConversationMode.CRISIS.value
+
+
 def test_build_packet_populates_instructions_and_gate():
     packet = pb.build_emotion_intent_packet(
         "the meeting moved to 3pm", implicit_intensity=0.05, circadian_band="afternoon")

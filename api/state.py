@@ -179,20 +179,27 @@ def _link_narrative_chains(store, user_id, new_episodes: list, now: datetime) ->
 
 
 def _extract_uwm_signals(client, message: str) -> dict:
-    """LLM extraction of User World Model signals from one message — profile facts and active
-    life situations/stressors (§7's schema, narrowed: communication_model is deliberately
-    excluded here, see backend/layer2_memory/uwm_updater.py's docstring). NOT people: Layer 5's
-    social-graph extraction (_extract_social_mentions, below) is the one place that resolves
-    person mentions now — its result is projected onto UWM.relationship_graph.people by
-    make_social_writer, rather than this call asking the LLM the same question a second time
-    (see docs/layer-5-architecture.md's live-wiring notes). Returns ``{}`` (a no-op for the
-    merge step) when there's no client or the call/parse fails — matches the best-effort
-    fallback shape used throughout this module (§15)."""
+    """LLM extraction of User World Model signals from one message — profile facts, active life
+    situations/stressors, and (§7's psychological_model, 2026-08-09) psychological signals
+    (§7's schema, narrowed: communication_model is deliberately excluded here, see
+    backend/layer2_memory/uwm_updater.py's docstring). NOT people: Layer 5's social-graph
+    extraction (_extract_social_mentions, below) is the one place that resolves person mentions
+    now — its result is projected onto UWM.relationship_graph.people by make_social_writer,
+    rather than this call asking the LLM the same question a second time (see
+    docs/layer-5-architecture.md's live-wiring notes). Returns ``{}`` (a no-op for the merge
+    step) when there's no client or the call/parse fails — matches the best-effort fallback
+    shape used throughout this module (§15).
+
+    The psychological half is deliberately conservative — the prompt below only asks for what a
+    message directly states or clearly implies, the same "never guess or invent" instruction as
+    every other key here, because inferring attachment/regulation patterns from conversation is
+    genuinely sensitive (product decision, 2026-08-09: build it, but keep the same evidentiary
+    bar as the rest of this call, not a looser one)."""
     if client is None or not message:
         return {}
     prompt = (
         "Read this message from a user talking to their AI companion. Return ONLY JSON with up "
-        "to 3 keys, including only what this message actually states or clearly implies -- omit "
+        "to 4 keys, including only what this message actually states or clearly implies -- omit "
         "a key entirely if there's nothing to report, never guess or invent:\n"
         "\"profile\": object with any of preferred_name, pronouns, current_life_stage, "
         "field_of_study_or_work, institution_or_employer, career_goals_summary, "
@@ -200,7 +207,20 @@ def _extract_uwm_signals(client, message: str) -> dict:
         "\"situations\": list of {\"description\", \"category\", \"emotional_weight\" (0-1)} for "
         "ongoing life situations mentioned (a project, a move, an illness, etc.);\n"
         "\"stressors\": list of {\"description\", \"category\", \"intensity\" (0-1)} for things "
-        "causing the user stress right now.\n\nMessage:\n\n" + message[:4000])
+        "causing the user stress right now;\n"
+        "\"psychological\": object with any of: \"attachment_signals\" (list of short strings, "
+        "only if the message directly describes how the user relates to people they're close "
+        "to), \"emotional_regulation_style\" (one short phrase, only if directly evidenced -- "
+        "e.g. how they say they cope with a strong feeling), \"preferred_support_style\" (one "
+        "short phrase, only if the user states what kind of support they want), "
+        "\"self_efficacy_signals\" (list of short strings, only direct statements about their "
+        "own ability to affect their situation), \"identity_conflict_signals\" (list of short "
+        "strings, only direct statements of internal conflict about who they are), "
+        "\"triggers\" (list of {\"description\", \"response_type\"} for something the user "
+        "explicitly names as upsetting or activating for them, and how they say they react). "
+        "Every field here is optional and most messages will have none of them -- do not "
+        "speculate about the user's psychology beyond what they actually said.\n\n"
+        "Message:\n\n" + message[:4000])
     try:
         from infra.llm.json_extract import extract_json
         data = json.loads(extract_json(client.complete(prompt)))
