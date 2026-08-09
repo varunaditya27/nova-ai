@@ -95,6 +95,25 @@ def test_home_desk():
     assert body["weather"] in {"sunny", "clear", "cloudy", "distant"}
 
 
+def test_home_desk_surfaces_the_real_current_chapter():
+    """current_chapter must come from Layer 10's real NarrativeArc.current_chapter -- a prior
+    version faked it from an unrelated weekly summary's dominant_theme."""
+    from datetime import date
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from backend.layer10_longitudinal.schemas import LifeChapter, NarrativeArc
+
+    client, store = _client()
+    store.append("user", "hi")
+    long_store = PostgresLongitudinalStore(store._sf, "local-user")
+    chapter = LifeChapter(title="Starting a new job", start_date=date(2026, 1, 1), is_current=True)
+    long_store.save_narrative_arc(NarrativeArc(
+        user_id="local-user", arc_start_date=date(2026, 1, 1),
+        chapters=[chapter], current_chapter=chapter))
+
+    body = client.get("/home").json()
+    assert body["current_chapter"] == "Starting a new job"
+
+
 def test_calendar_and_museum():
     client, store = _client()
     store.append("user", "first ever message")

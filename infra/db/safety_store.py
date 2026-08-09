@@ -25,3 +25,11 @@ class PostgresSafetyLog:
             rows = (s.query(m.SafetyEvent).filter_by(user_id=str(user_id))
                     .order_by(m.SafetyEvent.id.desc()).limit(limit).all())
             return [from_jsonable(CrisisSignal, r.payload) for r in rows]
+
+    def crisis_count(self, user_id) -> int:
+        """Count of real crisis-tier events (excludes CrisisTier.NONE) -- feeds Layer-12's
+        transparency audit view (§5.2)."""
+        with session_scope(self._sf) as s:
+            return (s.query(m.SafetyEvent)
+                    .filter(m.SafetyEvent.user_id == str(user_id), m.SafetyEvent.tier != "none")
+                    .count())

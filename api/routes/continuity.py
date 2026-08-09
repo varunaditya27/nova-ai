@@ -61,10 +61,13 @@ def home(state=Depends(get_state)):
     grad = state.config.get("onboarding", {}).get("graduation_sessions", 5)
     tz_offset = state.config.get("system", {}).get("timezone_offset_hours", 0.0)
     try:
-        latest = PostgresLongitudinalStore(sf, uid).latest("weekly")
+        arc = PostgresLongitudinalStore(sf, uid).load_narrative_arc()
         chapter = None
-        if latest is not None:
-            chapter = getattr(latest, "dominant_theme", "") or getattr(latest, "week_narrative", "") or None
+        if arc is not None and arc.current_chapter is not None:
+            # The real Layer-10 SC-1 chapter object (narrative_arc_job.py, weekly synthesis) --
+            # title first, falling back to its narrative summary, not an unrelated weekly
+            # summary's dominant_theme (which was never actually "the current chapter").
+            chapter = arc.current_chapter.title or arc.current_chapter.narrative_summary or None
         rel = PostgresRelationshipStore(sf, uid).load()
         msgs = PostgresMessageStore(sf, uid)
         last_at = msgs.last_interaction_at()

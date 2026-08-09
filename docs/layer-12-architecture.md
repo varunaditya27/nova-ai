@@ -1601,6 +1601,39 @@ review? re-derive it?) is a real product decision, not made here. Personality-ve
 vector" store exists anywhere in this codebase to check against; the parameter is accepted and
 skipped, not stubbed.
 
+### 15.3 SC-3 audit/correction routes wired; cascade *mutation* now real (2026-08-09, product
+decisions confirmed with the user)
+
+Three genuinely out-of-scope items from §15.1/15.2 are now closed:
+
+- **`GET /memory/audit/full`**, **`GET /memory/audit/query`**, **`POST /memory/{id}/correct`**
+  wire `memory_audit.generate_audit_view`/`query` and `correction_interface.apply_correction` live
+  for the first time (`api/routes/memory.py`). Doing so surfaced the same class of field-mismatch
+  bug as §15.2: `_to_auditable_fact` read `f.fact_id`/`fact_text`/`category`/`source_episode_ids`
+  — none of which exist on the real `SemanticMemory` (`memory_id`/`statement`/`memory_type`/
+  `supporting_episode_ids`) — and would have raised `AttributeError` on the first real call.
+  `IdentityMemory` (`belief_id`/`category`/no `confidence`) is a different real shape again, so it
+  now gets its own converter, `_to_auditable_identity`, rather than forcing one function to
+  duck-type two incompatible real schemas. The correction interface had the same problem in the
+  other direction: five of its six correction types wrote field names
+  (`content`/`is_anchored`/`is_user_downgraded`/`auto_expiry_date`/`is_user_confirmed`/
+  `last_corrected_at`) that don't exist on `EpisodicMemory` at all — silently no-op'd by
+  `update_episodic`'s `hasattr` guard. `EpisodicMemory` gained those five fields (all additive,
+  default `False`/`None`, safe for the existing JSONB payload), and `EDIT` now writes both
+  `content` and `summary` (mirrors `execute_deletion`'s existing dual-field secure-zero, since the
+  real field is `summary`). All six correction types are now genuinely functional, not five
+  silently inert.
+- **Cascade mutation** (vs. the §15.2 dry-run *reporting*): product decision, 2026-08-09 —
+  redact in place, don't hard-delete. `selective_deletion.redact_cascade` strips the deleted
+  episode's id from every affected semantic fact's `supporting_episode_ids`; a fact left with zero
+  remaining support is deprecated and its `statement` cleared (same "logical deletion, row
+  retained for proof" invariant the memory-deletion path itself already uses). A weekly summary
+  whose `most_emotionally_significant_moment` pointed only at the deleted episode has that field
+  cleared. Wired into `DELETE /memory/{id}` right after `execute_deletion`.
+- **Consent management** (`ConsentManager`) — product decision, 2026-08-09: skip. Single-user
+  local deployment, no real operation needs to be gated behind consent today; left as the
+  in-memory-only, unwired module it already was.
+
 ---
 
 *This document specifies Layer 12 completely. All four sub-components — SC-1 On-Device Memory (hybrid storage tiering table, complete KeyHierarchy schema with all four key types and derivation algorithms, KeyLifecycleManager with rotation and destruction operations, full STORE_ARCHITECTURE map with 8 database files, IntegrityVerifier with Merkle tree algorithm and tamper detection), SC-2 Selective Deletion (6 DeletionType values with undo windows and confirmation requirements, DeletionRequest and DeletionScope schemas, CascadeImpactReport schema, dry run algorithm computing cascade across semantic facts, personality vector, and longitudinal references, DeletionExecutor with secure zero overwrite and deletion certificate generation), SC-3 Memory Audit (MemoryAuditView with all 7 sections and complete AuditableMemory/AuditableFact/AuditableBelief/PersonalityAuditSection schemas, AuditQueryEngine with 5 query intent types and retrieval logic, ProvenanceRecord with reinforcement event log, full MemoryCorrectionRequest with all 6 correction types and apply logic), SC-4 Cross-Platform Sync (SyncDelta and SyncOperation schemas, push_delta and pull_and_apply protocol, ConflictResolutionPolicy with per-memory-type resolution for all 5 memory types, SyncConfiguration and DeviceSyncProfile schemas, sync server trust model) — are fully specified. The Privacy Agent coordination architecture, AuditIndexBuilder, ConsentManager with all 6 consent types, DPDP Act compliance map, error handling for all 10 failure cases, performance targets, data export mechanism, and design principles are all explicitly defined. No behavior of Layer 12 requires assumptions or inferences from other documents.*

@@ -17,8 +17,12 @@ def _mem(mid, importance=0.5, anchored=False, tags=None, summary="a chat"):
 
 
 def _fact(fid, text="x", category="preferences"):
-    return SimpleNamespace(fact_id=fid, fact_text=text, category=category, confidence=0.8,
-                           source_episode_ids=["m1"], is_user_confirmed=False)
+    # Real SemanticMemory field names (memory_id/statement/memory_type/supporting_episode_ids) --
+    # a prior fact_id/fact_text/category/source_episode_ids shape here matched the audit view's
+    # own (now-fixed) bug rather than the real Layer-2 schema; see backend/layer12_privacy/
+    # memory_audit.py::_to_auditable_fact.
+    return SimpleNamespace(memory_id=fid, statement=text, memory_type=category, confidence=0.8,
+                           supporting_episode_ids=["m1"], S_current=1.0, is_deprecated=False)
 
 
 class _Store:
@@ -44,6 +48,22 @@ def test_generate_audit_view_counts_and_sections():
     assert isinstance(view, MemoryAuditView)
     assert view.total_memory_count == 2
     assert len(view.episodic) == 2 and len(view.semantic) == 1
+    assert view.semantic[0].fact_id == "f1" and view.semantic[0].fact_text == "x"
+
+
+def test_generate_audit_view_converts_real_identity_beliefs():
+    from backend.layer2_memory.schemas import IdentityCategory, IdentityMemory
+
+    belief = IdentityMemory(statement="Nova values honesty", category=IdentityCategory.CORE_VALUE,
+                            centrality=0.9, is_immutable=True)
+    view = ma.generate_audit_view("u1", memory_store=_Store([]),
+                                  identity_store=_Store([belief]), now=NOW)
+    assert len(view.identity) == 1
+    got = view.identity[0]
+    assert got.fact_id == str(belief.belief_id)
+    assert got.fact_text == "Nova values honesty"
+    assert got.category == "core_value"
+    assert got.is_user_confirmed is True   # is_immutable mapped through
 
 
 def test_safety_section_is_count_only():

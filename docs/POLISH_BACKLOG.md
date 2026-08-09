@@ -332,15 +332,10 @@ detail: `docs/layer-6-architecture.md` §15.
   channel, per its own docstring. Building this needs a real delivery surface (push notification,
   in-app message, or equivalent) before the send-side pipeline has anywhere to plug in — genuine
   infra work, not a wiring gap.
-- **`GET /proactive` returns ungated `content_basis`, bypassing SC-3 entirely.** Today this is
-  inert — `content_basis` is a plain-language fragment (e.g. `"Goal: X | Milestone: Y"`), never a
-  message SC-4 produced — but if a future frontend renders it directly as a chat bubble from Nova,
-  none of the timing gate's five block groups (crisis aftermath, relationship-too-new, user
-  preference opt-outs, the 1/day cap, the 48h min-gap) would apply. Whoever builds the frontend
-  consumer of this endpoint needs to either (a) run candidates through `evaluate_timing_gate`
-  server-side before returning them, or (b) treat `content_basis` as internal-only debug data and
-  never render it as if Nova said it. Flag this explicitly in whatever spec covers the eventual
-  proactive-delivery frontend work.
+- **[done, 2026-08-09]** `GET /proactive` no longer returns ungated `content_basis` — it now runs
+  every candidate through the real SC-3 `evaluate_timing_gate` server-side, with a live
+  `UserTimingContext` built from the persisted stores (SC-3 had zero production callers before
+  this). See `docs/layer-6-architecture.md` §19.
 - **Three of four intake contracts are unwired**, each blocked on a different upstream layer, not
   on Layer 6 itself: `on_thread_due` needs Layer 1's narrative-thread detector (Layer 1's own
   audited gap); `on_post_distress_gap` needs a Layer 2 state-updater hook that doesn't exist yet;
@@ -617,19 +612,28 @@ Larger, real feature work (not fixed inline):
   in practice by the three independent SHA-256 hash chains in `infra/db/audit_trail.py`,
   `infra/db/safety_record_store.py`, and `infra/db/privacy_audit.py`, all live). Deploying real
   at-rest encryption is a deployment-infra project, not a code-polish fix.
-- **SC-3's richer audit/correction views have no UI or route.** `MemoryAuditView` (7 sections),
-  `AuditQueryEngine` (5 query intents), and the 6 `MemoryCorrectionType` operations are unused —
-  `GET /memory/audit` returns a much flatter episodic/semantic list built ad hoc in
-  `api/routes/memory.py`. Worth wiring only if/when a frontend surface needs it.
-- **`privacy_agent.py`'s consent management (`ConsentManager`, 6 consent types) is unused** — no
-  route captures or checks user consent for any data category.
+**Re-verified, 2026-08-09**: encryption-at-rest remains a deployment project, not code to wire —
+no seam exists to hang key management off of.
 
-**Re-verified, 2026-08-09**: all four items above checked individually rather than assumed
-still-open. Encryption-at-rest remains a deployment project. SC-3's audit views and consent
-management both remain genuinely blocked on product/UX decisions this pass can't make
-unilaterally (which consent types, what capture flow, whether any operation should block on
-consent) — building persistence/routes without those decisions would be speculative scaffolding.
-No code changed.
+**[done, 2026-08-09]** SC-3's audit/correction views are wired: `GET /memory/audit/full`,
+`GET /memory/audit/query`, `POST /memory/{id}/correct`. Wiring them for the first time surfaced
+the same class of bug §15.2 already found in `dry_run_deletion` — `_to_auditable_fact` read
+`fact_id`/`fact_text`/`category`/`source_episode_ids`, none of which exist on the real
+`SemanticMemory`, and would have raised `AttributeError` on first use; `IdentityMemory` needed its
+own converter entirely (different real field shape). `apply_correction`'s six correction types
+also targeted mostly-nonexistent `EpisodicMemory` fields (`content`, `is_anchored`,
+`is_user_downgraded`, `auto_expiry_date`, `is_user_confirmed`, `last_corrected_at`) — silently
+no-op'd by `update_episodic`'s `hasattr` guard, so five of six correction types did nothing against
+a real memory. `EpisodicMemory` gained those five fields (additive, safe defaults) and `EDIT` now
+writes both `content` and `summary`. See `docs/layer-12-architecture.md` §15.3.
+
+**[done, 2026-08-09]** `privacy_agent.py`'s `ConsentManager` — product decision: skip. No real
+operation in this single-user local deployment needs consent-gating today.
+
+**[done, 2026-08-09]** Cascade-store *mutation* — product decision: redact in place. New
+`selective_deletion.redact_cascade` strips deleted-episode references from affected semantic
+facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`
+§15.3.
 
 ---
 
@@ -683,3 +687,19 @@ All 13 layers now audited, and every real, bounded gap found along the way has e
 or explicitly, deliberately left open with a stated reason — see each `## Layer N` section above
 for the audited-date and the linked `docs/layer-N-architecture.md` §"Live wiring status" for full
 detail.
+
+## Cross-cutting: every `api/routes/*.py` file checked against its layer (2026-08-09)
+
+A full pass over all 19 route files in `api/routes/`, verifying each calls the real layer
+entrypoint it claims to and forwards the fields CLAUDE.md documents. `auth.py` is a deliberate,
+never-implemented stub (multi-user auth is explicitly out of scope for this single-user
+deployment) and isn't registered in `api/main.py` — not a gap. Everything else checked out
+correctly wired, with one real bug found and fixed:
+
+- **`GET /home`'s `current_chapter` was faked from the wrong data source.** It read the latest
+  *weekly summary*'s `dominant_theme`/`week_narrative` — but Layer 10 SC-1 has a real, purpose-
+  built `NarrativeArc.current_chapter` (a `LifeChapter` with its own `title`/`narrative_summary`,
+  synthesized weekly by `background/narrative_arc_job.py`, shipped earlier this pass) that the
+  route never read. Fixed to load the real narrative arc and use its current chapter's title
+  (falling back to its narrative summary). See `tests/unit/api/test_routes_conversation.py::
+  test_home_desk_surfaces_the_real_current_chapter`.

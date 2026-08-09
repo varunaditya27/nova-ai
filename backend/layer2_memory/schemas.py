@@ -11,7 +11,7 @@ the ``MemoryPacket`` contract handed to downstream layers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 from typing import Callable, Literal, Optional, Union
 from uuid import UUID, uuid4
@@ -210,6 +210,13 @@ class EpisodicMemory:
     reinforcement_count: int = 0
     is_archived: bool = False
     is_deleted: bool = False                       # logical deletion flag (non-destructive)
+
+    # Layer-12 SC-3 user correction state (§5.5)
+    is_anchored: bool = False                      # max persistence, decay frozen
+    is_user_confirmed: bool = False
+    is_user_downgraded: bool = False
+    auto_expiry_date: Optional[date] = None
+    last_corrected_at: Optional[datetime] = None
 
     # Lineage
     source_turn_ids: list[UUID] = field(default_factory=list)

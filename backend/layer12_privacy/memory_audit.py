@@ -50,11 +50,27 @@ def _to_auditable_memory(m) -> AuditableMemory:
 
 
 def _to_auditable_fact(f) -> AuditableFact:
+    """Layer 2's real SemanticMemory has memory_id/statement/supporting_episode_ids/memory_type —
+    not fact_id/fact_text/source_episode_ids/category, which would raise AttributeError the first
+    time a real semantic_store was ever passed in (same class of bug already found and fixed in
+    dry_run_deletion's cascade check, docs/POLISH_BACKLOG.md)."""
     return AuditableFact(
-        fact_id=f.fact_id, fact_text=getattr(f, "fact_text", ""),
-        category=getattr(f, "category", ""), confidence=getattr(f, "confidence", 0.0),
-        source_episode_ids=list(getattr(f, "source_episode_ids", []) or []),
-        is_user_confirmed=getattr(f, "is_user_confirmed", False))
+        fact_id=str(f.memory_id), fact_text=getattr(f, "statement", ""),
+        category=getattr(getattr(f, "memory_type", ""), "value", getattr(f, "memory_type", "")),
+        confidence=getattr(f, "confidence", 0.0),
+        source_episode_ids=[str(e) for e in getattr(f, "supporting_episode_ids", []) or []],
+        is_user_confirmed=getattr(f, "S_current", 1.0) >= 1.0 and not getattr(f, "is_deprecated", False))
+
+
+def _to_auditable_identity(b) -> AuditableFact:
+    """Layer 2's real IdentityMemory has belief_id/statement/category(IdentityCategory)/
+    is_immutable — distinct fields from SemanticMemory, so it needs its own converter rather than
+    forcing one function to duck-type both real schemas."""
+    return AuditableFact(
+        fact_id=str(b.belief_id), fact_text=getattr(b, "statement", ""),
+        category=getattr(getattr(b, "category", ""), "value", getattr(b, "category", "")),
+        confidence=getattr(b, "centrality", 0.0), source_episode_ids=[],
+        is_user_confirmed=getattr(b, "is_immutable", False))
 
 
 def generate_audit_view(
@@ -64,7 +80,7 @@ def generate_audit_view(
     """Assemble the full, human-readable Memory Audit view (architecture doc §5.2)."""
     episodic = [_to_auditable_memory(m) for m in memory_store.all()]
     semantic = [_to_auditable_fact(f) for f in (semantic_store.all() if semantic_store else [])]
-    identity = [_to_auditable_fact(f) for f in (identity_store.all() if identity_store else [])]
+    identity = [_to_auditable_identity(b) for b in (identity_store.all() if identity_store else [])]
 
     crisis_count = 0
     if safety_store is not None:

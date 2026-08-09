@@ -210,6 +210,59 @@ class IntegrityOut(BaseModel):
     safety_chain_ok: bool
 
 
+# ── Privacy (Layer 12 SC-3: transparency + correction) ──────────────────────
+class AuditableMemoryOut(BaseModel):
+    memory_id: str
+    date_formed: Optional[str] = None
+    human_readable_summary: str = ""
+    importance_label: str = "Low"
+    topic_tags: list[str] = []
+    emotion_at_formation: str = "neutral"
+    reinforcement_count: int = 0
+
+
+class AuditableFactOut(BaseModel):
+    fact_id: str
+    fact_text: str = ""
+    category: str = ""
+    confidence: float = 0.0
+    source_episode_ids: list[str] = []
+    is_user_confirmed: bool = False
+
+
+class MemoryAuditViewOut(BaseModel):
+    user_id: str
+    generated_at: Optional[str] = None
+    total_memory_count: int = 0
+    episodic: list[AuditableMemoryOut] = []
+    semantic: list[AuditableFactOut] = []
+    identity: list[AuditableFactOut] = []
+    crisis_session_count: int = 0
+    active_goal_count: int = 0
+
+
+class AuditQueryResultOut(BaseModel):
+    query: str
+    total_count: int = 0
+    intent_type: str = "topic_query"
+    memory_ids: list[str] = []
+
+
+class MemoryCorrectionIn(BaseModel):
+    correction_type: str
+    new_content: Optional[str] = None
+    new_importance: Optional[str] = None
+    tags_to_remove: Optional[list[str]] = None
+    expiry_date: Optional[str] = None
+
+
+class CorrectionResultOut(BaseModel):
+    success: bool
+    memory_id: str
+    correction_type: str = ""
+    detail: str = ""
+
+
 # ── Sync (Layer 12, zero-knowledge) ──────────────────────────────────────
 class SyncDeltaIn(BaseModel):
     delta_id: str

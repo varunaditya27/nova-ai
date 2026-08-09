@@ -34,8 +34,11 @@ def apply_correction(
 
     ctype = request.correction_type
     if ctype == MemoryCorrectionType.EDIT.value:
-        fields = {"content": request.new_content, "is_user_confirmed": True,
-                  "last_corrected_at": datetime.utcnow()}
+        # Layer 2's real EpisodicMemory field is `summary`, not `content` -- set both so this
+        # works against either shape (mirrors selective_deletion.execute_deletion's secure-zero,
+        # which does the same for the same reason).
+        fields = {"content": request.new_content, "summary": request.new_content,
+                  "is_user_confirmed": True, "last_corrected_at": datetime.utcnow()}
         if embed_fn is not None:
             fields["embedding"] = embed_fn(request.new_content)
         memory_store.update(request.memory_id, fields)

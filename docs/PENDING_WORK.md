@@ -90,9 +90,9 @@ gap was found and why it wasn't fixed inline.
 - **No delivery pipeline exists at all** — SC-2/3/4/5 have nowhere to send to. `GET /proactive` is
   a read-only poll, not a push channel. Needs real delivery infra (push notification or
   equivalent) before the send-side pipeline has anywhere to plug in.
-- **`GET /proactive` returns ungated `content_basis`** — inert today, but a future frontend
-  rendering it directly as a Nova message would bypass every one of the timing gate's five block
-  groups. Whoever builds that consumer must gate server-side first.
+- **[done, 2026-08-09]** `GET /proactive` now gates server-side through the real SC-3 Timing &
+  Delivery Gate (`evaluate_timing_gate`) with a live `UserTimingContext` — no longer returns raw
+  ungated `content_basis`. See `docs/layer-6-architecture.md` §19.
 - **[done, 2026-08-09]** `on_thread_due` and `on_post_distress_gap` are both wired now — neither
   actually needed the blocker it was recorded against. See `docs/layer-6-architecture.md` §18.
 
@@ -143,25 +143,19 @@ exists anywhere to inject; not a gap to close without a model.
 
 ## Layer 12 — Privacy & Data Infrastructure
 
-Re-verified 2026-08-09 — all four remaining items checked individually and confirmed genuinely
-out of scope for a code-polish pass, not overlooked:
-
 - **Encryption-at-rest is entirely undeployed** — a genuine deployment-infrastructure project
   (SQLCipher/AES-256-GCM key management, container/deployment changes), not code to wire.
-  Postgres/SQLite data is plaintext at rest today.
-- SC-3's richer audit/correction views (`MemoryAuditView`, `AuditQueryEngine`, 6
-  `MemoryCorrectionType` operations) have no UI or route — worth wiring only if/when a frontend
-  surface needs them. Consistent with this pass's restraint elsewhere (`GET /proactive`'s
-  ungated `content_basis`, Layer 9's `format_spec_applied`) — not building an API contract ahead
-  of a real consumer.
-- `privacy_agent.py`'s consent management (`ConsentManager`, 6 consent types) is unused —
-  re-checked: it's in-memory only (no persistence layer), and wiring it needs real product
-  decisions this pass can't make unilaterally (which consent types the app actually asks about,
-  what UI flow captures it, whether it should block any real operation). Building persistence +
-  routes without those decisions would be speculative scaffolding, not a wiring fix.
-- Cascade-store *mutation* (vs. the now-real dry-run *reporting*) is an undecided product
-  question — deleting a memory doesn't yet update/remove the semantic facts or longitudinal
-  summaries that referenced it, only reports that it would.
+  Postgres/SQLite data is plaintext at rest today. Confirmed out of scope, 2026-08-09.
+- **[done, 2026-08-09]** SC-3's audit/correction views are wired: `GET /memory/audit/full`,
+  `GET /memory/audit/query`, `POST /memory/{id}/correct`. Surfaced and fixed real field-mismatch
+  bugs in both `memory_audit.py` and `correction_interface.py` along the way (matched the same
+  never-called-with-a-real-object pattern already found in `dry_run_deletion`). See
+  `docs/layer-12-architecture.md` §15.3.
+- **[done, 2026-08-09]** `privacy_agent.py`'s `ConsentManager` — product decision: skip. No real
+  operation in this single-user local deployment needs consent-gating today. Left unwired.
+- **[done, 2026-08-09]** Cascade-store *mutation* — product decision: redact in place (strip
+  references, keep the row), not hard-delete. `selective_deletion.redact_cascade` wired into
+  `DELETE /memory/{id}`. See `docs/layer-12-architecture.md` §15.3.
 - No "personality vector" store exists anywhere in this codebase — that cascade check stays
   permanently unreported by construction, not a bug to fix.
 

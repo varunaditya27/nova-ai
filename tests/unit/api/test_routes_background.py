@@ -5,6 +5,7 @@ pytest.importorskip("sqlalchemy")
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -37,14 +38,43 @@ def _client():
     return TestClient(app, raise_server_exceptions=False), factory
 
 
-def test_proactive_lists_top_pending():
+_NOON_UTC = datetime(2026, 8, 9, 14, 0, tzinfo=timezone.utc)   # afternoon band, no gate races
+
+
+def test_proactive_suppresses_a_brand_new_relationship():
+    """GET /proactive is now genuinely gated (2026-08-09) through the real SC-3 Timing & Delivery
+    Gate, not an ungated read of the queue. A relationship with no history at all is "new", and
+    block group 3 suppresses all proactive sends for a new relationship (architecture doc §5.1) --
+    the exact behavior the prior, ungated version of this endpoint bypassed."""
     client, factory = _client()
     q = PostgresProactiveQueue(factory, "local-user")
     q.upsert(ProactiveItem(item_id="p1", item_type="goal_check_in", status="pending",
-                           content_basis="your 5k"))
+                           content_basis="a real, detailed reason to check in on your 5k goal"))
     q.upsert(ProactiveItem(item_id="p2", item_type="silence_break", status="expired"))
-    body = client.get("/proactive").json()
-    assert [i["item_id"] for i in body] == ["p1"]  # only pending surfaced
+    with patch("api.routes.proactive.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOON_UTC
+        body = client.get("/proactive").json()
+    assert body == []
+
+
+def test_proactive_lists_top_pending_once_the_gate_is_clearable():
+    """With an established relationship, a message-free window, and a real (non-vague)
+    content_basis, the item clears every one of the gate's five block groups and is surfaced."""
+    from infra.db.relationship_store import PostgresRelationshipStore
+
+    client, factory = _client()
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):                          # advances stage well past "new"/"acquaintance"
+        rel_store.record_turn(f"s{i}")
+
+    q = PostgresProactiveQueue(factory, "local-user")
+    q.upsert(ProactiveItem(item_id="p1", item_type="goal_check_in", status="pending",
+                           content_basis="a real, detailed reason to check in on your 5k goal"))
+    q.upsert(ProactiveItem(item_id="p2", item_type="silence_break", status="expired"))
+    with patch("api.routes.proactive.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOON_UTC
+        body = client.get("/proactive").json()
+    assert [i["item_id"] for i in body] == ["p1"]  # only the gate-passing pending item surfaced
 
 
 def test_admin_trigger_integrity_job():

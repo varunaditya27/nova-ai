@@ -153,3 +153,72 @@ def test_execute_logs_to_audit():
     req.status = "confirmed"
     sd.execute_deletion(req, store, audit_log=log, now=NOW)
     assert len(log) == 1 and log[0]["memory_count"] == 1
+
+
+# ── Cascade redaction (§4.4 → real mutation, product decision 2026-08-09) ────
+class FakeSemanticStore:
+    def __init__(self, facts):
+        self._f = {f.memory_id: f for f in facts}
+    def get(self, mid):
+        return self._f.get(mid)
+    def update(self, mid, fields):
+        for k, v in fields.items():
+            setattr(self._f[mid], k, v)
+
+
+class FakeLongitudinalStore:
+    def __init__(self, summaries):
+        self._s = {s.summary_id: s for s in summaries}
+    def get(self, sid):
+        return self._s.get(sid)
+    def update(self, summary):
+        self._s[summary.summary_id] = summary
+
+
+def test_redact_cascade_deprecates_a_fact_with_zero_remaining_support():
+    store = _store()
+    semantic = SimpleNamespace(all=lambda: [
+        SimpleNamespace(memory_id="f1", statement="knows Arjun",
+                        supporting_episode_ids=["m1", "m2"], is_deprecated=False),
+    ])
+    req = sd.create_deletion_request("u1", DeletionType.TOPIC_BASED.value,
+                                     DeletionScope(topic_tags=["arjun"]), now=NOW)
+    report = sd.dry_run_deletion(req, store, semantic_store=semantic)
+    fact_store = FakeSemanticStore(semantic.all())
+    out = sd.redact_cascade(report, ["m1", "m2"], semantic_store=fact_store)
+    f1 = fact_store.get("f1")
+    assert f1.is_deprecated is True
+    assert f1.statement == ""
+    assert f1.supporting_episode_ids == []
+    assert out["redacted_facts"] == 1
+
+
+def test_redact_cascade_strips_reference_but_keeps_fact_when_support_remains():
+    store = _store()
+    semantic = SimpleNamespace(all=lambda: [
+        SimpleNamespace(memory_id="f1", statement="knows Arjun",
+                        supporting_episode_ids=["m1", "keep1"], is_deprecated=False),
+    ])
+    req = sd.create_deletion_request("u1", DeletionType.TOPIC_BASED.value,
+                                     DeletionScope(topic_tags=["arjun"]), now=NOW)
+    report = sd.dry_run_deletion(req, store, semantic_store=semantic)
+    fact_store = FakeSemanticStore(semantic.all())
+    sd.redact_cascade(report, ["m1", "m2"], semantic_store=fact_store)
+    f1 = fact_store.get("f1")
+    assert f1.is_deprecated is False
+    assert f1.statement == "knows Arjun"
+    assert f1.supporting_episode_ids == ["keep1"]
+
+
+def test_redact_cascade_clears_significant_moment_when_all_episodes_deleted():
+    store = _store()
+    moment = SimpleNamespace(episode_ids=["m1"])
+    summary = SimpleNamespace(summary_id="w1", most_emotionally_significant_moment=moment)
+    longitudinal = SimpleNamespace(all_weekly_summaries=lambda: [summary])
+    req = sd.create_deletion_request("u1", DeletionType.SINGLE_MEMORY.value,
+                                     DeletionScope(memory_id="m1"), now=NOW)
+    report = sd.dry_run_deletion(req, store, longitudinal_store=longitudinal)
+    long_store = FakeLongitudinalStore([summary])
+    out = sd.redact_cascade(report, ["m1"], longitudinal_store=long_store)
+    assert long_store.get("w1").most_emotionally_significant_moment is None
+    assert out["redacted_summaries"] == 1

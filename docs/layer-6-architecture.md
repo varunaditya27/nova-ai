@@ -1243,3 +1243,28 @@ episodic store each run. Registered as the scheduler's eleventh job.
 real gap, doesn't queue without one, ignores non-distressed episodes) plus the two updated
 `on_thread_due` tests in `tests/unit/api/test_state.py`/`test_assembly_turn.py`
 (`docs/layer-1-architecture.md` §18.2).
+
+## 19. Follow-up (2026-08-09): `GET /proactive` gated server-side through the real SC-3 Timing &
+Delivery Gate
+
+The endpoint returned raw, ungated `content_basis` for every pending/deferred queue item — SC-3
+(`timing_gate.evaluate_timing_gate`) had never had a production caller anywhere in the codebase.
+`api/routes/proactive.py::_build_timing_context` assembles a real `UserTimingContext` from the
+persisted stores for the first time: `circadian_band` (Layer 1's `map_circadian_band`, same pure
+function Layer 9 already reuses), message-gap timing (`PostgresMessageStore.last_interaction_at`),
+`bes_trend` (Layer 3's `compute_background_state` run live over active episodic memories —
+`BESLabel` values pass straight through, no translation needed since `timing_gate`/
+`initiative_classifier` already check for the exact same label strings), crisis flag
+(`PostgresSafetyLog.recent`, tier != "none"), and relationship stage/tie-strength
+(`PostgresRelationshipStore.load`). Each pending item is classified (`classify_initiative`) and
+gated (`evaluate_timing_gate`) before being returned; only `send_now`-approved items surface. User
+preferences and quiet-period state have no source anywhere (no preferences store exists) and stay
+at the gate's own conservative defaults — same reasoning as every other genuinely-nothing-to-wire
+gap in this pass, not silently guessed.
+
+This is a real behavior change, not just plumbing: a brand-new relationship (`stage == "new"`) now
+correctly suppresses all proactive sends per the gate's own block group 3, where the old, ungated
+endpoint would have surfaced them. `tests/unit/api/test_routes_background.py` was rewritten to
+prove both sides — suppression on a fresh relationship, and surfacing once the relationship and
+content actually clear every block group — with `datetime.now` patched for a deterministic
+circadian band instead of depending on wall-clock time.

@@ -101,6 +101,21 @@ class PostgresMemoryStore:
                     .filter_by(user_id=str(user_id), is_deprecated=False).all())
             return [from_jsonable(SemanticMemory, r.payload) for r in rows]
 
+    def get_semantic(self, memory_id) -> Optional[SemanticMemory]:
+        with session_scope(self._sf) as s:
+            row = s.query(m.SemanticMemory).filter_by(memory_id=str(memory_id)).one_or_none()
+            return from_jsonable(SemanticMemory, row.payload) if row else None
+
+    def update_semantic(self, memory_id, fields: dict) -> None:
+        """Patch fields on a stored semantic fact (used by Layer-12 cascade redaction)."""
+        fact = self.get_semantic(memory_id)
+        if fact is None:
+            return
+        for k, v in (fields or {}).items():
+            if hasattr(fact, k):
+                setattr(fact, k, v)
+        self.save_semantic(fact)
+
     # ── Identity (cross-user) ────────────────────────────────────────────
     def save_identity(self, belief: IdentityMemory) -> UUID:
         with session_scope(self._sf) as s:

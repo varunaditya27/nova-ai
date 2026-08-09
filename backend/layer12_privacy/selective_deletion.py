@@ -148,6 +148,52 @@ def dry_run_deletion(
     return request.cascade_impacts
 
 
+def redact_cascade(
+    report: CascadeImpactReport,
+    deleted_ids: list,
+    semantic_store=None,
+    longitudinal_store=None,
+) -> dict:
+    """Mutate the referencing artifacts a dry run reported, instead of only reporting them
+    (architecture doc §4.4). References to the deleted memories are stripped from each affected
+    semantic fact's ``supporting_episode_ids``; a fact left with none is deprecated and its
+    statement cleared (derived exclusively from what's now gone). Weekly summaries whose
+    significant-moment episodes were all deleted have that moment cleared. Rows are kept, redacted
+    in place — the same "logical deletion, row retained for proof" invariant Layer-12 already uses
+    for the memories themselves, not a hard delete."""
+    target_str = {str(t) for t in deleted_ids}
+    redacted_facts = redacted_summaries = 0
+
+    if semantic_store is not None:
+        for fact_id, _statement, _impact in report.semantic_facts_affected:
+            fact = semantic_store.get(fact_id)
+            if fact is None:
+                continue
+            remaining = [e for e in getattr(fact, "supporting_episode_ids", [])
+                        if str(e) not in target_str]
+            fields = {"supporting_episode_ids": remaining}
+            if not remaining:
+                fields["is_deprecated"] = True
+                fields["statement"] = ""
+            semantic_store.update(fact_id, fields)
+            redacted_facts += 1
+
+    if longitudinal_store is not None:
+        for summary_id, _desc in report.longitudinal_references_to_update:
+            summary = longitudinal_store.get(summary_id)
+            moment = getattr(summary, "most_emotionally_significant_moment", None) if summary else None
+            if summary is None or moment is None:
+                continue
+            remaining = [e for e in getattr(moment, "episode_ids", []) if str(e) not in target_str]
+            summary.most_emotionally_significant_moment = moment if remaining else None
+            if remaining:
+                moment.episode_ids = remaining
+            longitudinal_store.update(summary)
+            redacted_summaries += 1
+
+    return {"redacted_facts": redacted_facts, "redacted_summaries": redacted_summaries}
+
+
 def _generate_certificate(
     deleted_ids: list, request_id: str, executed_at: datetime, sign_fn: Optional[Callable],
 ) -> DeletionCertificate:
