@@ -2,7 +2,7 @@ import pytest
 pytest.importorskip("sqlalchemy")
 pytest.importorskip("pydantic")
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from infra.db import make_engine, make_session_factory, init_db, session_scope
 import infra.db.models as models
@@ -41,6 +41,7 @@ class Ctx:
     response_text = "loves hiking"
     emotion_intent = None
     recalled_memories = []
+    client_metadata = {}
 
 
 def test_build_app_state_runs_a_turn():
@@ -713,6 +714,57 @@ def test_thread_proactive_writer_hands_a_due_thread_to_the_real_layer6_queue():
         rows = s.query(models.ProactiveItem).filter_by(user_id="local-user").all()
     assert len(rows) == 1
     assert "had a job interview" in rows[0].payload["content_basis"]
+
+
+def test_proactive_response_writer_marks_the_most_recent_sent_item_responded():
+    """SC-5 (2026-08-09): a chat turn flagged is_reply_to_proactive must transition the most
+    recently-sent item to RESPONDED with a real, keyword-derived valence -- there's no explicit
+    item id from the client, so "most recent SENT" is the only real attribution available."""
+    from api.state import make_proactive_response_writer
+    from infra.db.proactive_store import PostgresProactiveQueue
+    from backend.layer6_proactivity.schemas import ItemStatus, ProactiveItem
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    sent_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    q = PostgresProactiveQueue(factory, "local-user")
+    q.upsert(ProactiveItem(item_id="older", item_type="goal_check_in",
+                           status=ItemStatus.SENT.value, sent_at=sent_at - timedelta(days=1)))
+    q.upsert(ProactiveItem(item_id="newest", item_type="goal_check_in",
+                           status=ItemStatus.SENT.value, sent_at=sent_at))
+
+    class ReplyCtx(Ctx):
+        message = "thanks, that really helped!"
+        client_metadata = {"is_reply_to_proactive": True}
+
+    writer = make_proactive_response_writer(factory)
+    writer(ReplyCtx())
+
+    items = {i.item_id: i for i in q.load()}
+    assert items["newest"].status == ItemStatus.RESPONDED.value
+    assert items["newest"].user_engaged is True
+    assert items["newest"].user_response_valence is not None and items["newest"].user_response_valence > 0
+    assert items["older"].status == ItemStatus.SENT.value   # untouched
+
+
+def test_proactive_response_writer_is_a_noop_without_the_reply_flag():
+    from api.state import make_proactive_response_writer
+    from infra.db.proactive_store import PostgresProactiveQueue
+    from backend.layer6_proactivity.schemas import ItemStatus, ProactiveItem
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    q = PostgresProactiveQueue(factory, "local-user")
+    q.upsert(ProactiveItem(item_id="p1", item_type="goal_check_in",
+                           status=ItemStatus.SENT.value, sent_at=datetime.now(timezone.utc)))
+
+    writer = make_proactive_response_writer(factory)
+    writer(Ctx())   # no client_metadata flag set
+
+    assert q.load()[0].status == ItemStatus.SENT.value
 
 
 def test_thread_proactive_writer_is_a_noop_with_no_due_threads():

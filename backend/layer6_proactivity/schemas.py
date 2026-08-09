@@ -164,6 +164,12 @@ class ProactiveItem:
     source_event_ids: list[str] = field(default_factory=list)
     source_goal_id: Optional[str] = None
 
+    # SC-4 generated delivery text (§6, 2026-08-09) — the real, natural-language message a user
+    # would actually see, as opposed to content_basis (an internal fragment like "Goal: X |
+    # Milestone: Y"). Populated by background/proactive_check_job.py once an item clears the
+    # timing gate; empty until then.
+    generated_message: str = ""
+
     # People involved
     person_id: Optional[str] = None
     person_display_name: Optional[str] = None

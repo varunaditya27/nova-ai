@@ -332,16 +332,23 @@ scoring/expiry runs every 30 minutes via `background/proactive_check_job.py`, an
 Layer 6 goal-check-in intake (`api/proactive_gen.py`) creates real candidates each turn. Full
 detail: `docs/layer-6-architecture.md` §15.
 
-- **No delivery pipeline exists.** SC-2 (Initiative Classifier), SC-3 (Timing & Delivery Gate),
-  SC-4 (Message Generator), and SC-5 (Response Tracker) have zero production callers because
-  there is nothing to deliver *to* — `GET /proactive` is a read-only poll endpoint, not a push
-  channel, per its own docstring. Building this needs a real delivery surface (push notification,
-  in-app message, or equivalent) before the send-side pipeline has anywhere to plug in — genuine
-  infra work, not a wiring gap.
 - **[done, 2026-08-09]** `GET /proactive` no longer returns ungated `content_basis` — it now runs
   every candidate through the real SC-3 `evaluate_timing_gate` server-side, with a live
   `UserTimingContext` built from the persisted stores (SC-3 had zero production callers before
   this). See `docs/layer-6-architecture.md` §19.
+- **[done, 2026-08-09]** SC-4 (Message Generator) and SC-5 (Response Tracker) are wired — product
+  decision split this from the transport question, since neither needed one:
+  `api/proactive_delivery.py` generates a real message for each gate-passing item inside
+  `background/proactive_check_job.py` (reusing the live orchestrator's `build_persona`, not
+  re-deriving persona/voice logic), and `POST /proactive/{id}/delivered` +
+  `make_proactive_response_writer` close the response-tracking loop via
+  `ChatRequest.is_reply_to_proactive`. A live-only bug was found and fixed in the process:
+  `build_persona` reads `ctx.input_packet`/`ctx.emotion_intent` directly (not getattr-safe),
+  which a bare `SimpleNamespace` background-job context didn't have — silently caught by
+  `build_persona`'s own try/except, degrading `voice_parameters` to defaults rather than
+  crashing. No test using a stub `steps` object could have caught this; a new regression test
+  runs against the real `build_persona`. Push *transport* (SSE/notifications) remains the one
+  open piece — scoped as a frontend-phase decision. See `docs/layer-6-architecture.md` §20.
 - **Three of four intake contracts are unwired**, each blocked on a different upstream layer, not
   on Layer 6 itself: `on_thread_due` needs Layer 1's narrative-thread detector (Layer 1's own
   audited gap); `on_post_distress_gap` needs a Layer 2 state-updater hook that doesn't exist yet;

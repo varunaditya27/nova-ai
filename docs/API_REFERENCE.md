@@ -244,9 +244,39 @@ Layer 12 privacy audit).
 
 ### `DELETE /memory/{memory_id}` → `MemoryDeletionOut`
 Real Layer-12 selective deletion — a genuine "forget" (content/embedding zeroed, unrecallable; row
-retained for proof), a signed certificate, and a privacy-audit chain entry. `404` if already gone.
+retained for proof), a signed certificate, and a privacy-audit chain entry. Cascade-affected
+semantic facts and weekly summaries are genuinely redacted in place (references stripped; a fact
+left with zero support is deprecated), not just reported. `404` if already gone.
 ```
 { "deleted": int, "memory_id": string, "certificate": string, "cascade": string }
+```
+
+### `GET /memory/audit/full` → `MemoryAuditViewOut`
+Layer-12 SC-3's richer transparency view — human-readable importance labels, semantic facts,
+identity beliefs, and crisis/goal counts. Distinct from `GET /memory/audit` above.
+```
+{ "user_id": string, "generated_at": iso, "total_memory_count": int,
+  "episodic": [AuditableMemoryOut], "semantic": [AuditableFactOut], "identity": [AuditableFactOut],
+  "crisis_session_count": int, "active_goal_count": int }
+```
+- **`AuditableMemoryOut`**: `memory_id, date_formed, human_readable_summary, importance_label
+  ("Low"|"Medium"|"High"|"Anchored"), topic_tags[], emotion_at_formation, reinforcement_count`
+- **`AuditableFactOut`**: `fact_id, fact_text, category, confidence (float), source_episode_ids[],
+  is_user_confirmed (bool)`
+
+### `GET /memory/audit/query?q=` → `AuditQueryResultOut`
+Natural-language audit query — "what do you know about my job?" Returns matching record ids only;
+fetch detail via `GET /memory/{id}`.
+```
+{ "query": string, "total_count": int, "intent_type": string, "memory_ids": [string] }
+```
+
+### `POST /memory/{memory_id}/correct` → `CorrectionResultOut`
+Layer-12 SC-3 Memory Correction — accepted without debate. Body: `{ "correction_type":
+"edit"|"downgrade"|"decontextualize"|"anchor"|"expire"|"confirm", "new_content"?, "new_importance"?,
+"tags_to_remove"?, "expiry_date"? }`.
+```
+{ "success": bool, "memory_id": string, "correction_type": string, "detail": string }
 ```
 
 ---
@@ -305,16 +335,26 @@ repeated). It self-graduates at `config.onboarding.graduation_sessions` (default
 ## Proactivity (Layer 6)
 
 ### `GET /proactive?limit=5` → `[ProactiveItemOut]`
-Top pending outreach candidates (highest priority first). Populated per-turn from active goals with
-an upcoming deadline/milestone; maintained (re-prioritized/expired) by the `proactive_check` job.
-Empty while the user is cold-starting.
+Top pending outreach candidates (highest priority first), gated server-side through the real SC-3
+Timing & Delivery Gate — an item only appears here once it genuinely clears every block group
+(crisis aftermath, relationship-too-new, daily cap, min-gap, user preferences, content quality).
+Populated per-turn from active goals with an upcoming deadline/milestone; maintained
+(re-prioritized/expired/message-generated) by the `proactive_check` job. Empty while the user is
+cold-starting.
 | field | type |
 |---|---|
 | `item_id` | string |
 | `item_type` | string (e.g. `goal_check_in`) |
 | `status` | string (`pending`\|`deferred`) |
-| `content_basis` | string |
+| `content_basis` | string (internal fragment, e.g. `"Goal: X \| Milestone: Y"`) |
+| `message` | string (the real SC-4-generated delivery text; `""` until the background job has produced one) |
 | `current_priority` | float |
+
+### `POST /proactive/{item_id}/delivered` → `{item_id, status}`
+SC-5: call this the moment a client actually shows a proactive item to the user (e.g. right after
+receiving it). Transitions the item to `sent` with a real `sent_at` timestamp, which the next
+`/chat` turn's `is_reply_to_proactive: true` flag uses to attribute a reply and close the
+response-tracking loop. `404` if the item doesn't exist.
 
 ---
 

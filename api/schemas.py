@@ -303,6 +303,7 @@ class ProactiveItemOut(BaseModel):
     item_type: str
     status: str
     content_basis: str = ""
+    message: str = ""
     current_priority: float = 0.0
 
 

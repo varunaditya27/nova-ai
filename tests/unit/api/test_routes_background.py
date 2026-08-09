@@ -77,6 +77,62 @@ def test_proactive_lists_top_pending_once_the_gate_is_clearable():
     assert [i["item_id"] for i in body] == ["p1"]  # only the gate-passing pending item surfaced
 
 
+def test_proactive_surfaces_the_real_generated_message_when_gate_passing():
+    from infra.db.relationship_store import PostgresRelationshipStore
+
+    client, factory = _client()
+    PostgresRelationshipStore(factory, "local-user")
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):
+        rel_store.record_turn(f"s{i}")
+
+    q = PostgresProactiveQueue(factory, "local-user")
+    q.upsert(ProactiveItem(item_id="p1", item_type="goal_check_in", status="pending",
+                           content_basis="internal fragment: Goal: 5K | Milestone: race day",
+                           generated_message="Hope your 5K training is going well!"))
+    with patch("api.routes.proactive.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOON_UTC
+        body = client.get("/proactive").json()
+    assert body[0]["message"] == "Hope your 5K training is going well!"
+    assert body[0]["content_basis"] == "internal fragment: Goal: 5K | Milestone: race day"
+
+
+def test_proactive_message_field_empty_when_not_yet_generated():
+    from infra.db.relationship_store import PostgresRelationshipStore
+
+    client, factory = _client()
+    rel_store = PostgresRelationshipStore(factory, "local-user")
+    for i in range(20):
+        rel_store.record_turn(f"s{i}")
+
+    PostgresProactiveQueue(factory, "local-user").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k goal"))
+    with patch("api.routes.proactive.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOON_UTC
+        body = client.get("/proactive").json()
+    assert body[0]["message"] == ""
+
+
+def test_mark_delivered_transitions_item_to_sent():
+    client, factory = _client()
+    q = PostgresProactiveQueue(factory, "local-user")
+    q.upsert(ProactiveItem(item_id="p1", item_type="goal_check_in", status="pending"))
+
+    resp = client.post("/proactive/p1/delivered")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "sent"
+
+    item = q.load(statuses=["sent"])[0]
+    assert item.item_id == "p1"
+    assert item.sent_at is not None
+
+
+def test_mark_delivered_missing_item_is_404():
+    client, _ = _client()
+    assert client.post("/proactive/nope/delivered").status_code == 404
+
+
 def test_admin_trigger_integrity_job():
     client, _ = _client()
     body = client.post("/admin/jobs/integrity_check").json()

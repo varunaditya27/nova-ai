@@ -102,14 +102,19 @@ gap was found and why it wasn't fixed inline.
 
 ## Layer 6 — Proactive Engagement Engine
 
-- **No delivery pipeline exists at all** — SC-2/3/4/5 have nowhere to send to. `GET /proactive` is
-  a read-only poll, not a push channel. Needs real delivery infra (push notification or
-  equivalent) before the send-side pipeline has anywhere to plug in.
+- **No push *transport* exists** — SC-4/5 now genuinely generate/track real messages (see below),
+  but there's still no channel to push them to a client proactively; `GET /proactive` is a
+  read-only poll. This is now scoped as a frontend-phase decision (SSE vs. other), not a backend
+  gap — see task tracking for the frontend proactive-delivery work.
 - **[done, 2026-08-09]** `GET /proactive` now gates server-side through the real SC-3 Timing &
   Delivery Gate (`evaluate_timing_gate`) with a live `UserTimingContext` — no longer returns raw
   ungated `content_basis`. See `docs/layer-6-architecture.md` §19.
 - **[done, 2026-08-09]** `on_thread_due` and `on_post_distress_gap` are both wired now — neither
   actually needed the blocker it was recorded against. See `docs/layer-6-architecture.md` §18.
+- **[done, 2026-08-09]** SC-4 (real message generation) and SC-5 (response tracking) are wired —
+  `api/proactive_delivery.py`, `background/proactive_check_job.py`, `POST /proactive/{id}/
+  delivered`, `make_proactive_response_writer`. A live-only `build_persona` AttributeError was
+  found and fixed in the same pass. See `docs/layer-6-architecture.md` §20.
 
 ## Layer 7 — Goals & Accountability Engine
 

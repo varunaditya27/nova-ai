@@ -544,3 +544,86 @@ def test_distress_gap_job_ignores_non_distressed_episodes():
     _add_episode(st.session_factory, "u1", summary="had a great day", valence=0.5, arousal=0.3)
     out = scheduler.run_job(st, "distress_gap")
     assert out["queued"] is False
+
+
+# ── Layer 6 SC-4: real message generation (2026-08-09) ───────────────────────
+class _FakeLLM:
+    def __init__(self, text="Hope your study routine is going well -- thinking of you!"):
+        self._text = text
+    def complete(self, prompt, **kw):
+        return self._text
+
+
+class _FakeSteps:
+    """Minimal stand-in for the real orchestrator's PipelineSteps -- only build_persona is
+    needed by build_proactive_context, so this avoids constructing the full live pipeline."""
+    def build_persona(self, ctx):
+        from backend.layer4_persona.schemas import PersonaPacket, RelationshipState
+        return PersonaPacket(
+            persona_instruction="You and the user are close friends.",
+            relationship_state=RelationshipState(stage="developing"))
+
+
+def _proactive_state(user="u1"):
+    st = _state(user)
+    st.llm_clients = {"system1": _FakeLLM()}
+    st.orchestrator = SimpleNamespace(steps=_FakeSteps())
+    return st
+
+
+def _graduate_onboarding(factory, uid):
+    from infra.db.onboarding_store import PostgresOnboardingStore
+    PostgresOnboardingStore(factory, uid, 5).graduate_now()   # proactive_check_job skips cold-starters
+
+
+def _seed_developing_relationship(factory, uid):
+    from infra.db.relationship_store import PostgresRelationshipStore
+    rel = PostgresRelationshipStore(factory, uid)
+    for i in range(20):
+        rel.record_turn(f"s{i}")
+    _graduate_onboarding(factory, uid)
+
+
+def test_proactive_check_job_generates_a_real_message_for_a_gate_passing_item():
+    st = _proactive_state()
+    _seed_developing_relationship(st.session_factory, "u1")
+    PostgresProactiveQueue(st.session_factory, "u1").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k training goal"))
+
+    out = scheduler.run_job(st, "proactive_check")
+
+    assert out["generated"] == 1
+    item = PostgresProactiveQueue(st.session_factory, "u1").load()[0]
+    assert item.generated_message == "Hope your study routine is going well -- thinking of you!"
+
+
+def test_proactive_check_job_does_not_generate_for_a_gated_item():
+    # Brand-new relationship (stage "new") -- block group 3 suppresses everything, so no LLM
+    # call should happen and no message should be generated.
+    st = _proactive_state()
+    _graduate_onboarding(st.session_factory, "u1")   # graduated, but relationship stage is "new"
+    PostgresProactiveQueue(st.session_factory, "u1").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in on your 5k training goal"))
+
+    out = scheduler.run_job(st, "proactive_check")
+
+    assert out["generated"] == 0
+    item = PostgresProactiveQueue(st.session_factory, "u1").load()[0]
+    assert item.generated_message == ""
+
+
+def test_proactive_check_job_does_not_regenerate_an_existing_message():
+    st = _proactive_state()
+    st.llm_clients["system1"] = _FakeLLM("should never be called")
+    _seed_developing_relationship(st.session_factory, "u1")
+    PostgresProactiveQueue(st.session_factory, "u1").upsert(ProactiveItem(
+        item_id="p1", item_type="goal_check_in", status="pending",
+        content_basis="a real, detailed reason to check in", generated_message="already there"))
+
+    out = scheduler.run_job(st, "proactive_check")
+
+    assert out["generated"] == 0
+    item = PostgresProactiveQueue(st.session_factory, "u1").load()[0]
+    assert item.generated_message == "already there"

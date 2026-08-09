@@ -1268,3 +1268,50 @@ endpoint would have surfaced them. `tests/unit/api/test_routes_background.py` wa
 prove both sides — suppression on a fresh relationship, and surfacing once the relationship and
 content actually clear every block group — with `datetime.now` patched for a deterministic
 circadian band instead of depending on wall-clock time.
+
+## 20. Follow-up (2026-08-09): SC-4 real message generation + SC-5 response tracking wired
+
+Two more genuinely independent Layer 6 gaps closed, per user decision — split from the "no
+delivery pipeline" item precisely because neither needed a transport decision:
+
+**SC-4 (`message_generator.py`)** had zero production callers. `api/proactive_delivery.py` (new,
+shared between the route and the background job so the timing-gate construction isn't duplicated)
+adds `build_proactive_context`, which assembles the real `ProactiveContext` by calling the live
+orchestrator's own `steps.build_persona` (`app_state.orchestrator.steps`) rather than re-deriving
+persona/voice logic a second time — the exact "wire to the real module" pattern CLAUDE.md names.
+`background/proactive_check_job.py` (already running every ~30 min, already the thing that calls
+`save_all`) now generates a message for each item that clears the SC-3 gate *at generation time*
+and has none yet, persisting it on a new `ProactiveItem.generated_message` field.
+`GET /proactive`'s HTTP response gained a `message` field carrying this real text (`content_basis`
+stays as the internal fragment, for debugging).
+
+**A live-only bug found and fixed in the same pass**: `build_persona` reads
+`ctx.input_packet.circadian_band` and `ctx.emotion_intent.background_state` directly (not
+getattr-safe on `ctx` itself) — a bare `SimpleNamespace(user_id=..., conversation_mode=...)` for
+the background-job caller raised `AttributeError`, silently caught by `build_persona`'s own
+try/except and degrading `voice_parameters` to defaults. Every unit test using a stub `steps`
+object passed regardless, because the stub never exercised the real function. Caught only by
+running `build_proactive_context` against the real `build_app_state`-constructed orchestrator
+live — fixed by giving the job's synthetic `ctx` a real `input_packet`/`emotion_intent`, and a
+regression test (`tests/unit/api/test_proactive_delivery.py`) was added specifically using the
+real `build_persona`, not a double, so this class of bug can't slip back in unnoticed.
+
+**SC-5 (`response_tracker.py`)** also had zero production callers. `POST /proactive/{id}/delivered`
+(new) transitions an item to `SENT` — the frontend calls this the moment it actually shows a
+proactive item to the user, closing the "nothing ever marks an item sent" gap that made response
+tracking structurally unreachable before. `api/state.py::make_proactive_response_writer` (new,
+in the post-turn writer chain) checks `ChatRequest.is_reply_to_proactive` on every turn and, when
+set, classifies the reply and transitions the most-recently-`SENT` item to `RESPONDED` with a real
+valence via the existing `classify_response`/`update_queue_from_response`. There's no explicit
+item id from the client, so "most recently sent" is the only real attribution available without
+inventing new client surface — correct as long as a user isn't mid-reply to two proactive messages
+at once, which the gate's own `_MIN_GAP_HOURS` (48h between sends) makes structurally rare.
+`update_queue_from_response`'s priority/ignore-count side effects stay scoped to a throwaway
+`ProactiveQueueManager` per call, same as the background job's own recompute already does — that
+state was never persisted anywhere in this codebase before this pass either, not a new gap.
+
+Verified live end-to-end (real Postgres/Ollama): the SC-3 gate correctly deferred a real queued
+item with `post_crisis_sensitivity` after a genuine crisis-tier safety event earlier in the same
+session — proof the gate reads real safety data, not a fixture. With the gate cleared directly
+(seeded relationship state), `generate_message_for_item` produced a real, coherent, on-topic
+message through the actual LLM and persona pipeline.

@@ -1124,6 +1124,41 @@ def make_proactive_writer(session_factory, graduation_sessions: int) -> Callable
     return _write
 
 
+def make_proactive_response_writer(session_factory) -> Callable:
+    """Post-turn: SC-5 Response Tracker (§7, 2026-08-09) -- when this turn is a reply to a
+    proactive message (``ChatRequest.is_reply_to_proactive``), classify it and transition the
+    most recently-SENT item to RESPONDED with the real valence, so ``GET /proactive`` naturally
+    stops resurfacing it. There is no explicit item id from the client, so "the most recently
+    sent item" is the only real attribution available without inventing new client surface —
+    correct as long as a user isn't mid-reply to two proactive messages at once, which the
+    single-item-per-day gate (`timing_gate._MIN_GAP_HOURS`) makes structurally rare. Priority/
+    ignore-count adjustments stay scoped to this call's throwaway `ProactiveQueueManager`, same
+    as `background/proactive_check_job.py`'s own recompute call — that state was never persisted
+    anywhere in this codebase, not a new gap introduced here."""
+    def _write(ctx) -> None:
+        if not bool((ctx.client_metadata or {}).get("is_reply_to_proactive")):
+            return
+        try:
+            from backend.layer6_proactivity.queue_manager import ProactiveQueueManager
+            from backend.layer6_proactivity.response_tracker import (
+                classify_response, update_queue_from_response)
+
+            uid = ctx.user_id
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            queue = PostgresProactiveQueue(session_factory, uid)
+            sent = [i for i in queue.load(statuses=["sent"]) if i.sent_at]
+            if not sent:
+                return
+            item = max(sent, key=lambda i: i.sent_at)
+            response = classify_response(item.sent_at, [(now, ctx.message)], now=now)
+            update_queue_from_response(item, response, ProactiveQueueManager([item]),
+                                       user_preferences={})
+            queue.upsert(item)
+        except Exception:
+            logger.exception("proactive response writer failed; turn already delivered")
+    return _write
+
+
 def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callable:
     """Post-turn: advance the per-user onboarding session counter (self-graduating)."""
     def _write(ctx) -> None:
@@ -1248,6 +1283,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_cold_start_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory),
         make_proactive_writer(session_factory, grad_sessions),
+        make_proactive_response_writer(session_factory),
         make_identity_writer(session_factory, llm_clients["system1"]),
         make_format_profile_writer(session_factory),
         make_thread_writer(session_factory, llm_clients["system1"]),
