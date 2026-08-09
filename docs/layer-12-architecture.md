@@ -1512,11 +1512,17 @@ production callers:**
   `AuditQueryEngine`, and the six `MemoryCorrectionType` operations have no route or caller.
   `GET /memory/audit` (the only "audit" HTTP route) returns a flat episodic/semantic list built
   directly in `api/routes/memory.py` — it does not use Layer 12's richer 7-section view.
-- **SC-4** (`sync_coordinator.py`) — `api/routes/sync.py` does **not** import it. Sync is
-  reimplemented independently in `infra/db/sync_store.py::PostgresSyncStore`, which is a plainer
-  blind-relay store (delta rows keyed by monotonic id) rather than Layer 12's
-  `SyncDelta`/`ConflictResolutionPolicy` design. The two implementations have diverged; only the
-  `infra/db` one runs in production.
+- **SC-4** (`sync_coordinator.py`) — `api/routes/sync.py` does **not** import it. **Corrected
+  2026-08-09**: this was originally framed as two divergent implementations that had "diverged,"
+  implying a reconciliation was owed. On closer read they are not competing at all — `SyncCoordinator`
+  (`build_delta`/`decrypt_delta`/`resolve_conflict`) is genuinely **client-side** code: it requires
+  a `sync_key` only a device holds, and the whole design's zero-knowledge property depends on the
+  server never seeing it, let alone decrypting or resolving conflicts on plaintext. `PostgresSyncStore`
+  is correctly the only thing the **server** — which is all this backend-only repo contains — could
+  ever call; a route that imported `SyncCoordinator` server-side would break the zero-knowledge
+  property it exists to guarantee. There is no reconciliation to make: `SyncCoordinator` has no
+  server caller by design, not by neglect, and stays exactly where a future on-device client would
+  import it from. See §15.1.
 - **`privacy_agent.py`** (the SC-1–4 coordinator, consent management) — no caller anywhere.
 
 **Fixed this pass (both in `selective_deletion.py`, no behavior change to the one live caller's
@@ -1548,9 +1554,52 @@ and `embedding` regardless of what `execute_deletion` passed to `update()` first
   (a Merkle-tree design over on-device store files); that module has no caller, consistent with
   the rest of SC-1.
 
-See `docs/POLISH_BACKLOG.md` for the larger structural items (deploy real encryption-at-rest,
-reconcile or retire the two divergent sync implementations, wire the richer audit/correction
-views if a UI ever needs them).
+See `docs/POLISH_BACKLOG.md` for the larger structural items (deploy real encryption-at-rest, wire
+the richer audit/correction views if a UI ever needs them, decide whether cascade-store *mutation*
+is wanted — see §15.2).
+
+## 15. Sync corrected + real cascade wiring (follow-up, 2026-08-09)
+
+### 15.1 The sync "reconciliation" wasn't one
+
+See the corrected SC-4 bullet above. No code changed here — this section exists because the
+prior framing (`docs/POLISH_BACKLOG.md`, `CLAUDE.md`) was a documentation error, not a deferred
+build task, and deserves a clear record of why.
+
+### 15.2 `dry_run_deletion`'s cascade checks were unwireable as written — two real field-mismatch
+bugs found and fixed
+
+`DELETE /memory/{id}` always called `dry_run_deletion(..., semantic_store=None)` — no
+`longitudinal_store` at all — so the cascade report always said "not computed." Wiring real
+stores in surfaced two genuine bugs that would have crashed on the very first real call:
+
+- **Semantic**: the cascade loop read `fact.derived_from_episodes`/`fact.fact_id`/`fact.fact_text`
+  — none of which exist on Layer 2's real `SemanticMemory` (`supporting_episode_ids`/`memory_id`/
+  `statement`). Fixed to the real field names.
+- **Longitudinal**: the cascade loop read `s.backing_episode_ids` on a `WeeklySummary` — that field
+  only exists on `RetrospectivePacket`, a different type entirely; `WeeklySummary` has no such
+  field. Fixed to read the real per-summary episode anchor,
+  `most_emotionally_significant_moment.episode_ids`.
+- **Type mismatch, found while fixing both**: `resolve_scope`'s `target` set holds plain strings
+  for the one live deletion path (`SINGLE_MEMORY`, `str(memory_id)` from the route) but
+  `SemanticMemory.supporting_episode_ids` deserializes to real `UUID` objects — `e in target`
+  would silently never match even with the field names fixed, since `UUID(...) == "some-string"`
+  is `False` in Python. Both cascade loops now compare on `str(...)` form.
+
+`api/routes/memory.py` gained two small adapters (`_SemanticDeletionStore`,
+`_LongitudinalDeletionStore`, same duck-type-wrapping pattern as the existing
+`_EpisodicDeletionStore`) and now wires both into the live `DELETE /memory/{id}` call. Proven end
+to end by `tests/unit/api/test_routes_privacy.py::
+test_delete_memory_reports_a_real_semantic_cascade`: a semantic fact whose only supporting
+episode is the one being deleted is correctly reported.
+
+**Scope, stated plainly**: this only fixes `dry_run_deletion`'s *reporting* — `execute_deletion`
+itself still only mutates the primary episodic store. Deciding what "handle the cascade" should
+mean mechanically (delete the now-unsupported semantic fact outright? flag it for the user to
+review? re-derive it?) is a real product decision, not made here. Personality-vector cascade
+(`personality_store.simulate_removal_impact`) stays permanently unreported — no real "personality
+vector" store exists anywhere in this codebase to check against; the parameter is accepted and
+skipped, not stubbed.
 
 ---
 

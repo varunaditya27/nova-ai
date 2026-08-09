@@ -41,12 +41,23 @@ def test_chat_write_then_read_end_to_end():
         app.include_router(r)
     client = TestClient(app, raise_server_exceptions=False)
 
-    resp = client.post("/chat", json={"message": "I want to run a 5k next month"})
+    # Episodic memory is now promotion-only (docs/layer-2-architecture.md §3.3), checked
+    # immediately on arrival. A message containing a life-event keyword triggers promotion
+    # deterministically, independent of the stubbed classifier's output, proving the
+    # write→audit path end-to-end.
+    session_key = "s1"
+
+    resp = client.post("/chat", json={
+        "message": "I want to run a 5k next month, I just got the job at the running club",
+        "session_id": session_key})
     assert resp.status_code == 200
 
     # The turn's writes are visible through the read routes (end-to-end).
     goals = client.get("/goals").json()
     assert any(g["title"] == "run a 5k" for g in goals)
+    # The promoted turn is summarized by the injected LLM (GoalLLM, a fixed-response stub here),
+    # so this only asserts an episode was actually created and is visible end-to-end through the
+    # audit route — not on summary content, which depends on the (stubbed) LLM's response.
     audit = client.get("/memory/audit").json()
-    assert any("5k" in m["summary"] for m in audit["episodic"])
+    assert len(audit["episodic"]) >= 1
     assert client.get("/onboarding").json()["session_index"] == 1

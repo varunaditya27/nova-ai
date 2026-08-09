@@ -90,6 +90,42 @@ def test_uwm_version_bumped_and_audited():
     assert any(e.event_type == AuditEventType.UWM_UPDATED for e in audit.events)
 
 
+def test_uwm_updater_fn_can_create_the_first_row_for_a_user():
+    """With an injected updater, step 3 can create a UWM where none exists -- closing the gap
+    where the version-only fallback bump could never create the first row for a real user."""
+    user, session = uuid4(), uuid4()
+    store = InMemoryMemoryStore()
+    audit = AuditTrail()
+    assert store.load_uwm(user) is None
+
+    def updater(existing):
+        assert existing is None
+        return UserWorldModel(user_id=user, update_version=0)
+
+    result = state_updater(
+        user_id=user, session_id=session, stm_buffer=_stm(user, session),
+        store=store, audit=audit, emotion=EmotionVector(), now=NOW,
+        extractor_fn=lambda s, e: [], uwm_updater_fn=updater,
+    )
+    assert result.uwm_updated is True
+    assert store.load_uwm(user) is not None
+    assert any(e.event_type == AuditEventType.UWM_UPDATED for e in audit.events)
+
+
+def test_uwm_updater_fn_returning_none_persists_nothing():
+    """An updater that decides there's nothing to persist this turn (e.g. nothing extracted and
+    no existing row) must not create a row or report uwm_updated."""
+    user, session = uuid4(), uuid4()
+    store = InMemoryMemoryStore()
+    result = state_updater(
+        user_id=user, session_id=session, stm_buffer=_stm(user, session),
+        store=store, audit=AuditTrail(), emotion=EmotionVector(), now=NOW,
+        extractor_fn=lambda s, e: [], uwm_updater_fn=lambda existing: None,
+    )
+    assert result.uwm_updated is False
+    assert store.load_uwm(user) is None
+
+
 def test_audit_write_failure_does_not_block(monkeypatch):
     user, session = uuid4(), uuid4()
     store = InMemoryMemoryStore()

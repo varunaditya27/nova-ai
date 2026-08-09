@@ -1457,6 +1457,8 @@ here needed fixing, and the gaps below are genuine, scoped feature work rather t
   Practical effect: SC-2's independent scan is lexical-only today. This isn't a live safety hole —
   Layer 3 runs its own independent lexical crisis check that ORs into the same veto (Phase 3
   finding) — but the doc's three-layer defense-in-depth (§4.3) is really one layer, live, doubled.
+  **The longitudinal half is now wired — see §16.1.** The semantic half remains correctly unwired:
+  no fine-tuned classifier model exists to inject.
 - **`SafetyRecord`'s tamper-evident SHA-256 hash chain (§8) is never used.** The live persistence
   path, `infra/db/safety_store.py::PostgresSafetyLog`, is a plain append-only JSONB table with no
   `content_hash`/`previous_entry_hash`/`chain_hash` fields — none of §8's cryptographic
@@ -1467,6 +1469,7 @@ here needed fixing, and the gaps below are genuine, scoped feature work rather t
   property doesn't hold for the safety log specifically. Wiring it needs either a schema change (a
   few JSONB-storable fields) or storing the chain fields inside the existing `payload` column, plus
   reading the previous row's `chain_hash` before each write — real, scoped work, not a one-line fix.
+  **Wired — see §16.2.**
 - **The `SafetyAgent` coordinator class (§7) has zero callers — not a gap.** `api/assembly.py`
   calls the SC-1/2/3/4 functions directly; `ConversationOrchestrator` implements the equivalent
   coordination logic itself (crisis veto OR-ing, post-generation guardrails). Confirmed during the
@@ -1476,7 +1479,71 @@ here needed fixing, and the gaps below are genuine, scoped feature work rather t
   never overridden). One instance of the already-documented cross-cutting gap that
   `config/layerN.yaml` files (here, `config/layer11.yaml`'s `default_region: india`) are merged
   into config but never read by layer code (see the Layer 1 entry in `docs/POLISH_BACKLOG.md`).
-  Not urgent given the system's current single-user scope.
+  Not urgent given the system's current single-user scope. **Wired — see §16.3.**
+
+## 16. Remaining gaps closed (follow-up, 2026-08-09)
+
+All three real gaps above closed, aside from the semantic classifier (correctly still unwired —
+no model exists to inject).
+
+### 16.1 SC-2 longitudinal detection wired
+
+`api/assembly.py::safety_scan` now forwards `episodic_memories`/`emotional_records` into
+`evaluate(...)`, converted via Layer 10's own `background._adapters.episodic_records`/
+`emotional_records` (reused, not reimplemented — they already produce the `.date`/`.topics`/
+`.valence` shape `evaluate_longitudinal_pattern` expects). The "SC-2 must run before recall
+completes" constraint the original audit correctly identified is real, but doesn't block this:
+`memory_store.active_episodic(user_id)` (which those adapters wrap) is a raw store read, not
+Layer 2's recall/scoring pipeline — `classify()` already relies on the exact same fact for the
+BES's episodic inputs (`docs/layer-3-architecture.md` §18). An explicit tz-aware `now` (the
+session's recurring naive/aware datetime fix pattern) is passed rather than relying on
+`evaluate_longitudinal_pattern`'s own `date.today()` default, for consistency with how "today" is
+computed everywhere else in this codebase (`timezone_offset_hours`-adjusted).
+
+Proven end to end through the real orchestrator by `tests/unit/api/test_assembly_turn.py::
+test_real_layer11_wiring_longitudinal_signal_reaches_the_veto_even_with_a_neutral_message`: a
+real escalating-distress pattern (crisis-tagged topics, declining valence across persisted
+episodes) triggers the veto even though the current turn's message is lexically and semantically
+neutral (both the lexical layer and the classify() LLM stub say non-crisis) — proving the
+longitudinal layer, specifically, is what fired.
+
+### 16.2 SafetyRecord hash chain wired
+
+`backend/layer11_safety/safety_record.py`'s `SafetyRecord` class already existed, complete and
+tested, with zero callers — the real chain math (`append`/`verify_chain`) was never reimplemented,
+only wrapped for persistence. New `infra/db/safety_record_store.py::PostgresSafetyRecordStore`
+loads prior entries into a fresh in-memory `SafetyRecord` on each call, delegates to its real
+`.append()`, and persists just the new entry to a new `safety_record_entry` table — the same
+load-head-then-append shape `infra/db/audit_trail.py::PostgresAuditTrail` already uses for Layer
+2's chain. `api/state.py::make_safety_writer` now appends a `crisis_signal_detected` entry
+alongside every real `PostgresSafetyLog` write. `content_hash` covers the actual turn's
+message+response text, but only the SHA-256 digest is ever persisted — satisfying §8's access
+policy (`"crisis_session_content_in_record": "metadata_only"`) by construction, not by convention.
+
+`GET /memory/integrity` and the `integrity_check` background job now verify three chains (Layer 2
+memory audit, Layer 11 safety record, Layer 12 privacy audit), not two — `IntegrityOut` gained a
+`safety_chain_ok` field.
+
+Proven by `tests/unit/api/test_state.py::
+test_safety_writer_chains_a_real_tamper_evident_safety_record`: two real crisis turns produce a
+chain that verifies intact, and a test that directly mutates a persisted row's payload confirms
+`verify_chain()` actually detects it — not just that the method exists.
+
+**Scope, stated plainly**: only `crisis_signal_detected` entries flow through the chain (the one
+call site with a real, live signal to log). §8's other entry types (`guardrail_violation`,
+`dependency_score_computed`, etc.) have no live callers of their own yet — wiring those means
+touching SC-1's guardrail path and SC-4's dependency monitor separately, out of scope here.
+
+### 16.3 `region` wired from real config
+
+`config/layer11.yaml`'s `escalation.default_region: india` already existed and was already merged
+into the running config (`load_config` merges every `layerN.yaml`) — it just had no reader.
+`api/state.py::build_app_state` now passes `region=config.get("layer11", {}).get("escalation",
+{}).get("default_region", "india")` into `build_pipeline_steps`, instead of relying on that
+function's own hardcoded `"india"` default silently standing in forever. Same effective value
+today (both are `"india"`) but now a real, changeable config read, not a coincidence — matches
+CLAUDE.md's "wire each cross-cutting config gap as its layer is revisited" guidance rather than
+inventing a new competing config key.
 
 ---
 

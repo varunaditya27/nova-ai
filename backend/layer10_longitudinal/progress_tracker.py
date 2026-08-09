@@ -124,7 +124,10 @@ def compute_progress_snapshot(
     """Compute a longitudinal progress snapshot (architecture doc §5.2)."""
     episodic_records = episodic_records or []
 
-    achieved = sum(1 for g in goals if getattr(g, "status", "") == "achieved")
+    # Layer 7's real GoalStatus terminal value is "completed", not "achieved" -- this mismatch
+    # meant goals_achieved_lifetime/achievement_rate_lifetime silently stayed 0 for every real
+    # user the moment this function was ever fed real Goal objects (see docs/POLISH_BACKLOG.md).
+    achieved = sum(1 for g in goals if getattr(g, "status", "") == "completed")
     abandoned = sum(1 for g in goals if getattr(g, "status", "") == "abandoned")
     rate = achieved / (achieved + abandoned) if (achieved + abandoned) else 0.0
 

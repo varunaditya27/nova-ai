@@ -1,9 +1,15 @@
 # Layer 1 Configuration — Input Perception & Temporal Awareness
 #
-# These values mirror the module-level constants in backend/layer1_input/ (the code is the
-# single source of truth). They are reproduced here as real, machine-readable YAML so the
-# pipeline can be re-tuned without a code change once a config loader is wired. Every value
-# matches docs/layer-1-architecture.md.
+# LIVE: this file is fully wired (backend/layer1_input/config.py::Layer1Config.from_dict, threaded
+# through every backend/layer1_input/ function as an optional `cfg` param). Editing a value here
+# and restarting the app changes production behavior — no code change needed. `Layer1Config()`'s
+# field defaults are the fallback used when a key is absent (including every unit test that calls
+# a function with no `cfg`), so they double as this file's canonical defaults.
+#
+# Exceptions — read by nothing (kept for documentation of the spec, not live): `burst_window_seconds`,
+# `latency_deviation_flag`, `multimodal.document_extract_max_chars`,
+# `multimodal.face_recognition_enabled` (a hard `False` constraint, not tunable — see
+# docs/layer-1-architecture.md §5.3), `prosody.calibration_min_samples`.
 
 layer1:
 

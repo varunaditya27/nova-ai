@@ -108,7 +108,7 @@ class LifeChapter:
     primary_theme: str = ""
     secondary_themes: list = field(default_factory=list)
     opening_context: str = ""
-    defining_moments: list = field(default_factory=list)
+    defining_moments: list[NarrativeMoment] = field(default_factory=list)
     emotional_arc: Optional[EmotionalArcSummary] = None
     goals_active: list = field(default_factory=list)
     goals_resolved: list = field(default_factory=list)
@@ -123,7 +123,7 @@ class LifeChapter:
 class NarrativeArc:
     user_id: str
     arc_start_date: date
-    chapters: list = field(default_factory=list)
+    chapters: list[LifeChapter] = field(default_factory=list)
     current_chapter: Optional[LifeChapter] = None
     overall_themes: list = field(default_factory=list)
     running_growth_narrative: str = ""

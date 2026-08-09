@@ -7,10 +7,8 @@ Returns plain dicts (messages have no backend domain type); the API projects the
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
-
-from sqlalchemy import func
 
 import infra.db.models as m
 from infra.db.engine import session_scope
@@ -59,6 +57,17 @@ class PostgresMessageStore:
                 q = q.filter(m.ConversationMessage.id < before_id)
             rows = q.order_by(m.ConversationMessage.id.desc()).limit(max(1, min(limit, 200))).all()
             return [_row_to_dict(r) for r in rows]
+
+    def recent_by_role(self, session_key: str, role: str, limit: int = 5) -> list[str]:
+        """The last ``limit`` message contents for one role within one session, oldest first --
+        e.g. Nova's own recent replies in this session, the real source for Layer 4 SC-4's
+        cross-turn stance history (``nova_recent_positions``, architecture doc §6.3 Check 3)."""
+        with session_scope(self._sf) as s:
+            rows = (s.query(m.ConversationMessage)
+                    .filter_by(user_id=self._uid, session_key=str(session_key or ""), role=role)
+                    .order_by(m.ConversationMessage.id.desc())
+                    .limit(max(1, limit)).all())
+            return [r.content for r in reversed(rows)]
 
     def search(self, query: str = "", start: Optional[datetime] = None,
                end: Optional[datetime] = None, limit: int = 50) -> list[dict]:
@@ -134,12 +143,31 @@ class PostgresMessageStore:
                  .order_by(m.ConversationMessage.id.desc()).first())
             return r.created_at if r is not None else None
 
-    def day_activity(self, start: datetime, end: datetime) -> dict[str, int]:
-        """Message count per ISO date (for the calendar heatmap), user-scoped."""
+    def day_activity(self, start: datetime, end: datetime,
+                     timezone_offset_hours: float = 0.0) -> dict[str, int]:
+        """Message count per local-date, keyed by messages with ``created_at`` in ``[start, end]``
+        (for the calendar heatmap), user-scoped.
+
+        Buckets in Python rather than SQL (``func.date(...)``) so the same
+        ``timezone_offset_hours`` Layer 1 uses for the live circadian band applies here too —
+        the DB-side date function has no portable way to shift by a fractional-hour offset across
+        SQLite (tests) and Postgres (production). ``created_at`` is stored in UTC.
+
+        ``start``/``end`` filter the underlying UTC timestamps, not the returned local-date keys —
+        with a non-zero offset, a message just inside ``end`` can land one local calendar day past
+        ``end``'s date (e.g. 22:00 UTC on the last day is 03:30 IST the *next* day). Callers that
+        need a strict local-date range should pass a padded ``end``.
+        """
         with session_scope(self._sf) as s:
-            rows = (s.query(func.date(m.ConversationMessage.created_at), func.count())
+            rows = (s.query(m.ConversationMessage.created_at)
                     .filter(m.ConversationMessage.user_id == self._uid,
                             m.ConversationMessage.created_at >= start,
-                            m.ConversationMessage.created_at <= end)
-                    .group_by(func.date(m.ConversationMessage.created_at)).all())
-            return {str(d): int(c) for d, c in rows}
+                            m.ConversationMessage.created_at <= end).all())
+            counts: dict[str, int] = {}
+            offset = timedelta(hours=timezone_offset_hours)
+            for (ts,) in rows:
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                local_date = (ts + offset).date().isoformat()
+                counts[local_date] = counts.get(local_date, 0) + 1
+            return counts

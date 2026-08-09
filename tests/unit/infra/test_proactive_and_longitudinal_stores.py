@@ -7,7 +7,7 @@ from infra.db.engine import make_engine, make_session_factory, init_db
 from infra.db.proactive_store import PostgresProactiveQueue
 from infra.db.longitudinal_store import PostgresLongitudinalStore
 from backend.layer6_proactivity.schemas import ProactiveItem
-from backend.layer10_longitudinal.schemas import WeeklySummary
+from backend.layer10_longitudinal.schemas import LifeEvent, WeeklySummary
 
 
 def _factory():
@@ -67,3 +67,33 @@ def test_longitudinal_is_user_scoped():
     f = _factory()
     PostgresLongitudinalStore(f, "u1").save_summary(_summary("w1"))
     assert PostgresLongitudinalStore(f, "u2").summaries() == []
+
+
+def _life_event(event_id, title, event_date=date(2026, 8, 1), category="career_transition"):
+    return LifeEvent(event_id=event_id, user_id="u1", title=title, category=category,
+                     event_date=event_date, significance_score=0.8)
+
+
+def test_life_event_save_and_list_newest_first():
+    store = PostgresLongitudinalStore(_factory(), "u1")
+    store.save_life_event(_life_event("e1", "started a new job", date(2026, 7, 1)))
+    store.save_life_event(_life_event("e2", "moved to a new city", date(2026, 8, 1)))
+    events = store.life_events()
+    assert [e.title for e in events] == ["moved to a new city", "started a new job"]
+    # date field survives the JSONB round-trip.
+    assert events[0].event_date == date(2026, 8, 1)
+
+
+def test_life_event_upsert_on_same_id():
+    store = PostgresLongitudinalStore(_factory(), "u1")
+    store.save_life_event(_life_event("e1", "started a new job"))
+    store.save_life_event(_life_event("e1", "started a different new job"))
+    events = store.life_events()
+    assert len(events) == 1
+    assert events[0].title == "started a different new job"
+
+
+def test_life_event_is_user_scoped():
+    f = _factory()
+    PostgresLongitudinalStore(f, "u1").save_life_event(_life_event("e1", "started a new job"))
+    assert PostgresLongitudinalStore(f, "u2").life_events() == []

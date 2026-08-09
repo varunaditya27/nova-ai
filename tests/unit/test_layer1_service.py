@@ -204,9 +204,9 @@ def test_safe_due_threads_delegates_slicing_to_get_due_threads(monkeypatch):
     calls = []
     real_get_due_threads = tt.get_due_threads
 
-    def spy(store, now, max_threads=tt.MAX_SURFACED_THREADS):
+    def spy(store, now, max_threads=None, cfg=None):
         calls.append((store, now))
-        return real_get_due_threads(store, now, max_threads)
+        return real_get_due_threads(store, now, max_threads, cfg=cfg)
 
     monkeypatch.setattr(svc.thread_tracker, "get_due_threads", spy)
 

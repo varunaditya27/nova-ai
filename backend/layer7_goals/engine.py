@@ -24,6 +24,7 @@ from backend.layer7_goals.schemas import (
     GoalSignalStrength,
     GoalStatus,
     Layer7Output,
+    ProgressSignalType,
 )
 
 
@@ -66,6 +67,17 @@ def run_goal_pipeline(
         )
         if progress_signal is not None:
             progress_monitor.update_progress_score(top, progress_signal)
+            # A completed/abandoned signal is a real terminal status transition, not just a
+            # progress-score update -- update_progress_score deliberately leaves status alone
+            # ("status handled by the transition rules"), but nothing else in the live per-turn
+            # path was actually applying that rule, so every goal stayed "active" forever
+            # regardless of what the user said. Layer 10's Year in Review needs status_changed_at
+            # to attribute an achievement/abandonment to the right year (docs/POLISH_BACKLOG.md).
+            if progress_signal.signal_type in (
+                ProgressSignalType.COMPLETED.value, ProgressSignalType.ABANDONED.value
+            ) and top.status != progress_signal.signal_type:
+                top.status = progress_signal.signal_type
+                top.status_changed_at = now
             top.signal_events.append(GoalSignalEvent(
                 goal_id=top.goal_id, event_type=progress_signal.signal_type,
                 timestamp=now, evidence_text=message,
@@ -107,9 +119,14 @@ def run_goal_pipeline(
                     domain=data.get("inferred_domain", "other"),
                     direction=data.get("inferred_direction", "achieve_outcome"),
                     status=GoalStatus.ACTIVE.value,
+                    status_changed_at=now,
                     confidence_at_creation=extraction.confidence,
                     signal_strength=extraction.signal_strength or GoalSignalStrength.EXPLICIT_STATED.value,
                     emotional_weight=float(data.get("emotional_weight", 0.0)),
+                    deadline_description=data.get("deadline_description") or None,
+                    deadline_is_inferred=not bool(data.get("has_explicit_deadline", False)),
+                    has_metric=bool(data.get("has_explicit_metric", False)),
+                    metric_description=data.get("metric_description") or None,
                     created_at=now,
                     last_mentioned_at=now,
                     first_active_at=now,

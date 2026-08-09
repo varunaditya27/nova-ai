@@ -73,20 +73,31 @@ def dry_run_deletion(
     """Compute the full cascade WITHOUT executing anything (architecture doc §4.4)."""
     target = set(resolve_scope(request.scope, request.deletion_type, memory_store))
 
+    # target holds whatever resolve_scope returned for this deletion type -- a mix of plain
+    # strings (the live SINGLE_MEMORY route path, "str(memory_id)") and UUID objects (e.g.
+    # FULL_WIPE's memory_store.all()). Compare on string form so both agree with a real
+    # SemanticMemory's supporting_episode_ids (a list[UUID] after deserialization).
+    target_str = {str(t) for t in target}
+
     affected_facts = []
     if semantic_store is not None:
         for fact in semantic_store.all():
-            cited = [e for e in fact.derived_from_episodes if e in target]
+            # Layer 2's real SemanticMemory field is supporting_episode_ids/memory_id/statement --
+            # this previously read derived_from_episodes/fact_id/fact_text, none of which exist on
+            # the real schema (would have raised AttributeError the first time a real
+            # semantic_store was ever passed in; see docs/POLISH_BACKLOG.md).
+            supporting = list(getattr(fact, "supporting_episode_ids", []) or [])
+            cited = [e for e in supporting if str(e) in target_str]
             if not cited:
                 continue
-            remaining = [e for e in fact.derived_from_episodes if e not in target]
+            remaining = [e for e in supporting if str(e) not in target_str]
             if len(remaining) == 0:
                 impact = "will_be_deleted"
             elif len(remaining) < 2:
                 impact = "will_be_updated"
             else:
                 impact = "will_be_flagged_for_review"
-            affected_facts.append((fact.fact_id, fact.fact_text, impact))
+            affected_facts.append((fact.memory_id, fact.statement, impact))
 
     pv_will_change, pv_params = False, []
     if personality_store is not None:
@@ -97,7 +108,13 @@ def dry_run_deletion(
     longitudinal_refs = []
     if longitudinal_store is not None:
         for s in longitudinal_store.all_weekly_summaries():
-            refs = [e for e in s.backing_episode_ids if e in target]
+            # Layer 10's real WeeklySummary has no backing_episode_ids field at all (that field
+            # only exists on RetrospectivePacket) -- this would have raised AttributeError the
+            # first time a real longitudinal_store was passed in. The real per-summary episode
+            # anchor is its significant moment's episode_ids.
+            moment = getattr(s, "most_emotionally_significant_moment", None)
+            episode_ids = list(getattr(moment, "episode_ids", []) or []) if moment else []
+            refs = [e for e in episode_ids if str(e) in target_str]
             if refs:
                 longitudinal_refs.append((s.summary_id, f"{len(refs)} reference(s) would be removed"))
 

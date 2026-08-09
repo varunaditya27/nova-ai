@@ -40,6 +40,8 @@ BASE_PRIORITY_BY_TYPE: dict[str, float] = {
     ProactiveItemType.GOAL_ENCOURAGEMENT.value: 0.55,
     ProactiveItemType.RECURRING_CONCERN_CHECK.value: 0.45,
     ProactiveItemType.THREAD_ANNIVERSARY.value: 0.40,
+    ProactiveItemType.BEHAVIORAL_PATTERN_SURFACING.value: 0.50,
+    ProactiveItemType.RETROSPECTIVE_REFLECTION.value: 0.60,
 }
 
 # BES weight by 7-day trend label (architecture doc §3.3). Inner keys are item types or

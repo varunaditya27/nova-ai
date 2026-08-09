@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
+from .config import Layer1Config
 from .schemas import (
     AttachmentPayload,
     AttachmentType,
@@ -22,8 +23,9 @@ from .schemas import (
     PrimaryModality,
 )
 
-# Whisper transcripts below this confidence degrade to VOICE_UNTRANSCRIBED (§11).
-MIN_TRANSCRIPTION_CONFIDENCE = 0.5
+# Fallback when no ``cfg`` is supplied (every existing unit test). Whisper transcripts below
+# this confidence degrade to VOICE_UNTRANSCRIBED (§11).
+_DEFAULT = Layer1Config()
 
 # Reaction emoji → (emotion label, register hint) (§5.2).
 REACTION_EMOJI_MAP: dict[str, tuple[str, str]] = {
@@ -107,6 +109,7 @@ def _normalize_voice(
     att: AttachmentPayload,
     backend: Optional[VoiceBackend],
     established_language: Optional[str],
+    cfg: Optional[Layer1Config] = None,
 ) -> ModalityContext:
     if backend is None:
         return ModalityContext(
@@ -127,7 +130,7 @@ def _normalize_voice(
         and result.language_detected != established_language
     )
 
-    if result.confidence < MIN_TRANSCRIPTION_CONFIDENCE:
+    if result.confidence < (cfg or _DEFAULT).min_transcription_confidence:
         # Keep the low-confidence transcript but flag it; SC-4 is skipped downstream (§11).
         return ModalityContext(
             primary_modality=PrimaryModality.VOICE_UNTRANSCRIBED,
@@ -194,12 +197,13 @@ def _normalize_location(att: AttachmentPayload) -> ModalityContext:
 
 
 def _normalize_one(
-    att: AttachmentPayload, backends: NormalizerBackends, established_language: Optional[str]
+    att: AttachmentPayload, backends: NormalizerBackends, established_language: Optional[str],
+    cfg: Optional[Layer1Config] = None,
 ) -> ModalityContext:
     if att.attachment_type == AttachmentType.IMAGE:
         return _normalize_image(att, backends.image)
     if att.attachment_type == AttachmentType.VOICE:
-        return _normalize_voice(att, backends.voice, established_language)
+        return _normalize_voice(att, backends.voice, established_language, cfg)
     if att.attachment_type == AttachmentType.DOCUMENT:
         return _normalize_document(att, backends.document)
     if att.attachment_type == AttachmentType.REACTION:
@@ -229,6 +233,7 @@ def normalize(
     attachments: list[AttachmentPayload],
     backends: Optional[NormalizerBackends] = None,
     established_language: Optional[str] = None,
+    cfg: Optional[Layer1Config] = None,
 ) -> ModalityContext:
     """Normalize a message + attachments into a single ``ModalityContext`` (§5.6).
 
@@ -243,7 +248,7 @@ def normalize(
     if not attachments:
         return ModalityContext(primary_modality=PrimaryModality.TEXT, text_content=raw_text)
 
-    contexts = [_normalize_one(att, backends, established_language) for att in attachments]
+    contexts = [_normalize_one(att, backends, established_language, cfg) for att in attachments]
     primary_media = contexts[0]
 
     is_mixed = has_text or len(contexts) > 1

@@ -92,6 +92,61 @@ def on_deferred_coaching(
     )
 
 
+def on_behavioral_pattern(pattern, now: Optional[datetime] = None) -> ProactiveItem:
+    """Create a gentle pattern-surfacing item from a Layer-10 SC-3 BehavioralPattern."""
+    now = now or datetime.utcnow()
+    return ProactiveItem(
+        item_type=ProactiveItemType.BEHAVIORAL_PATTERN_SURFACING.value,
+        source_layer="layer10",
+        content_basis=pattern.description,
+        source_memory_ids=[],
+        base_priority=BASE_PRIORITY_BY_TYPE[ProactiveItemType.BEHAVIORAL_PATTERN_SURFACING.value],
+        earliest_send_time=now + timedelta(days=1),
+        optimal_send_window=(now + timedelta(days=1), now + timedelta(days=10)),
+        expiry_time=now + timedelta(days=21),
+        created_at=now,
+    )
+
+
+def on_retrospective_ready(retrospective, now: Optional[datetime] = None) -> ProactiveItem:
+    """Create a reflective item from a Layer-10 SC-4 RetrospectivePacket that just fired (§9)."""
+    now = now or datetime.utcnow()
+    window_days = getattr(retrospective, "surfacing_window_days", 7)
+    return ProactiveItem(
+        item_type=ProactiveItemType.RETROSPECTIVE_REFLECTION.value,
+        source_layer="layer10",
+        content_basis=retrospective.headline or retrospective.narrative_reflection,
+        source_memory_ids=list(retrospective.backing_episode_ids or []),
+        base_priority=BASE_PRIORITY_BY_TYPE[ProactiveItemType.RETROSPECTIVE_REFLECTION.value]
+        + (retrospective.surfacing_priority - 0.5) * 0.2,
+        earliest_send_time=now,
+        optimal_send_window=(now, now + timedelta(days=window_days)),
+        expiry_time=now + timedelta(days=window_days * 2),
+        created_at=now,
+    )
+
+
+def on_calendar_entry_due(entry, now: Optional[datetime] = None) -> ProactiveItem:
+    """Create an upcoming-date item from a fired Layer-10 SC-5 CalendarEntry that does NOT map to
+    a retrospective (e.g. a Nova-relationship-day milestone) -- a pure celebration nudge, not a
+    look-back. Entries that DO map to a retrospective type go through on_retrospective_ready
+    instead, once SC-4 has generated the real grounded reflection."""
+    now = now or datetime.utcnow()
+    urgency = getattr(entry.layer6_action, "urgency", "opportunistic") if entry.layer6_action else "opportunistic"
+    delay = timedelta(hours=24) if urgency == "within_24h" else timedelta(days=1)
+    window_days = 3 if urgency == "within_week" else 7
+    return ProactiveItem(
+        item_type=ProactiveItemType.UPCOMING_DATE_REMINDER.value,
+        source_layer="layer10",
+        content_basis=entry.title,
+        base_priority=BASE_PRIORITY_BY_TYPE[ProactiveItemType.UPCOMING_DATE_REMINDER.value],
+        earliest_send_time=now,
+        optimal_send_window=(now, now + delay),
+        expiry_time=now + timedelta(days=window_days),
+        created_at=now,
+    )
+
+
 def on_goal_milestone_approaching(
     goal_id: str,
     goal_title: str,

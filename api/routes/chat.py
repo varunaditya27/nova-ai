@@ -20,6 +20,18 @@ from api.streaming import stream_turn
 logger = logging.getLogger("nova.api")
 router = APIRouter(tags=["chat"])
 
+# Fields ChatRequest carries beyond message/session_id -- Layer 1 SC-2's real, additive client
+# signals (see api/schemas.py, docs/FRONTEND_TODO.md). No client sends non-default values for
+# these yet, so this dict is always {} in production today; the plumbing is real regardless.
+_CLIENT_METADATA_FIELDS = (
+    "user_typing_started_at", "deletion_occurred", "deletion_count",
+    "peak_draft_length_chars", "final_draft_length_chars", "is_burst", "burst_count",
+    "is_reply_to_proactive")
+
+
+def _client_metadata(req: ChatRequest) -> dict:
+    return {f: getattr(req, f) for f in _CLIENT_METADATA_FIELDS}
+
 
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, state=Depends(get_state),
@@ -28,7 +40,8 @@ def chat(req: ChatRequest, state=Depends(get_state),
         raise HTTPException(status_code=422, detail="message must not be empty")
     session_id = req.session_id or str(uuid.uuid4())
     try:
-        out = orchestrator.run_turn(state.default_user_id, req.message, session_id=session_id)
+        out = orchestrator.run_turn(state.default_user_id, req.message, session_id=session_id,
+                                    client_metadata=_client_metadata(req))
     except Exception:
         logger.exception("turn failed")
         raise HTTPException(status_code=503, detail="conversation temporarily unavailable")
@@ -62,6 +75,6 @@ def chat_stream(req: ChatRequest, state=Depends(get_state),
         raise HTTPException(status_code=422, detail="message must not be empty")
     session_id = req.session_id or str(uuid.uuid4())
     gen = stream_turn(orchestrator, StreamTypingOverlay(), state.default_user_id, req.message,
-                      session_id=session_id)
+                      session_id=session_id, client_metadata=_client_metadata(req))
     return StreamingResponse(gen, media_type="text/event-stream",
                              headers={"X-Session-Id": session_id, "Cache-Control": "no-cache"})

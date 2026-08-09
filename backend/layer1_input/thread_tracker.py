@@ -14,17 +14,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Protocol
 
+from .config import Layer1Config
 from .schemas import ImportanceTier, NarrativeThread, ThreadStatus
 
-# Maximum threads surfaced per session (§3.5).
-MAX_SURFACED_THREADS = 2
-
-_TIER_SCORE: dict[ImportanceTier, float] = {
-    ImportanceTier.CRITICAL: 1.0,
-    ImportanceTier.HIGH: 0.75,
-    ImportanceTier.MEDIUM: 0.50,
-    ImportanceTier.LOW: 0.25,
-}
+# Fallback when no ``cfg`` is supplied (every existing unit test).
+_DEFAULT = Layer1Config()
 
 
 class ThreadStore(Protocol):
@@ -48,14 +42,14 @@ class InMemoryThreadStore:
         return [t for t in self._threads if t.status == status]
 
 
-def importance_tier_score(tier: ImportanceTier) -> float:
+def importance_tier_score(tier: ImportanceTier, cfg: Optional[Layer1Config] = None) -> float:
     """Numeric weight for an importance tier (§3.5 priority composition)."""
-    return _TIER_SCORE[tier]
+    return (cfg or _DEFAULT).importance_tier_score[tier.value]
 
 
-def priority_score(thread: NarrativeThread) -> float:
+def priority_score(thread: NarrativeThread, cfg: Optional[Layer1Config] = None) -> float:
     """Composite surfacing priority: emotional weight scaled by importance tier (§3.5)."""
-    return thread.emotional_weight * importance_tier_score(thread.importance_tier)
+    return thread.emotional_weight * importance_tier_score(thread.importance_tier, cfg)
 
 
 def _is_due(thread: NarrativeThread, now: datetime) -> bool:
@@ -65,14 +59,19 @@ def _is_due(thread: NarrativeThread, now: datetime) -> bool:
     )
 
 
-def due_candidates(store: ThreadStore, now: datetime) -> list[NarrativeThread]:
+def due_candidates(
+    store: ThreadStore, now: datetime, cfg: Optional[Layer1Config] = None
+) -> list[NarrativeThread]:
     """All unresolved threads past their follow-up time, sorted by priority desc (§3.5)."""
     candidates = [t for t in store.get_all(status=ThreadStatus.UNRESOLVED) if _is_due(t, now)]
-    return sorted(candidates, key=priority_score, reverse=True)
+    return sorted(candidates, key=lambda t: priority_score(t, cfg), reverse=True)
 
 
 def get_due_threads(
-    store: ThreadStore, now: datetime, max_threads: int = MAX_SURFACED_THREADS
+    store: ThreadStore, now: datetime, max_threads: Optional[int] = None,
+    cfg: Optional[Layer1Config] = None,
 ) -> list[NarrativeThread]:
     """Top-priority due threads to surface this session — at most ``max_threads`` (§3.5)."""
-    return due_candidates(store, now)[:max_threads]
+    c = cfg or _DEFAULT
+    limit = max_threads if max_threads is not None else c.max_surfaced_threads
+    return due_candidates(store, now, cfg)[:limit]

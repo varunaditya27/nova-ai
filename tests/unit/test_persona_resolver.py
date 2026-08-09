@@ -22,6 +22,63 @@ def test_core_anchors_present_and_name_immutable():
     assert all(a["centrality"] >= 0.80 for a in anchors.values())
 
 
+# ── Real IdentityMemory override (§3.4 forward-compatibility, closed 2026-08-09) ────────────
+def _belief(category, statement, centrality=0.8):
+    from backend.layer2_memory.schemas import IdentityMemory
+    return IdentityMemory(category=category, statement=statement, centrality=centrality)
+
+
+def test_load_core_anchors_ignores_entries_with_no_topical_match():
+    """A belief in the right category but about something unrelated must not override an
+    anchor -- category alone isn't enough, the statement has to actually be about that anchor's
+    topic (e.g. nothing about humor exists in the default identity seed)."""
+    from backend.layer2_memory.schemas import IdentityCategory
+    entries = [_belief(IdentityCategory.PERSONALITY_TRAIT,
+                       "Nova is direct rather than evasive, even when a topic is difficult")]
+    anchors = pr.load_core_anchors(identity_memory_entries=entries)
+    assert anchors["humor_style"]["value"] == pr.CORE_IDENTITY_ANCHORS["humor_style"]["value"]
+
+
+def test_load_core_anchors_overrides_on_a_real_topical_match():
+    from backend.layer2_memory.schemas import IdentityCategory
+    entries = [_belief(IdentityCategory.CORE_VALUE,
+                       "Nova values the user's long-term wellbeing over being agreeable "
+                       "in the moment", centrality=0.9)]
+    anchors = pr.load_core_anchors(identity_memory_entries=entries)
+    assert anchors["primary_orientation"]["value"] == entries[0].statement
+    # Untouched anchors keep their constant.
+    assert anchors["humor_style"]["value"] == pr.CORE_IDENTITY_ANCHORS["humor_style"]["value"]
+
+
+def test_load_core_anchors_never_overrides_the_immutable_name_anchor():
+    from backend.layer2_memory.schemas import IdentityCategory
+    entries = [_belief(IdentityCategory.PERSONALITY_TRAIT, "Nova's name is actually Companion")]
+    anchors = pr.load_core_anchors(identity_memory_entries=entries)
+    assert anchors["name"]["value"] == "Nova"
+
+
+def test_load_core_anchors_picks_the_highest_centrality_match_within_a_category():
+    from backend.layer2_memory.schemas import IdentityCategory
+    entries = [
+        _belief(IdentityCategory.PERSONALITY_TRAIT, "Nova is warm but a little shy", centrality=0.4),
+        _belief(IdentityCategory.PERSONALITY_TRAIT, "Nova is deeply warm and expressive",
+               centrality=0.9),
+    ]
+    anchors = pr.load_core_anchors(identity_memory_entries=entries)
+    assert anchors["warmth_register"]["value"] == "Nova is deeply warm and expressive"
+
+
+def test_resolve_persona_state_reflects_a_real_identity_override():
+    """End-to-end through the real resolve_persona_state entry point, not just load_core_anchors
+    directly -- proves the override actually reaches PersonaState.character_description (built
+    from the character_type anchor)."""
+    from backend.layer2_memory.schemas import IdentityCategory
+    entries = [_belief(IdentityCategory.PERSONALITY_TRAIT,
+                       "Nova is a curious, warm companion above all else", centrality=0.9)]
+    state = pr.resolve_persona_state(identity_memory_entries=entries)
+    assert state.character_description == "Nova is a curious, warm companion above all else"
+
+
 # ── Default resolution (§3.4 + §12 fallback) ─────────────────────────────────
 def test_resolve_defaults_when_no_uwm_available():
     state = pr.resolve_persona_state()

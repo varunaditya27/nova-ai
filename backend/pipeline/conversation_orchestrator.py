@@ -39,15 +39,16 @@ _CRISIS_FALLBACK = ("I'm here with you. If you're in immediate danger, please co
 @dataclass
 class PipelineSteps:
     """Injectable layer entry points. All optional; production wires real layer adapters."""
-    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id) -> input_packet
+    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id, client_metadata=None) -> input_packet
     recall: Optional[Callable] = None           # L2  (user_id, input_packet) -> list[memory]
     cold_start: Optional[Callable] = None       # L13 (user_id, message) -> directives | None
-    classify: Optional[Callable] = None         # L3  (message, input_packet, recalled) -> EI
+    classify: Optional[Callable] = None         # L3  (user_id, message, input_packet, recalled) -> EI
     safety_scan: Optional[Callable] = None      # L11 SC-2 (user_id, message, input_packet) -> CA
     build_persona: Optional[Callable] = None    # L4  (ctx) -> persona_packet
     tool_use: Optional[Callable] = None         # L8  (ctx) -> ToolTurnOutcome | None
     plan: Optional[Callable] = None             # L4a (ctx) -> draft
     refine: Optional[Callable] = None           # L4b (ctx, draft) -> refined
+    social_coaching: Optional[Callable] = None  # L5 SC-4/5 (ctx, response) -> response
     guardrails: Optional[Callable] = None       # L11 SC-1 (ctx, response) -> result
     escalate: Optional[Callable] = None         # L11 SC-3 (ctx, crisis) -> crisis response
     deliver: Optional[Callable] = None          # L9  (ctx, response, crisis_mode_active) -> out
@@ -60,6 +61,7 @@ class TurnContext:
     message: str
     now: datetime
     session_id: str = ""
+    client_metadata: dict = field(default_factory=dict)   # L1 SC-2 raw client signals, see ChatRequest
     input_packet: Any = None
     recalled_memories: list = field(default_factory=list)
     confabulation_guard: bool = False
@@ -84,6 +86,8 @@ class TurnContext:
     degraded: bool = False
     layers_run: list = field(default_factory=list)
     state_updated: bool = False
+    layer9_events: list = field(default_factory=list)   # L9's real thinking_pause/backchannel events
+    format_spec_applied: Any = None   # L9's real FormatSpec (structure/length target), see deliver()
 
 
 @dataclass
@@ -105,6 +109,8 @@ class OrchestratedOutput:
     state_updated: bool
     layers_run: list
     recalled_memories: list = field(default_factory=list)   # for "echoes" — what Nova recalled
+    layer9_events: list = field(default_factory=list)   # L9's real thinking_pause/backchannel events
+    format_spec_applied: Any = None   # L9's real FormatSpec (structure/length target), see deliver()
 
 
 def route_system(emotion_intent) -> str:
@@ -144,17 +150,19 @@ class ConversationOrchestrator:
         self.steps = steps
 
     def run_turn(self, user_id: str, message: str, now: Optional[datetime] = None,
-                 session_id: str = "") -> OrchestratedOutput:
+                 session_id: str = "", client_metadata: Optional[dict] = None) -> OrchestratedOutput:
         s = self.steps
         ctx = TurnContext(user_id=user_id, message=message,
-                          now=now or datetime.now(timezone.utc), session_id=session_id)
+                          now=now or datetime.now(timezone.utc), session_id=session_id,
+                          client_metadata=client_metadata or {})
 
         # ── Layer 11 SC-2: crisis detection runs first and is NEVER blocked ──
         ctx.crisis_assessment = self._safe_safety_scan(ctx)
 
         try:
             # ── Layer 1: input perception ───────────────────────────────────
-            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id)
+            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id,
+                                          client_metadata=ctx.client_metadata)
             ctx.layers_run.append("layer1_input")
 
             # ── Layer 2: memory recall (read-only during inference) ─────────
@@ -166,7 +174,7 @@ class ConversationOrchestrator:
             self._apply_cold_start_overlay(ctx)
 
             # ── Layer 3: emotion + intent classification, mode resolution ───
-            ctx.emotion_intent = s.classify(message, ctx.input_packet, ctx.recalled_memories)
+            ctx.emotion_intent = s.classify(user_id, message, ctx.input_packet, ctx.recalled_memories)
             ctx.conversation_mode = getattr(ctx.emotion_intent, "conversation_mode", "casual")
             ctx.layers_run.append("layer3_reasoning")
 
@@ -239,6 +247,7 @@ class ConversationOrchestrator:
         else:
             run_system2(ctx, self.steps)
         ctx.layers_run.append("layer4_persona")
+        self._run_social_coaching(ctx)
         self._run_guardrails(ctx)
 
     def _handle_tool_use(self, ctx: TurnContext) -> bool:
@@ -257,6 +266,19 @@ class ConversationOrchestrator:
         ctx.response_text = getattr(outcome, "response_text", "") or ctx.response_text
         ctx.layers_run.append("layer8_tools")
         return True
+
+    def _run_social_coaching(self, ctx: TurnContext) -> None:
+        """Layer 5 SC-4/5: a conservatively-gated coaching observation, naturally appended to
+        the already-generated response (never replaces it, §11 hard rule). Runs before SC-1
+        Ethical Guardrails so guardrails always gets the last word on the delivered text,
+        including any coaching-modified version of it."""
+        if self.steps.social_coaching is None:
+            return
+        try:
+            ctx.response_text = self.steps.social_coaching(ctx, ctx.response_text) or ctx.response_text
+            ctx.layers_run.append("layer5_relationship")
+        except Exception:
+            logger.exception("social coaching failed; delivering the ungated response")
 
     def _run_guardrails(self, ctx: TurnContext) -> None:
         """Layer 11 SC-1: post-generation ethical guardrails (runs before Layer 9 delivers)."""
@@ -306,4 +328,6 @@ class ConversationOrchestrator:
             proactivity_mode=ctx.proactivity_mode, pending_elicitation=ctx.pending_elicitation,
             guardrail_flags=ctx.guardrail_flags, degraded=ctx.degraded,
             state_updated=ctx.state_updated, layers_run=ctx.layers_run,
-            recalled_memories=list(ctx.recalled_memories or []))
+            recalled_memories=list(ctx.recalled_memories or []),
+            layer9_events=list(ctx.layer9_events or []),
+            format_spec_applied=ctx.format_spec_applied)

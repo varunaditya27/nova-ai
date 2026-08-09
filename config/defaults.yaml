@@ -5,6 +5,11 @@ system:
   chroma_port: ${CHROMA_PORT:-8000}
   default_user_id: ${NOVA_USER_ID:-local-user}
   debug_mode: false
+  # Single-user personal deployment — no per-user timezone capture exists (see
+  # docs/layer-1-architecture.md §16), so this fixed offset stands in for it everywhere Layer 1
+  # converts a stored UTC timestamp to local wall-clock time (circadian band, historical
+  # band histogram). India Standard Time: UTC+5:30.
+  timezone_offset_hours: 5.5
 
 api:
   host: ${API_HOST:-0.0.0.0}

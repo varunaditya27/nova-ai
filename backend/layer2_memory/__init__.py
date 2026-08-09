@@ -33,7 +33,8 @@ from .forgetting_engine import (
     extract_semantic_memory,
     should_trigger_fce,
 )
-from .identity import apply_identity_update, update_threshold
+from .identity import apply_identity_update, detect_identity_contradictions, update_threshold
+from .identity_seed import default_identity_beliefs
 from .memory_store import InMemoryMemoryStore, resolve_uwm_query
 from .memory_strength import (
     decay_rate,
@@ -57,6 +58,7 @@ from .schemas import (
 from .semantic_memory import handle_contradiction
 from .state_updater import StateUpdateResult, state_updater
 from .stm import add_turn, should_promote
+from .uwm_updater import merge_uwm_update
 
 __all__ = [
     # Orchestration
@@ -90,10 +92,14 @@ __all__ = [
     # Semantic / identity
     "handle_contradiction",
     "apply_identity_update",
+    "detect_identity_contradictions",
     "update_threshold",
+    "default_identity_beliefs",
     # STM
     "add_turn",
     "should_promote",
+    # UWM
+    "merge_uwm_update",
     # Audit
     "AuditTrail",
     "detect_narrative_links",

@@ -1175,4 +1175,71 @@ Layer 6 entry point beyond the two above (`run_proactive_cycle`, `evaluate_timin
   layers: `on_thread_due` needs Layer 1's narrative-thread detector (still unbuilt per the Layer 1
   audit); `on_post_distress_gap` needs Layer 2 state-updater hooks not yet present;
   `on_deferred_coaching` needs Layer 5's `proactive_coaching_queue`, which cannot exist until
-  Layer 5 itself is wired (Phase 5 finding — zero production callers).
+  Layer 5 itself is wired (Phase 5 finding — zero production callers). **`on_deferred_coaching` is
+  now wired — see §16 below**; `on_thread_due` and `on_post_distress_gap` remain blocked on Layer
+  1/2 as described.
+
+## 16. §9.3 intake wired (follow-up, 2026-08-09)
+
+Layer 5's full build (`docs/layer-5-architecture.md` §16) unblocked this. `api/assembly.py`'s
+`social_coaching` hook was rewired to call the real Layer 5 orchestrator
+(`build_social_intelligence_packet`) instead of a bare `detect_coaching_opportunity` +
+`inject_observation` pair — the orchestrator already computes `proactive_coaching_queue` (§8) for
+any opportunity gate 2 (timing) or gate 3 (recency) defers, exactly matching this contract's input.
+
+`api/state.py::make_proactive_coaching_writer` turns a deferred `CoachingOpportunity` into a
+`ProactiveItem` via the real `on_deferred_coaching(opportunity, person_display_name, now)` and
+upserts it into `PostgresProactiveQueue`, mirroring `make_proactive_writer`'s goal-check-in
+pattern: `item_id` is deterministically derived from the triggering pattern/event id, so
+re-deferring the same opportunity on a later turn upserts instead of duplicating. Wired into
+`build_pipeline_steps(proactive_coaching_writer=...)` in `build_app_state`.
+
+Proven end to end through the real orchestrator by
+`tests/unit/api/test_assembly_turn.py::test_real_layer5_wiring_deferred_coaching_reaches_the_layer6_proactive_queue`:
+a relationship stage of `"new"` hard-blocks gate 2 (timing), the pattern's observation never
+reaches the delivered response, and a `social_pattern_coaching` item lands in the real
+`PostgresProactiveQueue` for that user.
+
+**Still open, unchanged**: no delivery channel exists for SC-2..SC-5 (genuine infra work — a push
+surface, not a wiring gap); `GET /proactive` still returns ungated `content_basis`, including now
+for `social_pattern_coaching` items — the same caveat above applies, whoever builds the consumer
+must run `evaluate_timing_gate` server-side first, not render `content_basis` directly.
+`on_thread_due`/`on_post_distress_gap` are no longer blocked — see §18.
+
+## 17. Three more intake functions for Layer 10 (follow-up, 2026-08-09)
+
+Layer 10's full build (`docs/layer-10-architecture.md` §16) added `on_behavioral_pattern`,
+`on_retrospective_ready`, and `on_calendar_entry_due` to `backend/layer6_proactivity/intake.py` —
+same shape as the four pre-existing constructors, plus two new `ProactiveItemType` values
+(`behavioral_pattern_surfacing`, `retrospective_reflection`) and their `BASE_PRIORITY_BY_TYPE`
+entries. `background/pattern_detection_job.py` and the new `background/life_calendar_job.py` are
+the only callers. See `docs/layer-10-architecture.md` §16.3-16.4 for the full design, including
+why `on_calendar_entry_due` exists separately from `on_retrospective_ready` (a relationship-day
+milestone is a celebration nudge, not a look-back retrospective — the two are semantically
+different even though both originate from a fired `CalendarEntry`).
+
+## 18. Follow-up (2026-08-09): `on_thread_due` and `on_post_distress_gap` both closed
+
+Both intake functions in `docs/PENDING_WORK.md`'s Layer 6 entry were listed as "blocked" —
+re-investigated and both closed, neither needed the blocker it was waiting on.
+
+**`on_thread_due`** was blocked on Layer 1's narrative-thread detector, which shipped this pass
+(`docs/layer-1-architecture.md` §18.2). `api/state.py::make_thread_proactive_writer` (post-turn)
+reads `ctx.input_packet.due_threads` (now real) and calls `on_thread_due` for each, upserting a
+deterministic `ProactiveItem` into the real queue — the same idempotent-`item_id` pattern as
+`goal_checkin_item`.
+
+**`on_post_distress_gap`** was recorded as "blocked on a Layer 2 state-updater hook that doesn't
+exist yet." Re-investigation found no new hook is actually required: the function's three real
+inputs (`session_summary`, `episode_id`, `end_valence`, `gap_days`) are all directly derivable
+from the already-persisted episodic memories' `emotion_vector` — the same real signal
+`background/dependency_monitor_job.py` and Layer 10's jobs already reuse via
+`background/_adapters.py`. `background/distress_gap_job.py` (new, daily) finds the most recent
+episode with `valence < -0.6`, computes the real gap in days since it, and calls the function
+directly — no persisted "last distress session" pointer needed, since it's recomputed from the
+episodic store each run. Registered as the scheduler's eleventh job.
+
+**Tests:** `tests/unit/background/test_jobs.py` — three new tests for `distress_gap` (queues on a
+real gap, doesn't queue without one, ignores non-distressed episodes) plus the two updated
+`on_thread_due` tests in `tests/unit/api/test_state.py`/`test_assembly_turn.py`
+(`docs/layer-1-architecture.md` §18.2).

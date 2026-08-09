@@ -188,6 +188,20 @@ def test_fuzzy_label_buckets(delta, expected_substr):
     assert labeler(now - delta) == expected_substr
 
 
+def test_fuzzy_label_same_day_boundary_applies_timezone_offset():
+    """'earlier today' vs. 'yesterday' is a local-calendar-date question. At 2am IST (20:30 UTC
+    the prior day), a memory from 10pm IST the previous evening (16:30 UTC, same UTC day) must
+    read as 'yesterday' locally, not 'earlier today' from a raw-UTC same-day check."""
+    now = datetime(2026, 6, 27, 20, 30)          # 2026-06-27 20:30 UTC == 2026-06-28 02:00 IST
+    ts = now - timedelta(hours=4)                 # 2026-06-27 16:30 UTC == 2026-06-27 22:00 IST
+
+    utc_labeler = tr.make_fuzzy_labeler(now)
+    ist_labeler = tr.make_fuzzy_labeler(now, timezone_offset_hours=5.5)
+
+    assert utc_labeler(ts) == "earlier today"     # same UTC calendar date
+    assert ist_labeler(ts) == "yesterday"         # different IST calendar date
+
+
 def test_fuzzy_label_eight_to_fourteen_months_uses_month_name():
     now = datetime(2026, 6, 26, 15, 0, 0)
     labeler = tr.make_fuzzy_labeler(now)

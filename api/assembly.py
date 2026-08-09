@@ -25,7 +25,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Callable, Optional
 
@@ -118,17 +118,39 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          tool_manager=None,
                          goal_provider: Optional[Callable] = None,
                          relationship_provider: Optional[Callable] = None,
+                         uwm_provider: Optional[Callable] = None,
+                         identity_provider: Optional[Callable] = None,
+                         social_provider: Optional[Callable] = None,
+                         social_surface_writer: Optional[Callable] = None,
+                         proactive_coaching_writer: Optional[Callable] = None,
+                         format_profile_provider: Optional[Callable] = None,
+                         longitudinal_provider: Optional[Callable] = None,
                          profile_provider: Optional[Callable] = None,
+                         session_last_delivered_provider: Optional[Callable] = None,
+                         thread_provider: Optional[Callable] = None,
+                         nova_positions_provider: Optional[Callable] = None,
                          vector_store=None,
+                         layer1_config=None, timezone_offset_hours: float = 0.0,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
     from backend.layer1_input import process_input_event, ClientMetadata
+    from backend.layer1_input.config import Layer1Config
     from backend.layer1_input.schemas import UserTemporalProfile, UserBehaviorBaseline
+
+    l1_config = layer1_config or Layer1Config()
     from backend.layer2_memory import memory_arbiter
     from backend.layer2_memory.schemas import ConversationMode, EmotionVector
     from backend.layer3_reasoning import build_emotion_intent_packet
-    from backend.layer3_reasoning.schemas import LLMClassificationOutput
-    from backend.layer4_persona import generate_semantic_draft
-    from backend.layer4_persona.schemas import PersonaPacket
+    from backend.layer3_reasoning.schemas import LLMClassificationOutput, BackgroundEmotionalState
+    from backend.layer4_persona import (
+        generate_semantic_draft, resolve_persona_state, calibrate_voice, detect_drift,
+        refine_emotion, should_skip_refinement, compute_relationship_state,
+    )
+    from backend.layer4_persona.packet_builder import GRACEFUL_REFUSAL_TEXT
+    from backend.layer4_persona.schemas import (
+        PersonaPacket, SemanticDraft, FinalResponsePacket, RecommendedAction,
+    )
+    from backend.layer5_relationship import build_social_intelligence_packet
+    from backend.layer5_relationship.schemas import SocialGraph
     from backend.layer9_output import deliver as l9_deliver
     from backend.layer11_safety import evaluate, generate_crisis_response, run_all_checks
     from backend.layer11_safety.schemas import CrisisTier
@@ -155,8 +177,13 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         return EmotionVector(valence=-prior, arousal=prior,
                              dominant_label="neutral" if prior < 0.3 else "vulnerable")
 
-    def perceive(user_id, message, now, session_id=""):
-        profile_store = None
+    def perceive(user_id, message, now, session_id="", client_metadata=None):
+        # Cold-start fallback still carries the configured timezone offset — it's a deployment
+        # property, not something that depends on having session history (see
+        # test_perceive_applies_configured_timezone_offset_to_circadian_band).
+        profile_store = _SingleProfileStore(
+            UserTemporalProfile(user_id=_uuid_for(user_id),
+                                timezone_offset_hours=timezone_offset_hours))
         behavior_baseline = None
         if profile_provider is not None:
             try:
@@ -167,19 +194,55 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                     relationship_age_days=d["relationship_age_days"],
                     average_session_frequency_days=d["average_session_frequency_days"],
                     typical_bands=d["typical_bands"],
-                    last_session_end=d["last_session_end"]))
+                    last_session_end=d["last_session_end"],
+                    timezone_offset_hours=timezone_offset_hours))
                 behavior_baseline = UserBehaviorBaseline(
                     message_length_median_chars=d["message_length_median_chars"])
             except Exception:
                 logger.exception("temporal profile provider failed; Layer 1 falls back to cold start")
-        # NOTE: attachments are always [] and ClientMetadata carries no real behavioral timestamps
-        # (latency/deletion/burst) — the client doesn't send them yet (ChatRequest has no fields
-        # for them). SC-2's implicit-signal scoring and SC-3/SC-4 (multimodal/voice) are therefore
-        # always neutral/inactive in the live pipeline; see docs/layer-1-architecture.md §16.
+        # nova_last_delivered_at (§3, latency signal): real, server-side -- no client instrumentation
+        # needed. Session.last_delivered_at is stamped by the post-turn state writer with this
+        # turn's `now`, so the *next* turn's perceive() reads back when Nova actually replied.
+        nova_last_delivered_at = None
+        if session_last_delivered_provider is not None:
+            try:
+                nova_last_delivered_at = session_last_delivered_provider(session_id or "default")
+            except Exception:
+                logger.exception("session last-delivered lookup failed; latency signal degrades")
+        # The rest of ClientMetadata (typing start, deletion, draft length, burst) has no
+        # server-side source -- it's real plumbing waiting on frontend instrumentation to actually
+        # populate `client_metadata` (see docs/FRONTEND_TODO.md). `{}` today (current client sends
+        # only message/session_id) reproduces today's neutral defaults exactly.
+        cm = client_metadata or {}
+        real_client_metadata = ClientMetadata(
+            session_id=session_id or str(uuid.uuid4()),
+            nova_last_delivered_at=nova_last_delivered_at,
+            user_typing_started_at=cm.get("user_typing_started_at"),
+            deletion_occurred=bool(cm.get("deletion_occurred", False)),
+            deletion_count=int(cm.get("deletion_count", 0) or 0),
+            peak_draft_length_chars=int(cm.get("peak_draft_length_chars", 0) or 0),
+            final_draft_length_chars=int(cm.get("final_draft_length_chars", 0) or 0),
+            is_burst=bool(cm.get("is_burst", False)),
+            burst_count=int(cm.get("burst_count", 1) or 1),
+            is_reply_to_proactive=bool(cm.get("is_reply_to_proactive", False)))
+        # Attachments (SC-3 multimodal / SC-4 prosody) stay [] -- no image/voice/document backend
+        # is implemented or wired anywhere in this codebase, a separate infra project, not an
+        # implicit-signals gap (docs/POLISH_BACKLOG.md).
+        # thread_store (§3.5): a real per-user PostgresThreadStore when wired, so due_threads
+        # reflects narrative threads the post-turn thread writer actually persisted, instead of
+        # process_input_event's always-fresh, always-empty InMemoryThreadStore() default.
+        thread_store = None
+        if thread_provider is not None:
+            try:
+                thread_store = thread_provider(user_id)
+            except Exception:
+                logger.exception("thread provider failed; due_threads degrades to empty")
         packet = _run(process_input_event(
             _uuid_for(user_id), message, now, [],
-            ClientMetadata(session_id=session_id or str(uuid.uuid4())),
-            profile_store=profile_store, behavior_baseline=behavior_baseline))
+            real_client_metadata,
+            profile_store=profile_store, behavior_baseline=behavior_baseline,
+            thread_store=thread_store,
+            config=l1_config))
         setattr(packet, "raw_message", message)   # carry the text forward for recall
         return packet
 
@@ -228,23 +291,129 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 primary_intent="chitchat", secondary_intent=None, intent_confidence=0.3,
                 needs_advice=False)
 
-    def classify(message, input_packet, recalled):
+    def classify(user_id, message, input_packet, recalled):
         # Forward the Layer 1 signals that are real in production (Phase 1/2 audits). NOT
         # implicit_intensity: Layer 1 pins it at exactly 0.10 live (no client behavioral data
         # yet), and the neutral-skip heuristic's gate is `< 0.1` — forwarding it would disable
         # that gate on every single turn. See docs/POLISH_BACKLOG.md.
+        #
+        # BES inputs (§4): now real, since Layer 2's UWM/episodic-memory work landed.
+        # episodic_memories drives the 14-day valence trend; active_stressors comes straight off
+        # the UWM's life_context (same Stressor schema compute_stressor_load expects — no
+        # translation needed). psychological_model is NOT forwarded: the UWM narrow-slice scope
+        # decision excluded it (still unextracted, would only ever be None).
+        episodic_memories = []
+        active_stressors = []
+        try:
+            episodic_memories = memory_store.active_episodic(user_id)
+        except Exception:
+            logger.exception("BES episodic lookup failed; classifying without valence trend")
+        if uwm_provider is not None:
+            try:
+                uwm = uwm_provider(user_id)
+                if uwm is not None:
+                    active_stressors = uwm.life_context.active_stressors
+            except Exception:
+                logger.exception("BES stressor lookup failed; classifying without stressor load")
+        # relationship_depth (§6, §9): now real, since infra/db/relationship_store.py's
+        # record_turn genuinely computes tie_strength (session-accumulated, applied on session
+        # boundary) instead of leaving it pinned at 0.0 forever. Unblocks SC-4 Mismatch's and
+        # SC-5 Empathy Hypothesis's relationship-depth-gated behavior.
+        relationship_depth = 0.0
+        if relationship_provider is not None:
+            try:
+                rel = relationship_provider(user_id)
+                if rel is not None:
+                    relationship_depth = float(getattr(rel, "tie_strength", 0.0) or 0.0)
+            except Exception:
+                logger.exception("relationship_depth lookup failed; classifying at depth 0.0")
         return build_emotion_intent_packet(
             message,
             circadian_band=getattr(input_packet, "circadian_band", "afternoon"),
             composite_prior=getattr(input_packet, "composite_emotional_prior", 0.0) or 0.0,
             prior_confidence=getattr(input_packet, "prior_confidence", 0.0) or 0.0,
             signal_mismatch_flag=getattr(input_packet, "signal_mismatch", False),
+            episodic_memories=episodic_memories,
+            active_stressors=active_stressors,
+            relationship_depth=relationship_depth,
+            # Explicit tz-aware `now`: compute_background_state's own default is naive
+            # (`datetime.utcnow()`), but real EpisodicMemory.created_at is stamped tz-aware
+            # (see make_state_update_writer) -- without this, comparing the two inside
+            # `_recent()` raises on every turn once real episodic data exists, and the BES
+            # silently degrades to insufficient_data (caught via
+            # test_real_layer3_wiring_forwards_episodic_memories_to_background_state).
+            now=datetime.now(timezone.utc),
             llm_fn=_json_classifier)
 
     def safety_scan(user_id, message, input_packet):
-        signal = evaluate(message)
+        # SC-2's longitudinal layer (architecture doc §4.3 layer 3) needs episodic/emotional
+        # records, not an LLM -- previously never forwarded because safety_scan runs BEFORE
+        # Layer 2's recall completes (by design). memory_store.active_episodic is a raw store
+        # read, not the recall/scoring pipeline, so it's safe to call here too -- classify()
+        # already does exactly this for the same reason (BES inputs). Reusing Layer 10's own
+        # adapters converts the raw EpisodicMemory rows into the .date/.topics/.valence shape
+        # evaluate_longitudinal_pattern expects, instead of duplicating that conversion here.
+        episodic_memories, emotional_records_list = [], []
+        try:
+            from background._adapters import episodic_records, emotional_records
+            episodic_memories = episodic_records(memory_store, user_id, timezone_offset_hours)
+            emotional_records_list = emotional_records(memory_store, user_id, timezone_offset_hours)
+        except Exception:
+            logger.exception("SC-2 longitudinal lookup failed; evaluating lexical-only")
+        now_local = (datetime.now(timezone.utc) + timedelta(hours=timezone_offset_hours)).date()
+        signal = evaluate(message, episodic_memories=episodic_memories,
+                          emotional_records=emotional_records_list, now=now_local)
         tier = getattr(signal, "tier", CrisisTier.NONE.value)
         return _CrisisAssessment(is_crisis=tier in veto_tiers, tier=tier, signal=signal)
+
+    def _uwm_directive(uwm) -> str:
+        """Plain-language brief from the User World Model's profile/relationship-graph/
+        life-context (§7) — never raw scores, matching every other directive in this module.
+        communication_model is intentionally not read here: style_learning.py already owns
+        communication style live, via the relationship-state directive above."""
+        if uwm is None:
+            return ""
+        parts = []
+        p = uwm.profile
+        facts = [f for f in (
+            p.preferred_name and f"goes by {p.preferred_name}",
+            p.current_life_stage if p.current_life_stage != "unknown" else None,
+            p.field_of_study_or_work,
+            p.institution_or_employer and f"at {p.institution_or_employer}",
+        ) if f]
+        if facts:
+            parts.append("What you know about the user: " + ", ".join(facts) + ".")
+        people = sorted(uwm.relationship_graph.people, key=lambda n: n.mention_count, reverse=True)[:3]
+        if people:
+            names = ", ".join(f"{n.name} ({n.relationship_tier})" for n in people)
+            parts.append(f"People who matter to them: {names}.")
+        situations = [s.description for s in uwm.life_context.active_situations if s.status == "active"][:2]
+        if situations:
+            parts.append("Currently going through: " + "; ".join(situations) + ".")
+        if not parts:
+            return ""
+        return (" ".join(parts) + " Weave this in naturally only if relevant — never recite it "
+                "back at them or make it sound like you're reading from a file.")
+
+    def _identity_directive(beliefs) -> str:
+        """Plain-language brief from Nova's own self-model (§6) — top-centrality non-immutable
+        beliefs only. Filters immutable beliefs here too (not just in identity_provider) as
+        defense in depth: immutable safety policies are enforced by Layer 11's separate
+        hard-coded path, not by reminding the LLM every turn, and must never reach this prompt
+        even if some future provider implementation forgets to exclude them itself."""
+        mutable = [b for b in (beliefs or []) if not getattr(b, "is_immutable", False)]
+        if not mutable:
+            return ""
+        traits = "; ".join(b.statement for b in mutable)
+        return f"This reflects who you (Nova) genuinely are: {traits}. Let it show, don't recite it."
+
+    _MEMORY_POLICY_NOTE = {
+        "none": "do not reference specific past conversations at all.",
+        "soft": "you may vaguely gesture at past context (\"I remember you mentioned something "
+               "like this\") but not cite specific episodes.",
+        "episodic": "you may reference specific past episodes directly.",
+        "full": "you may reference specific episodes and broader patterns you've noticed.",
+    }
 
     def build_persona(ctx):
         """Per-user Layer-4/5 persona packet: loads the persisted relationship state and turns the
@@ -254,6 +423,15 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             try:
                 rel = relationship_provider(ctx.user_id)
                 if rel is not None:
+                    # record_turn (infra/db/relationship_store.py) advances counters + stage but
+                    # never stamps the stage-derived behavioral gates (self_disclosure_ceiling,
+                    # memory_reference_policy, follow_up_question_ceiling, direct_noticing_allowed)
+                    # -- compute_relationship_state does that deterministically from the persisted
+                    # state (architecture doc §4.4). No communication_model passed: it's always
+                    # None live (Layer 2's UWM narrow slice never extracts one), and passing one
+                    # would let _apply_style_calibration overwrite the EMA-learned params
+                    # style_learning.py already owns (see docs/POLISH_BACKLOG.md's Layer 4 entry).
+                    rel = compute_relationship_state(persisted=rel)
                     packet.relationship_state = rel
                     stage = getattr(rel, "stage", "new")
                     msgs = getattr(rel, "total_messages_exchanged", 0)
@@ -262,6 +440,9 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         f"You and the user are at the '{stage}' stage of a long-term relationship "
                         f"({msgs} messages across {sessions} sessions). Match that familiarity — "
                         f"warmer and more casual as it deepens; do not over-familiarize when new.")
+                    packet.memory_reference_policy = (
+                        f"Memory reference policy for this stage: '{rel.memory_reference_policy}' "
+                        f"— {_MEMORY_POLICY_NOTE.get(rel.memory_reference_policy, '')}")
                     # Fold in the per-user learned communication style (Layer 4/5 persona learning).
                     try:
                         from backend.layer4_persona.style_learning import persona_style_directive
@@ -272,33 +453,103 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                         logger.exception("style directive failed; persona without learned style")
             except Exception:
                 logger.exception("relationship provider failed; using default persona")
+        if uwm_provider is not None:
+            try:
+                directive = _uwm_directive(uwm_provider(ctx.user_id))
+                if directive:
+                    packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
+            except Exception:
+                logger.exception("UWM provider failed; persona without world-model context")
+        identity_beliefs = []
+        if identity_provider is not None:
+            try:
+                identity_beliefs = identity_provider(ctx.user_id) or []
+                directive = _identity_directive(identity_beliefs)
+                if directive:
+                    packet.persona_instruction = f"{packet.persona_instruction} {directive}".strip()
+            except Exception:
+                logger.exception("identity provider failed; persona without self-model context")
+
+        # SC-1 (persona_resolver) + SC-3 (tone_calibrator): real functions, real inputs — identity
+        # beliefs above, the relationship state already loaded, and Layer 3's background_state
+        # (now live, see docs/layer-3-architecture.md §18). psychological_model/communication_model
+        # stay None: the UWM narrow-slice scope (Layer 2 §23) deliberately never extracts either,
+        # so there's nothing real to pass yet.
+        try:
+            persona_state = resolve_persona_state(
+                identity_memory_entries=identity_beliefs,
+                session_context={"conversation_mode": getattr(ctx, "conversation_mode", "casual")})
+            packet.persona_state = persona_state
+            constraints = ["Never fabricate emotions or feelings Nova doesn't have.",
+                          "Never be sycophantic — disagree when warranted.",
+                          "Don't catastrophize."]
+            if persona_state.known_sensitivities:
+                constraints.append(
+                    "Known sensitivities: " + ", ".join(persona_state.known_sensitivities) + ".")
+            packet.constraint_instruction = " ".join(constraints)
+        except Exception:
+            logger.exception("persona_resolver failed; using default PersonaState")
+            persona_state = packet.persona_state
+
+        try:
+            packet.voice_parameters = calibrate_voice(
+                conversation_mode=getattr(ctx, "conversation_mode", "casual"),
+                circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+                relationship_state=packet.relationship_state, persona_state=persona_state,
+                background_state=getattr(ctx.emotion_intent, "background_state", None)
+                                 or BackgroundEmotionalState())
+        except Exception:
+            logger.exception("tone_calibrator failed; using default VoiceParameters")
         return packet
 
-    # Layer 7 §6.3 hard blocks: never reference goals in these modes, or before the
-    # relationship has moved past first contact. This directive predates SC-4
-    # (decide_goal_reference) reaching the live path (its real output is computed
-    # post-turn — see POLISH_BACKLOG.md), so the blocks are duplicated here rather than
-    # left unenforced.
-    _GOAL_BLOCKED_MODES = {"crisis", "emotional_support", "casual"}
-
     def _goal_directive(ctx) -> str:
+        """Layer 7 SC-4 (architecture doc §6): the real, mode/progress-differentiated
+        accountability decision, called pre-generation with this turn's live context via
+        goal_provider (api/state.py::make_goal_provider). decide_goal_reference already enforces
+        the §6.3 blocked-mode/blocked-stage hard rule internally, so it's not duplicated here
+        (previously it was, because SC-4's real output never reached this call site)."""
         if goal_provider is None:
             return ""
-        if getattr(ctx, "conversation_mode", "casual") in _GOAL_BLOCKED_MODES:
-            return ""
+        ei = getattr(ctx, "emotion_intent", None)
         stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
-        if stage == "new":
-            return ""
         try:
-            titles = [t for t in (goal_provider(ctx.user_id, ctx.message) or []) if t]
+            packet = goal_provider(
+                ctx.user_id, ctx.message,
+                conversation_mode=getattr(ctx, "conversation_mode", "casual"),
+                emotional_state=getattr(ei, "primary_emotion", None),
+                relationship_stage=stage, now=getattr(ctx, "now", None))
         except Exception:
             logger.exception("goal provider failed; no accountability injection this turn")
             return ""
-        if not titles:
+        if packet is None or not getattr(packet, "should_reference_goal", False):
             return ""
-        # §6.4 anti-pattern: never reference more than one goal per response.
-        return (f"The user has an active goal: '{titles[0]}'. If it fits naturally, reference "
-                f"their progress or gently encourage them — never force it or lecture.")
+        return packet.response_instruction or ""
+
+    def _longitudinal_directive(ctx) -> str:
+        """Layer 10 §8/§9: long-term narrative grounding, not an explicit topic to raise (unlike
+        the goal directive) -- so this only skips in crisis mode and when Layer 10's own
+        minimum_data_threshold_met says there isn't enough history yet, not by conversation mode."""
+        if longitudinal_provider is None:
+            return ""
+        if getattr(ctx, "conversation_mode", "casual") == "crisis":
+            return ""
+        try:
+            packet = longitudinal_provider(ctx.user_id, getattr(ctx, "now", None))
+        except Exception:
+            logger.exception("longitudinal provider failed; no narrative grounding this turn")
+            return ""
+        if packet is None or not getattr(packet, "minimum_data_threshold_met", False):
+            return ""
+        parts = []
+        if packet.current_chapter_summary:
+            parts.append(f"Nova has been present through a period best described as: "
+                        f"{packet.current_chapter_summary}")
+        if packet.running_growth_narrative:
+            parts.append(packet.running_growth_narrative)
+        if not parts:
+            return ""
+        return ("Background context on the user's longer story with Nova (use only for tone and "
+                "grounding, never quote or announce it directly): " + " ".join(parts))
 
     def _elicitation_directive(ctx) -> str:
         """Layer-13: weave a surfaced onboarding question in naturally (never front-loaded)."""
@@ -311,8 +562,44 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
 
     def plan(ctx):
         client = system2 if ctx.cognitive_system == "system2" else system1
-        directive = " ".join(d for d in (_goal_directive(ctx), _elicitation_directive(ctx)) if d)
         ei = ctx.emotion_intent
+        # SC-4 (drift_detector), pass 1 — role-abandonment (Check 2) and sycophantic-capitulation
+        # (Check 3) read only user_message/history, not the draft, so they can and must run
+        # BEFORE generation: a role-abandonment request must be refused gracefully by the draft
+        # itself, on System 1 turns too (most turns route there) — not silently discarded because
+        # only refine() (System 2 only) used to see the directive. nova_recent_positions (Check 3)
+        # is now real: Nova's own recent replies in this session, off the real conversation-
+        # message log (docs/layer-4-architecture.md §20) — "no cross-turn stance history is
+        # tracked" was the finding, but the message log already tracks it, it just had no reader.
+        nova_positions: list = []
+        if nova_positions_provider is not None:
+            try:
+                nova_positions = nova_positions_provider(ctx.user_id, ctx.session_id) or []
+            except Exception:
+                logger.exception("nova positions provider failed; Check 3 runs with no history")
+        pre_drift = None
+        try:
+            pre_drift = detect_drift(
+                pending_draft_intent="", user_message=ctx.message,
+                persona_state=ctx.persona_packet.persona_state,
+                nova_recent_positions=nova_positions)
+        except Exception:
+            logger.exception("drift_detector (pre-draft) failed; proceeding without a drift check")
+        # Critical drift override (architecture doc §12, packet_builder.build_final_response_
+        # packet's own early-return): REFUSE_GRACEFULLY is a hard stop, not one more directive
+        # hoping the LLM complies -- a role-abandonment/jailbreak attempt is exactly the case
+        # where the planner LLM can't be trusted to follow a nudge. Never call the LLM planner at
+        # all; refine() below force-skips this draft too (a hard refusal must not be softened).
+        if pre_drift is not None and pre_drift.recommended_action == RecommendedAction.REFUSE_GRACEFULLY.value:
+            ctx.persona_packet.drift_check_result = pre_drift
+            ctx.semantic_draft_obj = SemanticDraft(
+                text=GRACEFUL_REFUSAL_TEXT, word_count=len(GRACEFUL_REFUSAL_TEXT.split()))
+            return GRACEFUL_REFUSAL_TEXT
+        drift_directive = (pre_drift.planner_directive
+                          if pre_drift and pre_drift.drift_detected else None)
+        directive = " ".join(d for d in (
+            _goal_directive(ctx), _elicitation_directive(ctx), _longitudinal_directive(ctx),
+            drift_directive) if d)
         # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
         # ctx — previously dropped, so the planner never actually grounded responses in
         # recalled memories despite Layer 2 computing them every turn. See POLISH_BACKLOG.md.
@@ -324,10 +611,112 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             recalled_memories=ctx.recalled_memories,
             circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
             llm_fn=lambda p: client.complete(p))
+        # SC-4 pass 2 — re-check against the real draft text so Check 1 (fabricated emotion in
+        # the draft) can fire too; stored for refine() (System 2 only) to fold into its own
+        # prompt. This is NOT a union with pass 1: detect_drift checks in a fixed priority order
+        # (fabrication, then abandonment, then capitulation) and returns on the first hit, so if
+        # the draft happens to also trip Check 1 (e.g. contains "I feel"), pass 2's result
+        # overwrites pass 1's abandonment finding here even though pass 1's directive already
+        # reached the planner prompt above and shaped the draft. What's stored on
+        # drift_check_result is "what refine() should react to", not a running log of every
+        # check that fired this turn.
+        try:
+            ctx.persona_packet.drift_check_result = detect_drift(
+                pending_draft_intent=draft.text, user_message=ctx.message,
+                persona_state=ctx.persona_packet.persona_state,
+                nova_recent_positions=nova_positions)
+        except Exception:
+            logger.exception("drift_detector (post-draft) failed; proceeding without a drift check")
+        ctx.semantic_draft_obj = draft
         return draft.text
 
     def refine(ctx, draft):
-        return system2.complete("Rephrase this warmly without changing any facts:\n\n" + draft)
+        """SC-6 (real emotion_refiner.refine_emotion), not an ad hoc rephrase prompt. `draft` here
+        is the plain string plan() returned (the orchestrator's contract); the full SemanticDraft
+        (with key_claims, needed for factual-preservation validation) was stashed on ctx by plan()
+        just above -- falls back to a claims-less draft if plan() wasn't the real one (e.g. a test
+        double), same defensive shape as every other provider lookup in this module."""
+        ei = ctx.emotion_intent
+        draft_obj = getattr(ctx, "semantic_draft_obj", None) or SemanticDraft(text=draft)
+        drift = getattr(ctx.persona_packet, "drift_check_result", None)
+        # A graceful refusal (plan()'s critical-drift override, above) must never be softened,
+        # rephrased, or have its wording second-guessed by the refiner -- force-skip regardless
+        # of the 5-condition policy, same invariant build_final_response_packet enforces by
+        # returning before the refiner is ever reached.
+        forced_refusal = (drift is not None
+                          and drift.recommended_action == RecommendedAction.REFUSE_GRACEFULLY.value)
+        skip = forced_refusal or should_skip_refinement(
+            primary_label=getattr(ei.primary_emotion, "primary_label", "neutral"),
+            bes_label=getattr(ei.background_state, "bes_label", "insufficient_data"),
+            mismatch_detected=getattr(ei.mismatch, "mismatch_detected", False),
+            primary_intent=getattr(ei.intent, "primary_intent", "casual_chat"),
+            crisis_active=getattr(ei, "crisis_active", False))
+        posture = ei.emotional_posture_instruction
+        if drift is not None and getattr(drift, "drift_detected", False) and drift.planner_directive:
+            posture = f"{posture} {drift.planner_directive}"
+        # No similarity_fn passed: validate_factual_preservation's own token-overlap default
+        # (_coverage) is already real, working validation, not a stub -- see
+        # test_real_layer4_wiring_refine_emotion_reinserts_a_dropped_factual_claim. An
+        # embedding-based similarity_fn was tried and reverted: FakeLLM's crude length-based
+        # embed() stub can't stand in for real semantic similarity in tests, and there's no
+        # evidence the token-overlap default is actually failing in production to justify the
+        # swap risk.
+        result = refine_emotion(
+            draft_obj, skip=skip, voice_parameters=ctx.persona_packet.voice_parameters,
+            emotional_posture_instruction=posture, persona_packet=ctx.persona_packet,
+            primary_emotion_label=getattr(ei.primary_emotion, "primary_label", "neutral"),
+            bes_label_description=(getattr(ei.background_state, "trend_note", None)
+                                   or getattr(ei.background_state, "bes_label", "")),
+            primary_feeling=getattr(ei.empathy_hypothesis, "primary_feeling", ""),
+            primary_need=getattr(ei.empathy_hypothesis, "primary_need", ""),
+            mismatch_instruction=(getattr(ei, "mismatch_response_posture", "") or ""
+                                  if getattr(ei.mismatch, "mismatch_detected", False) else ""),
+            llm_fn=lambda p: system2.complete(p))
+        return result.final_text
+
+    def social_coaching(ctx, response):
+        """SC-4/SC-5, run through the real Layer-5 orchestrator (``build_social_intelligence_
+        packet``) instead of reimplementing its detect+inject sequencing here -- that orchestrator
+        also owns the LLM observation-regeneration step for PATTERN_REFLECTION/CONFLICT_NAVIGATION
+        and the deferred-to-Layer-6 handoff (§8/§9.3 of the architecture doc), which a bare
+        detect_coaching_opportunity + inject_observation pair does not. Degrades to a no-op with
+        no persisted graph/events/patterns yet, which is the case for every account until the
+        background pattern job has run at least once."""
+        if social_provider is None:
+            return response
+        graph, events, patterns = social_provider(ctx.user_id)
+        ei = ctx.emotion_intent
+        wrapped = FinalResponsePacket(final_text=response)
+        packet = build_social_intelligence_packet(
+            wrapped, ei,
+            social_graph=graph or SocialGraph(user_id=str(ctx.user_id)),
+            active_patterns=patterns, events_detected=events,
+            relationship_stage=getattr(ctx.persona_packet.relationship_state, "stage", "new"),
+            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+            voice_parameters=ctx.persona_packet.voice_parameters,
+            observation_llm_fn=lambda p: system1.complete(p))
+        # Only mark surfaced when the observation was actually delivered this turn (not when
+        # injection deferred it for lack of length headroom) -- otherwise gate_3_recency would
+        # start blocking a pattern the user never actually saw.
+        if packet.coaching_injected and social_surface_writer is not None:
+            pattern = packet.coaching_opportunity.triggering_pattern if packet.coaching_opportunity else None
+            if pattern is not None:
+                try:
+                    social_surface_writer(pattern.pattern_id)
+                except Exception:
+                    logger.exception("social surface writer failed; pattern stays unsurfaced")
+        # A deferred opportunity (timing/recency gate, or no length headroom) isn't just dropped --
+        # it becomes a durable Layer-6 SOCIAL_PATTERN_COACHING candidate (§9.3) so Nova can raise it
+        # later instead of losing it.
+        if packet.coaching_deferred and proactive_coaching_writer is not None:
+            for opp in packet.proactive_coaching_queue:
+                try:
+                    proactive_coaching_writer(ctx.user_id, opp)
+                except Exception:
+                    logger.exception("proactive coaching writer failed; opportunity not queued")
+        if packet.coaching_injected and packet.modified_response is not None:
+            return packet.modified_response.final_text
+        return response
 
     def escalate(ctx, assessment):
         try:
@@ -375,18 +764,32 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             flags=[v.check_name for v in getattr(result, "violations", []) or []])
 
     def deliver(ctx, response, crisis_mode_active):
-        # Forward the two signals that actually change delivered text through this adapter
-        # (deliver() only returns final_message_text -- format_spec/micro-interactions/events are
-        # not yet consumed here, see POLISH_BACKLOG.md, so there's no point threading signals that
-        # only affect the discarded parts of Layer9Output).
+        # Forward the signals that change delivered text, plus the persisted UserFormatProfile
+        # (so compute_format_spec's length target reflects what's actually been learned) and the
+        # real event sequence orchestrate_output() assembles (thinking pause / backchannel timing)
+        # -- stashed on ctx for api/streaming.py to replay as extra SSE frames. Self-edit events
+        # are deliberately not forwarded anywhere: a visual show-then-delete replay isn't a real
+        # product requirement here.
         emotional_intensity = getattr(
             getattr(ctx.emotion_intent, "primary_emotion", None), "intensity", 0.0)
         stage = getattr(getattr(ctx.persona_packet, "relationship_state", None), "stage", "new")
         relationship_stage = _LAYER9_STAGE_MAP.get(stage, "friend")
+        profile = format_profile_provider(ctx.user_id) if format_profile_provider is not None else None
+        # circadian_band: a real Layer 1 signal (getattr(ctx.input_packet, "circadian_band", ...))
+        # was previously never forwarded, so thinking_pause/voice pacing always used the
+        # hardcoded "afternoon" default regardless of the actual time of day.
         result = l9_deliver(response, ctx.conversation_mode,
                             crisis_mode_active=crisis_mode_active,
                             emotional_intensity=emotional_intensity,
-                            relationship_stage=relationship_stage)
+                            relationship_stage=relationship_stage,
+                            circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
+                            user_format_profile=profile)
+        orchestrated = getattr(result, "orchestrated_output", None)
+        ctx.layer9_events = list(getattr(orchestrated, "events", None) or [])
+        # format_spec_applied (structure/length-target metadata) was computed every turn and
+        # discarded -- stashed on ctx the same way layer9_events is, so it's reachable by a
+        # future API consumer without inventing an unused ChatResponse field ahead of a real one.
+        ctx.format_spec_applied = getattr(result, "format_spec_applied", None)
         return getattr(result, "final_message_text", None) or response
 
     def state_update(ctx):
@@ -396,5 +799,5 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
     return PipelineSteps(
         perceive=perceive, recall=recall, classify=classify, cold_start=cold_start,
         safety_scan=safety_scan, build_persona=build_persona, tool_use=tool_use,
-        plan=plan, refine=refine, guardrails=guardrails, escalate=escalate,
-        deliver=deliver, state_update=state_update)
+        plan=plan, refine=refine, social_coaching=social_coaching, guardrails=guardrails,
+        escalate=escalate, deliver=deliver, state_update=state_update)

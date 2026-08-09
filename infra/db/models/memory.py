@@ -40,6 +40,13 @@ class UserWorldModel(UserScopedMixin, Base):
     payload: Mapped[dict] = mapped_column(_JSONB)
 
 
+class NarrativeChain(UserScopedMixin, Base):
+    __tablename__ = "narrative_chain"
+    chain_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    payload: Mapped[dict] = mapped_column(_JSONB)
+
+
 class MemoryAudit(UserScopedMixin, Base):
     __tablename__ = "memory_audit"
     entry_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)

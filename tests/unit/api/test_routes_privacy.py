@@ -40,15 +40,37 @@ def test_delete_memory_forgets_and_certifies():
     assert resp.status_code == 200
     body = resp.json()
     assert body["deleted"] == 1 and body["certificate"]
-    # No semantic/personality/longitudinal store was wired for the cascade check, so the
-    # response must say so plainly rather than implying an empty (fully-computed) cascade.
-    assert "not computed" in body["cascade"]
+    # The DELETE route now genuinely wires semantic + longitudinal cascade checks (2026-08-09
+    # follow-up) -- with none referencing this episode, the cascade must say so plainly.
+    assert "Nothing else" in body["cascade"]
 
     # Genuinely forgotten: gone from the active set and unrecallable (embedding cleared).
     assert store.active_episodic("local-user") == []
     gone = store.get_episodic(mem.memory_id)
     assert gone.is_deleted is True and (gone.embedding in (None, []))
     assert gone.summary == ""
+
+
+def test_delete_memory_reports_a_real_semantic_cascade():
+    """dry_run_deletion's semantic-facts cascade check read field names (fact_id/fact_text/
+    derived_from_episodes) that don't exist on Layer 2's real SemanticMemory schema -- would have
+    raised AttributeError the first time a real semantic_store was passed in. Proves the fix end
+    to end through the live DELETE route: a semantic fact whose ONLY supporting episode is the one
+    being deleted is correctly reported as "will be deleted" too."""
+    from backend.layer2_memory.schemas import SemanticMemory
+
+    client, factory = _client()
+    store = PostgresMemoryStore(factory)
+    mem = EpisodicMemory(user_id="local-user", summary="loves hiking", embedding=[0.1, 0.2])
+    store.save_episodic(mem)
+    store.save_semantic(SemanticMemory(
+        user_id="local-user", statement="enjoys the outdoors",
+        supporting_episode_ids=[mem.memory_id]))
+
+    resp = client.delete(f"/memory/{mem.memory_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "1 inferred fact" in body["cascade"]
 
     # A tamper-evident privacy-audit entry was appended.
     audit = PostgresPrivacyAudit(factory, "local-user")
@@ -101,3 +123,4 @@ def test_integrity_reports_intact_chains():
     body = client.get("/memory/integrity").json()
     assert body["status"] == "INTACT"
     assert body["audit_chain_ok"] is True and body["privacy_chain_ok"] is True
+    assert body["safety_chain_ok"] is True

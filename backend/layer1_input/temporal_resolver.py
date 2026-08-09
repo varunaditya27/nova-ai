@@ -9,45 +9,17 @@ Zero-LLM, fully deterministic. Target execution time < 5 ms (§10).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Callable, Optional
 
+from .config import Layer1Config
 from .schemas import CircadianBand, GapCategory, UserTemporalProfile
 
-# ── Constants (mirror config/layer1.yaml; code is the source of truth) ───────
-# NOTE: config/layer1.yaml is loaded into the merged config dict (config/__init__.py) but no
-# module in this package reads config['layer1'] — these values are still hardcoded, not
-# config-driven. Re-tuning without a code change (the YAML's stated purpose) needs each
-# function below to accept the relevant threshold as a parameter; documented as a follow-up.
-
-# Population-level vulnerability priors per band (§3.2). Personalized per-user after
-# 20+ sessions via UserTemporalProfile.per_band_circadian_prior (§3.4).
-_CIRCADIAN_MOOD_PRIOR: dict[CircadianBand, float] = {
-    CircadianBand.LATE_NIGHT: 0.75,
-    CircadianBand.EARLY_MORNING: 0.80,
-    CircadianBand.MORNING: 0.20,
-    CircadianBand.AFTERNOON: 0.25,
-    CircadianBand.EVENING: 0.40,
-    CircadianBand.NIGHT: 0.55,
-}
-
-# Personalization activates only once the user has this many sessions of history (§3.4).
-PERSONALIZED_PRIOR_MIN_SESSIONS = 20
-
-# Anomaly detection is suppressed until the profile has this many sessions (§11).
-ANOMALY_MIN_SESSIONS = 5
-
-# Gap thresholds in ascending seconds: (upper_bound_exclusive, category). A gap is assigned
-# to the first category whose upper bound it falls strictly below (§3.3).
-_GAP_THRESHOLDS: list[tuple[int, GapCategory]] = [
-    (30 * 60, GapCategory.SAME_SESSION),          # < 30 min
-    (4 * 3600, GapCategory.SHORT_BREAK),          # < 4 hrs
-    (24 * 3600, GapCategory.SAME_DAY),            # < 24 hrs
-    (3 * 86400, GapCategory.FEW_DAYS),            # < 3 days
-    (14 * 86400, GapCategory.WEEK_OR_TWO),        # < 14 days
-    (90 * 86400, GapCategory.LONG_ABSENCE),       # < 90 days (~3 months)
-]
-# Anything >= the last threshold falls through to VERY_LONG_ABSENCE.
+# Every function below accepts an optional ``cfg: Layer1Config`` so production can re-tune these
+# without a code change (config/layer1.yaml → Layer1Config.from_dict, wired in api/state.py).
+# ``_DEFAULT`` is what each function falls back to when no ``cfg`` is supplied (every existing
+# unit test) — this reproduces the values that used to be hardcoded module constants here.
+_DEFAULT = Layer1Config()
 
 _GAP_LABELS: dict[GapCategory, str] = {
     GapCategory.SAME_SESSION: "just now",
@@ -59,57 +31,46 @@ _GAP_LABELS: dict[GapCategory, str] = {
     GapCategory.VERY_LONG_ABSENCE: "it's been a long time",
 }
 
-# A gap of 30+ minutes opens a new session (§3.3); same boundary as SAME_SESSION's upper edge.
-NEW_SESSION_THRESHOLD_SECONDS = 30 * 60
-
-# Atypical-band threshold: a band accounting for < 5% of history is anomalous (§3.4 cond. 1).
-ATYPICAL_BAND_FREQUENCY = 0.05
-# Long-gap multiplier: gap beyond avg_frequency × this is anomalous (§3.4 cond. 2).
-LONG_GAP_MULTIPLIER = 2.5
-# Rapid-return ratio: gap shorter than this × shortest recent gap is anomalous (§3.4 cond. 3).
-RAPID_RETURN_RATIO = 0.10
-
 
 # ── Circadian band ───────────────────────────────────────────────────────────
-def map_circadian_band(local_hour: int) -> CircadianBand:
+def map_circadian_band(local_hour: int, cfg: Optional[Layer1Config] = None) -> CircadianBand:
     """Map a local wall-clock hour (0–23) to one of six circadian bands (§3.2)."""
     h = local_hour % 24
-    if h >= 23 or h < 3:
-        return CircadianBand.LATE_NIGHT
-    if h < 6:
-        return CircadianBand.EARLY_MORNING
-    if h < 12:
-        return CircadianBand.MORNING
-    if h < 17:
-        return CircadianBand.AFTERNOON
-    if h < 21:
-        return CircadianBand.EVENING
-    return CircadianBand.NIGHT
+    for name, (start, end) in (cfg or _DEFAULT).circadian_bands.items():
+        if start <= end:
+            if start <= h < end:
+                return CircadianBand(name)
+        elif h >= start or h < end:            # band wraps midnight (e.g. late_night)
+            return CircadianBand(name)
+    return CircadianBand.MORNING                # unreachable if bands fully partition 24h
 
 
 def circadian_mood_prior(
-    band: CircadianBand, profile: Optional[UserTemporalProfile] = None
+    band: CircadianBand, profile: Optional[UserTemporalProfile] = None,
+    cfg: Optional[Layer1Config] = None,
 ) -> float:
     """Estimated vulnerability prior in [0, 1] for the band (§3.2).
 
     Uses the user's personalized per-band prior once they have 20+ sessions of history;
     otherwise the population-level default.
     """
+    c = cfg or _DEFAULT
     if (
         profile is not None
-        and profile.total_sessions >= PERSONALIZED_PRIOR_MIN_SESSIONS
+        and profile.total_sessions >= c.personalized_prior_min_sessions
         and band.value in profile.per_band_circadian_prior
     ):
         return profile.per_band_circadian_prior[band.value]
-    return _CIRCADIAN_MOOD_PRIOR[band]
+    return c.circadian_mood_prior[band.value]
 
 
 # ── Session gap ──────────────────────────────────────────────────────────────
-def classify_session_gap(gap_seconds: float) -> GapCategory:
+def classify_session_gap(gap_seconds: float, cfg: Optional[Layer1Config] = None) -> GapCategory:
     """Classify the gap since the user's last message into one of seven buckets (§3.3)."""
-    for upper_bound, category in _GAP_THRESHOLDS:
+    c = cfg or _DEFAULT
+    for name, upper_bound in sorted(c.session_gap_categories.items(), key=lambda kv: kv[1]):
         if gap_seconds < upper_bound:
-            return category
+            return GapCategory(name)
     return GapCategory.VERY_LONG_ABSENCE
 
 
@@ -118,9 +79,9 @@ def gap_label(category: GapCategory) -> str:
     return _GAP_LABELS[category]
 
 
-def is_new_session(gap_seconds: float) -> bool:
+def is_new_session(gap_seconds: float, cfg: Optional[Layer1Config] = None) -> bool:
     """True when the gap opens a new session (30+ minutes of inactivity, §3.3)."""
-    return gap_seconds >= NEW_SESSION_THRESHOLD_SECONDS
+    return gap_seconds >= (cfg or _DEFAULT).new_session_threshold_seconds
 
 
 # ── Anomaly detection ────────────────────────────────────────────────────────
@@ -129,20 +90,22 @@ def detect_temporal_anomaly(
     gap_seconds: float,
     profile: UserTemporalProfile,
     shortest_recent_gap_seconds: Optional[float] = None,
+    cfg: Optional[Layer1Config] = None,
 ) -> tuple[bool, Optional[str]]:
     """Detect a behavioral timing anomaly and produce a plain-language context note (§3.4).
 
     Emits a *signal flag*, never a conclusion about emotional state. Suppressed for
     cold-start profiles (< 5 sessions, §11).
     """
-    if profile.total_sessions < ANOMALY_MIN_SESSIONS:
+    c = cfg or _DEFAULT
+    if profile.total_sessions < c.anomaly_min_sessions:
         return False, None
 
     notes: list[str] = []
 
     # Condition 2 — gap far beyond the user's baseline cadence.
     if profile.average_session_frequency_days > 0:
-        threshold_seconds = profile.average_session_frequency_days * 86400 * LONG_GAP_MULTIPLIER
+        threshold_seconds = profile.average_session_frequency_days * 86400 * c.long_gap_multiplier
         if gap_seconds > threshold_seconds:
             gap_days = round(gap_seconds / 86400, 1)
             baseline = round(profile.average_session_frequency_days, 1)
@@ -151,14 +114,14 @@ def detect_temporal_anomaly(
             )
 
     # Condition 1 — message falls in an atypical band for this user.
-    if profile.typical_bands.get(band.value, 0.0) < ATYPICAL_BAND_FREQUENCY:
+    if profile.typical_bands.get(band.value, 0.0) < c.atypical_band_frequency:
         notes.append(f"Messaging during {band.value} — atypical for this user")
 
     # Condition 3 — unusually rapid return relative to recent cadence.
     if (
         shortest_recent_gap_seconds is not None
         and shortest_recent_gap_seconds > 0
-        and gap_seconds < RAPID_RETURN_RATIO * shortest_recent_gap_seconds
+        and gap_seconds < c.rapid_return_ratio * shortest_recent_gap_seconds
     ):
         notes.append("Unusually rapid return — much sooner than usual")
 
@@ -175,13 +138,18 @@ def gap_vs_baseline_ratio(gap_seconds: float, profile: UserTemporalProfile) -> f
 
 
 # ── Fuzzy temporal labeling ──────────────────────────────────────────────────
-def make_fuzzy_labeler(now: datetime) -> Callable[[datetime], str]:
+def make_fuzzy_labeler(
+    now: datetime, timezone_offset_hours: float = 0.0
+) -> Callable[[datetime], str]:
     """Return a closure that converts absolute timestamps to fuzzy labels (§3.6).
 
     The LLM never sees raw timestamps — this utility is the only path by which temporal
     information enters the response pipeline. The closure captures ``now`` so a single
-    reference instant is used for the whole turn.
+    reference instant is used for the whole turn. The same-day/yesterday distinction is a *local*
+    calendar-date question, so it applies ``timezone_offset_hours`` (see §17 in
+    docs/layer-1-architecture.md — both ``now`` and ``ts`` are stored/passed as UTC).
     """
+    offset = timedelta(hours=timezone_offset_hours)
 
     def label(ts: datetime) -> str:
         delta = now - ts
@@ -190,8 +158,9 @@ def make_fuzzy_labeler(now: datetime) -> Callable[[datetime], str]:
             return "a moment ago"
         if secs < 4 * 3600:                  # < 4 hrs
             return "earlier today"
-        if secs < 24 * 3600:                 # < 24 hrs — disambiguate by calendar date
-            return "earlier today" if now.date() == ts.date() else "yesterday"
+        if secs < 24 * 3600:                 # < 24 hrs — disambiguate by local calendar date
+            same_day = (now + offset).date() == (ts + offset).date()
+            return "earlier today" if same_day else "yesterday"
         days = secs / 86400
         if days < 3:
             return "a couple of days ago"

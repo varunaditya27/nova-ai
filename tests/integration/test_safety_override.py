@@ -29,8 +29,8 @@ def test_crisis_vetoes_normal_generation():
 def test_layer3_crisis_flag_also_triggers_override():
     # SC-2 says no, but Layer 3 raised the crisis flag → OR-semantics still escalates.
     steps, rec = make_recording_steps(
-        classify=lambda m, p, r: SimpleNamespace(crisis_active=True, conversation_mode="emotional_support",
-                                                 complexity="complex"))
+        classify=lambda u, m, p, r: SimpleNamespace(crisis_active=True, conversation_mode="emotional_support",
+                                                    complexity="complex"))
     out = ConversationOrchestrator(steps).run_turn("u1", "everything feels pointless")
     assert out.crisis_active is True
     assert "L11_escalate" in rec.order and "L4a_plan" not in rec.order

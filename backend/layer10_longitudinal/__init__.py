@@ -47,6 +47,7 @@ from backend.layer10_longitudinal.life_calendar import (
     LifeCalendar,
     map_entry_to_retrospective_type,
 )
+from backend.layer10_longitudinal.life_event_extractor import extract_life_event
 from backend.layer10_longitudinal.life_narrative_engine import (
     extract_defining_moments,
     synthesize_chapter,
@@ -111,6 +112,7 @@ __all__ = [
     "generate_year_in_review",
     # SC-5 + engine
     "LifeCalendar", "map_entry_to_retrospective_type", "assemble_context_packet",
+    "extract_life_event",
     # schemas
     "BehavioralPattern", "CalendarEntry", "CalendarEntryType", "ChapterSynthesis",
     "EmotionalArcSummary", "EmotionalRecord", "EpisodicRecord", "Layer6Action",

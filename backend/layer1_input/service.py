@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 from . import assembler, implicit_signals, multimodal_normalizer, prosody_extractor
 from . import temporal_resolver as tr
 from . import thread_tracker
+from .config import Layer1Config
 from .multimodal_normalizer import NormalizerBackends
 from .prosody_extractor import ProsodyBackend
 from .schemas import (
@@ -63,7 +64,7 @@ class Layer1Backends:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _safe_get_profile(
-    profile_store: ProfileStore, user_id: UUID
+    profile_store: ProfileStore, user_id: UUID, cfg: Optional[Layer1Config] = None
 ) -> tuple[UserTemporalProfile, bool]:
     """Return (profile, cold_start). Falls back to a fresh default if the read fails (§11)."""
     try:
@@ -72,14 +73,16 @@ def _safe_get_profile(
         profile = None
     if profile is None:
         return UserTemporalProfile(user_id=user_id), True
-    return profile, profile.total_sessions < tr.ANOMALY_MIN_SESSIONS
+    return profile, profile.total_sessions < (cfg or Layer1Config()).anomaly_min_sessions
 
 
-def _safe_due_threads(store: ThreadStore, now: datetime) -> tuple[list, int]:
+def _safe_due_threads(
+    store: ThreadStore, now: datetime, cfg: Optional[Layer1Config] = None
+) -> tuple[list, int]:
     """Return (surfaced_threads, overdue_count); empty on failure (§11)."""
     try:
-        candidates = thread_tracker.due_candidates(store, now)
-        surfaced = thread_tracker.get_due_threads(store, now)
+        candidates = thread_tracker.due_candidates(store, now, cfg)
+        surfaced = thread_tracker.get_due_threads(store, now, cfg=cfg)
     except Exception:  # noqa: BLE001
         return [], 0
     return surfaced, len(candidates) - len(surfaced)
@@ -108,38 +111,45 @@ async def process_input_event(
     behavior_baseline: Optional[UserBehaviorBaseline] = None,
     voice_calibration: Optional[VoiceCalibrationProfile] = None,
     established_language: Optional[str] = None,
+    config: Optional[Layer1Config] = None,
 ) -> InputPerceptionPacket:
-    """Transform a raw incoming event into an ``InputPerceptionPacket`` (§2, §12.2)."""
+    """Transform a raw incoming event into an ``InputPerceptionPacket`` (§2, §12.2).
+
+    ``config`` re-tunes every threshold below (circadian bands, gap buckets, intensity weights,
+    etc. — see ``config/layer1.yaml`` / ``Layer1Config``) without a code change. Defaults to
+    ``Layer1Config()`` — today's hardcoded values — when not supplied (e.g. every unit test).
+    """
+    cfg = config or Layer1Config()
 
     profile_store = profile_store or InMemoryProfileStore()
     thread_store = thread_store or InMemoryThreadStore()
     backends = backends or Layer1Backends()
     baseline = behavior_baseline or UserBehaviorBaseline()
 
-    profile, cold_start = _safe_get_profile(profile_store, user_id)
+    profile, cold_start = _safe_get_profile(profile_store, user_id, cfg)
 
     # ── SC-1: Temporal Resolver ─────────────────────────────────────────
     # Timezone: unknown for a cold-start profile → default UTC, low confidence (§11).
     timezone_confidence = "low" if cold_start else "high"
     local_dt = received_at + timedelta(hours=profile.timezone_offset_hours)
-    band = tr.map_circadian_band(local_dt.hour)
-    mood_prior = tr.circadian_mood_prior(band, profile)
+    band = tr.map_circadian_band(local_dt.hour, cfg)
+    mood_prior = tr.circadian_mood_prior(band, profile, cfg)
 
     if profile.last_session_end is None:
         gap_seconds = 0
         is_new = True  # the user's very first turn is, by definition, a new session
     else:
         gap_seconds = max(0, int((received_at - profile.last_session_end).total_seconds()))
-        is_new = tr.is_new_session(gap_seconds)
-    gap_category = tr.classify_session_gap(gap_seconds)
+        is_new = tr.is_new_session(gap_seconds, cfg)
+    gap_category = tr.classify_session_gap(gap_seconds, cfg)
     gap_label = tr.gap_label(gap_category)
 
     anomaly, context_note = tr.detect_temporal_anomaly(
-        band, gap_seconds, profile, baseline.shortest_recent_gap_seconds
+        band, gap_seconds, profile, baseline.shortest_recent_gap_seconds, cfg
     )
     gap_ratio = tr.gap_vs_baseline_ratio(gap_seconds, profile)
-    fuzzy_labeler = tr.make_fuzzy_labeler(received_at)
-    due_threads, overdue_count = _safe_due_threads(thread_store, received_at)
+    fuzzy_labeler = tr.make_fuzzy_labeler(received_at, profile.timezone_offset_hours)
+    due_threads, overdue_count = _safe_due_threads(thread_store, received_at, cfg)
 
     # ── SC-2: Implicit Signal Extractor ─────────────────────────────────
     latency_ms = implicit_signals.compute_latency(
@@ -147,7 +157,7 @@ async def process_input_event(
         client_metadata.user_typing_started_at,
         received_at,
     )
-    latency_signal = implicit_signals.classify_latency(latency_ms)
+    latency_signal = implicit_signals.classify_latency(latency_ms, cfg)
     latency_dev = implicit_signals.latency_deviation(latency_ms, baseline.latency_median_ms)
     del_ratio = implicit_signals.deletion_ratio(
         client_metadata.peak_draft_length_chars, client_metadata.final_draft_length_chars
@@ -170,11 +180,12 @@ async def process_input_event(
         client_metadata.deletion_count,
         len_ratio,
         initiation.value,
+        cfg,
     )
 
     # ── SC-3: Multimodal Normalizer ─────────────────────────────────────
     modality_context = multimodal_normalizer.normalize(
-        raw_message, attachments, backends.normalizer, established_language
+        raw_message, attachments, backends.normalizer, established_language, cfg
     )
 
     # ── SC-4: Voice Prosody Extractor (only on a successfully transcribed voice note) ──
@@ -183,7 +194,7 @@ async def process_input_event(
     voice_att = _first_voice_attachment(attachments)
     if voice_att is not None and modality_context.primary_modality == PrimaryModality.VOICE:
         prosody_features, prosody_estimate = prosody_extractor.extract_prosody(
-            voice_att, backends.prosody, voice_calibration
+            voice_att, backends.prosody, voice_calibration, cfg
         )
 
     # raw_text is the user's words however they arrived — typed, transcribed, or extracted.
@@ -230,4 +241,5 @@ async def process_input_event(
         prosody_emotion_estimate=prosody_estimate,
         cold_start_profile=cold_start,
         timezone_confidence=timezone_confidence,
+        cfg=cfg,
     )

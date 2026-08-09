@@ -24,11 +24,18 @@ from .schemas import (
     EpisodicMemory,
     ScoredMemory,
     ShortTermMemoryBuffer,
+    UserWorldModel,
 )
 
 # (stm_buffer, emotion) → newly extracted episodic memories. Production wires the Episodic
 # Memory Extractor (LLM summarization); tests inject a deterministic function.
 EpisodeExtractor = Callable[[ShortTermMemoryBuffer, EmotionVector], list[EpisodicMemory]]
+
+# (existing UWM or None) → updated UWM to persist, or None to skip this turn. Production wires
+# real per-turn signal extraction + merge (backend/layer2_memory/uwm_updater.py); without an
+# injected updater, step 3 below falls back to a version-only bump on an existing row (its
+# original behavior, kept so old callers are unaffected).
+UWMUpdater = Callable[[Optional[UserWorldModel]], Optional[UserWorldModel]]
 
 
 @dataclass
@@ -58,6 +65,7 @@ def state_updater(
     *,
     last_recall: Optional[list[ScoredMemory]] = None,
     used_memory_ids: Optional[set] = None,
+    uwm_updater_fn: Optional[UWMUpdater] = None,
 ) -> StateUpdateResult:
     """Run the post-turn write path (§12.2). Returns a summary of what was written."""
     result = StateUpdateResult()
@@ -91,9 +99,21 @@ def state_updater(
                 reason="Memory used in response → reinforced", triggered_by="state_updater",
             ))
 
-    # 3. Update the User World Model (version bump; full merge logic is the UWM updater's job).
+    # 3. Update the User World Model. With an injected updater (real per-turn signal extraction
+    # + merge — backend/layer2_memory/uwm_updater.py — is the caller's job, this function stays
+    # storage-agnostic), it can also create the first row for a user who has none yet. Without
+    # one, fall back to the original version-only bump on an existing row.
     uwm = store.load_uwm(user_id)
-    if uwm is not None:
+    updated_uwm = uwm_updater_fn(uwm) if uwm_updater_fn is not None else None
+    if updated_uwm is not None:
+        store.save_uwm(updated_uwm)
+        result.uwm_updated = True
+        _safe_audit(audit, AuditEvent(
+            user_id=user_id, timestamp=now, event_type=AuditEventType.UWM_UPDATED,
+            session_id=session_id, reason="UWM updated after session",
+            triggered_by="state_updater",
+        ))
+    elif uwm_updater_fn is None and uwm is not None:
         uwm.update_version += 1
         uwm.last_updated_at = now
         store.save_uwm(uwm)

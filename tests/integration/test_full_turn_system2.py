@@ -11,7 +11,7 @@ from tests.integration.conftest import make_recording_steps
 
 
 def _classify(mode="emotional_support", complexity="complex", crisis=False):
-    return lambda message, input_packet, recalled: SimpleNamespace(
+    return lambda user_id, message, input_packet, recalled: SimpleNamespace(
         crisis_active=crisis, conversation_mode=mode, complexity=complexity)
 
 

@@ -116,7 +116,13 @@ class UserFormatProfile:
     prefers_no_markdown: bool = False
     explicit_length_preference: Optional[str] = None
 
-    explicit_format_feedback_events: list = field(default_factory=list)
+    explicit_format_feedback_events: list[FormatFeedbackEvent] = field(default_factory=list)
+
+    # Bookkeeping for the cross-turn skim-detection signal (§6.6): the length of Nova's most
+    # recently delivered response, so the NEXT turn's writer can compare it against this turn's
+    # user reply latency/length without querying another store.
+    last_response_length: int = 0
+    last_response_at: Optional[Any] = None
 
 
 @dataclass

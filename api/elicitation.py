@@ -15,8 +15,10 @@ from types import SimpleNamespace
 from typing import Optional
 
 from backend.layer13_onboarding.active_elicitation_queue import (
-    INITIAL_ELICITATION_ITEMS, ElicitationQueue)
+    INITIAL_ELICITATION_ITEMS, ElicitationQueue, ElicitationSurfacingPolicy)
 from backend.layer13_onboarding.schemas import ElicitationItem
+
+_SURFACING_POLICY = ElicitationSurfacingPolicy()
 
 # Message content → the natural-trigger tokens the elicitation items declare (§4.3).
 _TRIGGER_PATTERNS = {
@@ -64,9 +66,14 @@ def crude_emotional_intensity(message: str) -> float:
 def select_elicitation(message: str, session_number: int, surfaced_targets,
                        asked_this_session: bool) -> Optional[ElicitationItem]:
     """The single ElicitationItem to surface this turn, or None (no trigger / already asked /
-    rate-limited / inferred-only). Never returns an already-surfaced target."""
-    if asked_this_session:
-        return None
+    rate-limited / inferred-only). Never returns an already-surfaced target.
+
+    Two real gates from the module, not one reimplemented inline: next_surfaceable_item finds the
+    highest-priority candidate whose trigger fired and (its own, looser) register check passes;
+    ElicitationSurfacingPolicy.can_surface then re-checks all three real surfacing conditions
+    (trigger, the FULLER two-tier register gate, and the session rate limit) before anything is
+    actually asked — the same two-step sequence ColdStartEngine.on_message uses, previously
+    reimplemented here as a single, looser inline check."""
     triggers = detect_triggers(message, session_number)
     if not triggers:
         return None
@@ -80,9 +87,13 @@ def select_elicitation(message: str, session_number: int, surfaced_targets,
         items.append(it)
 
     queue = ElicitationQueue(user_id="", items=items)
+    intensity = crude_emotional_intensity(message)
     ctx = SimpleNamespace(active_triggers=triggers)
-    item = queue.next_surfaceable_item(
-        ctx, session_number, crude_emotional_intensity(message), " ".join(triggers))
+    item = queue.next_surfaceable_item(ctx, session_number, intensity, " ".join(triggers))
     if item is None or not item.question:                # inferred-only items are never asked aloud
+        return None
+    if not _SURFACING_POLICY.can_surface(
+            item, ctx, session_number, intensity,
+            elicitation_count_this_session=1 if asked_this_session else 0):
         return None
     return item

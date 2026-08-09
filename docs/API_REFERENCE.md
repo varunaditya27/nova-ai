@@ -81,11 +81,20 @@ veto + guardrails + post-turn writes) runs first, then the delivered text is rep
 overlay-paced token frames — so SC-1 always runs before delivery. Response header `X-Session-Id`
 carries the session id. Media type `text/event-stream`.
 
-**Frame sequence:** one `meta`, then N `token`, then one `done`. On failure a terminal `error`.
+**Frame sequence:** one `meta`, then zero-or-more `thinking_pause`/`backchannel`, then N `token`,
+then one `done`. On failure a terminal `error`. The `thinking_pause`/`backchannel` frames (added
+2026-08-09) replay Layer 9's real pre-response event sequence — additive only, a client that
+doesn't recognize them can ignore them and the `meta`/`token`/`done` contract is unchanged.
 ```
 event: meta
 data: {"session_id":"s1","conversation_mode":"casual","cognitive_system":"system1",
        "crisis_active":false,"refined":false,"confabulation_guard":false}
+
+event: thinking_pause
+data: {"duration_ms":1025}                    // optional, before typing starts
+
+event: backchannel
+data: {"text":"Oh no...","delay_ms":600}      // optional, a brief acknowledgment bubble
 
 event: token
 data: {"token":"Hey ","delay_ms":40}          // concatenating all tokens == response text
@@ -226,9 +235,11 @@ Permanently removes the goal row (user-scoped).
 ### `GET /memory/{memory_id}` → `MemoryOut` (`404` if absent or deleted)
 
 ### `GET /memory/integrity` → `IntegrityOut`
-Verifies both tamper-evident hash chains.
+Verifies all three tamper-evident hash chains (Layer 2 memory audit, Layer 11 safety record,
+Layer 12 privacy audit).
 ```
-{ "status": "INTACT" | "TAMPER_DETECTED", "audit_chain_ok": bool, "privacy_chain_ok": bool }
+{ "status": "INTACT" | "TAMPER_DETECTED", "audit_chain_ok": bool, "privacy_chain_ok": bool,
+  "safety_chain_ok": bool }
 ```
 
 ### `DELETE /memory/{memory_id}` → `MemoryDeletionOut`
@@ -381,7 +392,8 @@ Response: `{ "stored": bool, "delta_id": string }`
 ### `POST /admin/jobs/{name}` → `JobRunOut`
 Run a background job on demand (single-user, no auth). `404` for an unknown job, `500` on failure.
 Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
-**`longitudinal_summary`**, **`pattern_detection`**.
+**`longitudinal_summary`**, **`pattern_detection`**, **`social_pattern_detection`**,
+**`dependency_monitor`**, **`narrative_arc`**, **`life_calendar`**.
 ```
 { "job": string, "result": { … job-specific summary … } }
 ```

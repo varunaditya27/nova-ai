@@ -9,7 +9,7 @@ import api.main as main
 
 def test_app_boots_and_chat_works(monkeypatch):
     class Orch:
-        def run_turn(self, user_id, message, now=None, session_id=""):
+        def run_turn(self, user_id, message, now=None, session_id="", client_metadata=None):
             return SimpleNamespace(response_text="hello from nova", conversation_mode="casual",
                                    cognitive_system="system1", crisis_active=False, refined=False)
     fake_state = SimpleNamespace(default_user_id="local-user", orchestrator=Orch(),

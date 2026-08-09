@@ -60,6 +60,19 @@ class PostgresOnboardingStore:
             payload["elicitation_session_keys"] = sessions
             row.payload = payload
 
+    def graduate_now(self) -> None:
+        """Explicitly end cold start ahead of the session-counter fallback -- called when the
+        real GraduationEvaluator's criteria are satisfied before the bare session count reaches
+        graduation_sessions (docs/layer-13-architecture.md)."""
+        with session_scope(self._sf) as s:
+            row = s.query(m.OnboardingState).filter_by(user_id=self._user_id).one_or_none()
+            if row is None:
+                row = m.OnboardingState(user_id=self._user_id, cold_start_active=False,
+                                        payload=dict(_DEFAULTS))
+                s.add(row)
+            else:
+                row.cold_start_active = False
+
     def record_turn(self, session_key) -> None:
         key = str(session_key or "default")
         with session_scope(self._sf) as s:

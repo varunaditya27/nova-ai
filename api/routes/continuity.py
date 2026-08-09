@@ -24,8 +24,8 @@ router = APIRouter(tags=["continuity"])
 _ACTIVE = [GoalStatus.ACTIVE.value, GoalStatus.ON_TRACK.value, GoalStatus.AT_RISK.value]
 
 
-def _greeting(now: datetime) -> str:
-    h = now.hour
+def _greeting(now: datetime, timezone_offset_hours: float = 0.0) -> str:
+    h = (now + timedelta(hours=timezone_offset_hours)).hour
     if h < 5:
         return "Good evening"
     if h < 12:
@@ -59,6 +59,7 @@ def home(state=Depends(get_state)):
     sf, uid = state.session_factory, state.default_user_id
     now = datetime.now(timezone.utc)
     grad = state.config.get("onboarding", {}).get("graduation_sessions", 5)
+    tz_offset = state.config.get("system", {}).get("timezone_offset_hours", 0.0)
     try:
         latest = PostgresLongitudinalStore(sf, uid).latest("weekly")
         chapter = None
@@ -75,7 +76,7 @@ def home(state=Depends(get_state)):
     except Exception:
         raise HTTPException(status_code=503, detail="home temporarily unavailable")
     return HomeOut(
-        greeting=_greeting(now), current_chapter=(chapter[:280] if chapter else None),
+        greeting=_greeting(now, tz_offset), current_chapter=(chapter[:280] if chapter else None),
         relationship_stage=rel.stage, last_interaction_at=_iso(last_at),
         weather=_weather(last_at, now), active_goals=len(goals),
         top_proactive=(top[:200] if top else None), cold_start_active=bool(cold),
@@ -90,8 +91,10 @@ def calendar(start: Optional[str] = None, end: Optional[str] = None, state=Depen
         e = datetime.fromisoformat(end) if end else now
     except ValueError:
         raise HTTPException(status_code=422, detail="invalid start/end datetime")
+    tz_offset = state.config.get("system", {}).get("timezone_offset_hours", 0.0)
     try:
-        days = PostgresMessageStore(state.session_factory, state.default_user_id).day_activity(s, e)
+        days = PostgresMessageStore(state.session_factory, state.default_user_id).day_activity(
+            s, e, tz_offset)
     except Exception:
         raise HTTPException(status_code=503, detail="calendar temporarily unavailable")
     return CalendarOut(start=_iso(s), end=_iso(e), days=days)

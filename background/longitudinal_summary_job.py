@@ -19,13 +19,14 @@ def run(app_state) -> dict:
     from background._adapters import emotional_records, episodic_records, session_records
 
     uid = app_state.default_user_id
+    tz_offset = app_state.config.get("system", {}).get("timezone_offset_hours", 0.0)
     store = PostgresMemoryStore(app_state.session_factory)
-    eps = episodic_records(store, uid)
-    emos = emotional_records(store, uid)
-    sessions = session_records(app_state.session_factory, uid)
+    eps = episodic_records(store, uid, tz_offset)
+    emos = emotional_records(store, uid, tz_offset)
+    sessions = session_records(app_state.session_factory, uid, tz_offset)
 
     now = datetime.now(timezone.utc)
-    week_end = now.date()
+    week_end = (now + timedelta(hours=tz_offset)).date()
     week_start = week_end - timedelta(days=7)
     summary = generate_weekly_summary(uid, week_start, week_end, eps, emos, sessions, now=now)
 

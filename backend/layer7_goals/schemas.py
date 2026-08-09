@@ -220,6 +220,7 @@ class Goal:
     first_active_at: Optional[datetime] = None
 
     status: str = GoalStatus.TENTATIVE.value
+    status_changed_at: Optional[datetime] = None
     progress_score: float = 0.0
     progress_trend: str = "unknown"          # improving | stable | declining | unknown
     momentum_score: float = 0.0
@@ -236,8 +237,8 @@ class Goal:
     emotional_weight: float = 0.0
     emotional_weight_updated_at: Optional[datetime] = None
 
-    milestones: list = field(default_factory=list)   # list[Milestone]
-    habits: list = field(default_factory=list)        # list[Habit]
+    milestones: list[Milestone] = field(default_factory=list)
+    habits: list[Habit] = field(default_factory=list)
     signal_events: list[GoalSignalEvent] = field(default_factory=list)
 
     proactive_items_created: list = field(default_factory=list)

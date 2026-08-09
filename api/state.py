@@ -6,9 +6,11 @@ against in-memory SQLite + fake LLM clients with no network.
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any, Callable, Optional
 
 from config import load_config
@@ -16,17 +18,32 @@ from infra.db import make_engine, make_session_factory, init_db, session_scope
 import infra.db.models as models
 from infra.db.memory_store import PostgresMemoryStore
 from infra.db.audit_trail import PostgresAuditTrail
-from backend.layer2_memory import state_updater
+from backend.layer2_memory import (
+    state_updater, merge_uwm_update, apply_identity_update, detect_identity_contradictions,
+    default_identity_beliefs,
+)
 from backend.layer2_memory.embedding import cosine_similarity
 from backend.layer2_memory.schemas import EpisodicMemory, EmotionVector, ShortTermMemoryBuffer
-from backend.layer7_goals import run_goal_pipeline
+from backend.layer7_goals import run_goal_pipeline, decompose_goal
 from backend.pipeline import ConversationOrchestrator
 from infra.db.goal_store import PostgresGoalStore
 from infra.db.safety_store import PostgresSafetyLog
+from infra.db.safety_record_store import PostgresSafetyRecordStore
 from infra.db.onboarding_store import PostgresOnboardingStore
 from infra.db.relationship_store import PostgresRelationshipStore
 from infra.db.proactive_store import PostgresProactiveQueue
+from infra.db.social_store import PostgresSocialStore
+from backend.layer5_relationship import (
+    resolve_entity, infer_relationship_from_context, create_node, extract_events,
+    is_tentative_match,
+)
+from backend.layer5_relationship.schemas import RelationshipType, SocialGraph
 from backend.layer7_goals.schemas import GoalStatus
+from infra.db.format_profile_store import PostgresFormatProfileStore
+from backend.layer9_output import update_format_profile, classify_format_feedback
+from infra.db.longitudinal_store import PostgresLongitudinalStore
+from backend.layer10_longitudinal import assemble_context_packet
+from backend.layer10_longitudinal.progress_tracker import compute_progress_snapshot
 from api.assembly import build_pipeline_steps
 from api.proactive_gen import goal_checkin_item
 from api.reinforcement import used_memory_ids
@@ -45,6 +62,7 @@ class AppState:
     default_user_id: str
     tool_manager: Any = None
     voice_backend: Any = None
+    stm_store: Any = None
 
 
 def build_voice_backend(config: dict):
@@ -108,54 +126,316 @@ def build_tool_manager(session_factory, user_id, intent_client=None):
     return tm
 
 
+def _summarize_promoted_turn(client, turn) -> tuple[str, list[str]]:
+    """LLM summary + named-entity extraction for one promoted STM turn, for its episodic-memory
+    `summary`/`entity_refs` fields. `entity_refs` feeds §10.3's narrative-link `entity_overlap`
+    term — without it, `link_score` can never exceed `0.6·semantic`, always under the `0.65`
+    threshold, so two episodes about the same person/place/event could never actually link.
+    Degrades to a plain truncation + no entities when no LLM client is available or the call
+    fails (§15's best-effort rule) — matches the fallback shape of
+    memory_consolidation_job.py's `_generalize`."""
+    if client is None or not turn.content:
+        return turn.content[:2000], []
+    prompt = (
+        "For this message from the user, produce a long-term memory record. Return ONLY JSON "
+        "with two keys: \"summary\" (one or two sentences, third person, concise and factual, "
+        "no commentary) and \"entities\" (a list of up to 5 short strings naming the specific "
+        "people, places, or named things mentioned — e.g. a person's name, an employer, a city; "
+        "omit generic nouns). Message:\n\n" + turn.content[:4000])
+    try:
+        from infra.llm.json_extract import extract_json
+        data = json.loads(extract_json(client.complete(prompt)))
+        summary = str(data.get("summary", "")).strip()[:2000] or turn.content[:2000]
+        entities = [str(e).strip() for e in (data.get("entities") or []) if str(e).strip()][:5]
+        return summary, entities
+    except Exception:
+        return turn.content[:2000], []
+
+
+def _link_narrative_chains(store, user_id, new_episodes: list, now: datetime) -> None:
+    """Attach each newly-promoted episode to an existing narrative arc, or seed a new one
+    (§10.3). Best-effort: episodes are already saved, so a failure here must never lose them."""
+    from backend.layer2_memory.audit_trail import detect_narrative_links
+    from backend.layer2_memory.schemas import ChainedEpisode, NarrativeChain, NarrativeLinkType
+
+    try:
+        chains = store.active_narrative_chains(user_id)
+        last_ids = {c.episodes[-1].episode_id for c in chains if c.episodes}
+        episodes_by_id = {eid: ep for eid in last_ids
+                          if (ep := store.get_episodic(eid)) is not None}
+        for ep in new_episodes:
+            chain = detect_narrative_links(ep, chains, episodes_by_id, now)
+            if chain is None:
+                chain = NarrativeChain(
+                    theme=ep.summary[:80], first_episode_at=ep.created_at,
+                    last_episode_at=ep.created_at,
+                    episodes=[ChainedEpisode(episode_id=ep.memory_id, position_in_chain=0,
+                                             link_type=NarrativeLinkType.CONTINUATION, linked_at=now)])
+                chains.append(chain)
+            store.save_narrative_chain(user_id, chain)
+            episodes_by_id[ep.memory_id] = ep   # a second promoted episode this turn can chain onto it
+    except Exception:
+        logger.exception("narrative-chain linking failed; episodes already saved")
+
+
+def _extract_uwm_signals(client, message: str) -> dict:
+    """LLM extraction of User World Model signals from one message — profile facts and active
+    life situations/stressors (§7's schema, narrowed: communication_model is deliberately
+    excluded here, see backend/layer2_memory/uwm_updater.py's docstring). NOT people: Layer 5's
+    social-graph extraction (_extract_social_mentions, below) is the one place that resolves
+    person mentions now — its result is projected onto UWM.relationship_graph.people by
+    make_social_writer, rather than this call asking the LLM the same question a second time
+    (see docs/layer-5-architecture.md's live-wiring notes). Returns ``{}`` (a no-op for the
+    merge step) when there's no client or the call/parse fails — matches the best-effort
+    fallback shape used throughout this module (§15)."""
+    if client is None or not message:
+        return {}
+    prompt = (
+        "Read this message from a user talking to their AI companion. Return ONLY JSON with up "
+        "to 3 keys, including only what this message actually states or clearly implies -- omit "
+        "a key entirely if there's nothing to report, never guess or invent:\n"
+        "\"profile\": object with any of preferred_name, pronouns, current_life_stage, "
+        "field_of_study_or_work, institution_or_employer, career_goals_summary, "
+        "likely_living_situation (strings) that this message reveals about the user themself;\n"
+        "\"situations\": list of {\"description\", \"category\", \"emotional_weight\" (0-1)} for "
+        "ongoing life situations mentioned (a project, a move, an illness, etc.);\n"
+        "\"stressors\": list of {\"description\", \"category\", \"intensity\" (0-1)} for things "
+        "causing the user stress right now.\n\nMessage:\n\n" + message[:4000])
+    try:
+        from infra.llm.json_extract import extract_json
+        data = json.loads(extract_json(client.complete(prompt)))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _extract_social_mentions(client, message: str) -> list[dict]:
+    """LLM extraction of named third-party people mentioned in one message — the one place
+    person mentions are resolved now (see _extract_uwm_signals above). Returns a short context
+    snippet per mention for social_graph.infer_relationship_from_context/resolve_entity to work
+    from, rather than asking the LLM to classify the relationship type itself — that's the real
+    SC-1 function's job, this call only surfaces raw mentions."""
+    if client is None or not message:
+        return []
+    prompt = (
+        "Read this message from a user talking to their AI companion. Return ONLY JSON: "
+        "{\"mentions\": [{\"name\", \"context\"}]} for each specific, named third party (not the "
+        "user, not Nova) the message talks about -- a first name, nickname, or relationship term "
+        "used as a name (\"my sister\") counts. \"context\" is a short quote from the message "
+        "around that mention (for figuring out the relationship type from wording like "
+        "\"my sister\" or \"my coworker\"). Omit anyone not specifically named/referenced -- never "
+        "invent people. If no one is mentioned, return {\"mentions\": []}.\n\nMessage:\n\n"
+        + message[:4000])
+    try:
+        from infra.llm.json_extract import extract_json
+        data = json.loads(extract_json(client.complete(prompt)))
+        mentions = data.get("mentions") if isinstance(data, dict) else None
+        return [m for m in mentions if isinstance(m, dict) and m.get("name")] if mentions else []
+    except Exception:
+        return []
+
+
+# Layer 5's richer RelationshipType -> the loose free-text tier PersonNode.relationship_tier
+# expects (§7's UWM schema predates Layer 5's richer taxonomy; this is a lossy display mapping,
+# not a second classification -- the real classification is infer_relationship_from_context's).
+_RELATIONSHIP_TIER_MAP = {
+    RelationshipType.FAMILY_IMMEDIATE.value: "family",
+    RelationshipType.FAMILY_EXTENDED.value: "family",
+    RelationshipType.ROMANTIC_PARTNER.value: "partner",
+    RelationshipType.CLOSE_FRIEND.value: "friend",
+    RelationshipType.FRIEND.value: "friend",
+    RelationshipType.ONLINE_FRIEND.value: "friend",
+    RelationshipType.COLLEAGUE.value: "colleague",
+    RelationshipType.PEER_PROFESSIONAL.value: "colleague",
+    RelationshipType.MANAGER.value: "authority",
+    RelationshipType.AUTHORITY_FIGURE.value: "authority",
+    RelationshipType.MENTOR.value: "mentor",
+    RelationshipType.PEER_ACADEMIC.value: "peer",
+}
+
+
+def _person_projection(node) -> dict:
+    """SocialNode -> the {name, relationship_tier, traits} shape uwm_updater._merge_people
+    expects — the projection that makes Layer 5 the source of truth for UWM.relationship_graph
+    (see docs/layer-5-architecture.md's live-wiring notes)."""
+    return {"name": node.display_name,
+           "relationship_tier": _RELATIONSHIP_TIER_MAP.get(node.relationship_type, "unclear"),
+           "traits": []}
+
+
+def make_social_writer(session_factory, llm_client) -> Callable:
+    """Post-turn Layer 5 writer: resolves named third-party mentions against the persisted
+    SocialGraph (creating/updating nodes via the real SC-1 functions), attributes a rule-based
+    interpersonal event to the mention when the turn names exactly one person (multi-person
+    turns are skipped rather than guessing which person an event is about — §13 principle 2,
+    "never inferred beyond what's stated"), and returns the touched-this-turn nodes so
+    make_state_update_writer's _uwm_updater can project them onto UWM.relationship_graph.people.
+    No edge creation: no real SC-1 function builds SocialEdges yet (see
+    docs/layer-5-architecture.md) -- inventing that logic here would be exactly the
+    reimplement-rather-than-wire-to-the-real-module anti-pattern CLAUDE.md warns against."""
+    store = PostgresSocialStore(session_factory)
+
+    def _write(user_id, session_key: str, message: str, now: datetime) -> list:
+        if not message:
+            return []
+        try:
+            graph = store.load_graph(user_id) or SocialGraph(user_id=str(user_id))
+            mentions = _extract_social_mentions(llm_client, message)
+            touched_ids: list[str] = []   # order-preserving; a turn can name the same person twice
+            for mention in mentions:
+                name = str(mention.get("name", "")).strip()
+                if not name:
+                    continue
+                context = mention.get("context") or message
+                person_id, confidence = resolve_entity(name, context, list(graph.nodes.values()))
+                # A tentative match (relationship-type-from-context only, [0.65, 0.80)) is not
+                # strong enough to auto-merge distinct people: two different named friends both
+                # match "friend" at exactly 0.70 confidence, and without this check the second
+                # mention silently merges into the first person's node. is_tentative_match is the
+                # real SC-1 signal for exactly this -- treat a tentative match as a new entity
+                # rather than a confirmed one (§3.4 describes tentative matches as "confirmed over
+                # later sessions", which would need a confirmation UI this app doesn't have yet).
+                if person_id is not None and is_tentative_match(confidence):
+                    person_id = None
+                if person_id is not None:
+                    node = graph.nodes[person_id]
+                    # A turn naming the same person twice ("Maya called, then Maya texted later")
+                    # must not double-count -- one turn is one mention-worth of signal, however
+                    # many times the LLM's extraction happened to repeat the name.
+                    if person_id not in touched_ids:
+                        node.mention_count += 1
+                        node.last_mentioned = now
+                    if name.lower() not in [a.lower() for a in node.name_aliases]:
+                        node.name_aliases.append(name)
+                else:
+                    rel_type = (infer_relationship_from_context(name, context)
+                               or RelationshipType.UNKNOWN.value)
+                    node = create_node(name, relationship_type=rel_type, now=now)
+                    graph.nodes[node.person_id] = node
+                    person_id = node.person_id
+                if person_id not in touched_ids:
+                    touched_ids.append(person_id)
+            touched = [graph.nodes[pid] for pid in touched_ids]
+            if mentions:
+                graph.user_id = str(user_id)
+                graph.version += 1
+                graph.last_updated = now
+                store.save_graph(graph)
+            if len(touched) == 1:
+                for event in extract_events(message, session_id=session_key,
+                                            person_id=touched[0].person_id, now=now):
+                    store.save_event(user_id, event)
+            return touched
+        except Exception:
+            logger.exception("social writer failed; UWM people projection skipped this turn")
+            return []
+    return _write
+
+
 def make_state_update_writer(store, embed_client, session_factory, threshold: float,
-                             vector_store=None) -> Callable:
+                             vector_store=None, stm_store=None, summarizer_llm=None,
+                             social_writer_fn=None) -> Callable:
     """Post-turn writer that runs the real Layer-2 state_updater against Postgres.
 
-    Upserts the Session turn count, then extracts a new episode from the turn, reinforces the
-    recalled memories the response actually reflected (similarity-gated), bumps the UWM version if
-    present, and appends a persisted audit event for each — all durable across restarts. Best-effort
-    and swallowed: the response is already delivered, so post-turn bookkeeping must never surface to
+    Upserts the Session turn count, accumulates this turn into the session's real (in-process,
+    RAM-only — see infra/stm_store.py) Short-Term Memory buffer, and — matching the architecture
+    doc's actual design (§3.3), not a stand-in for it — creates an episodic memory only for turns
+    that are *evicted from STM and pass promotion* (high emotional arousal or a life-event
+    keyword), summarized by an LLM rather than raw-truncated. Also reinforces the recalled
+    memories the response actually reflected (similarity-gated), bumps the UWM version if present,
+    and appends a persisted audit event for each — all durable across restarts. Best-effort and
+    swallowed: the response is already delivered, so post-turn bookkeeping must never surface to
     the user (matches the orchestrator's state-update invariant).
     """
+    from backend.layer2_memory.stm import add_turn, should_promote
+    from backend.layer2_memory.schemas import ConversationTurn
+
     def _write(ctx) -> None:
         try:
             key = getattr(ctx, "session_id", "") or "default"
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
             with session_scope(session_factory) as s:
                 row = s.query(models.Session).filter_by(session_key=key).one_or_none()
                 if row is None:
-                    s.add(models.Session(user_id=ctx.user_id, session_key=key, turn_count=1))
+                    s.add(models.Session(user_id=ctx.user_id, session_key=key, turn_count=1,
+                                          last_delivered_at=now))
                 else:
                     row.turn_count += 1
+                    row.last_delivered_at = now
 
-            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
             message = getattr(ctx, "message", "") or ""
             response = getattr(ctx, "response_text", "") or ""
             recalled = getattr(ctx, "recalled_memories", []) or []
             used = used_memory_ids(embed_client.embed([response])[0], recalled, threshold) \
                 if response else set()
 
-            def _extractor(_stm, _emotion):
-                if not message:
-                    return []
-                ep = EpisodicMemory(
-                    user_id=ctx.user_id, summary=message[:2000],
-                    embedding=embed_client.embed([message])[0], created_at=now,
-                    importance_score=0.3, S_current=1.0, creation_agent="api.state_update")
-                if vector_store is not None:   # index for the ANN live recall path (best-effort)
-                    try:
-                        vector_store.add("episodic", ids=[str(ep.memory_id)],
-                                         embeddings=[ep.embedding],
-                                         metadatas=[{"user_id": str(ctx.user_id)}],
-                                         documents=[message[:500]])
-                    except Exception:
-                        logger.exception("vector-store index failed; recall falls back to linear")
-                return [ep]
+            emotion_intent = getattr(ctx, "emotion_intent", None)
+            emotion = getattr(emotion_intent, "emotion_vector", None) or EmotionVector()
 
-            stm = ShortTermMemoryBuffer(session_id=key, user_id=ctx.user_id)
+            # Accumulate into the real, cross-request STM buffer. Promotion is checked on
+            # arrival, not on eviction: real sessions (a handful to a few dozen turns) will almost
+            # never fill the 100-turn/30,000-char window, so eviction-only promotion would mean
+            # significant turns are rarely, if ever, actually promoted. `should_promote` is a pure
+            # function of a turn's own fields (which never mutate after construction), so checking
+            # it again at eviction time for a turn that already failed the arrival check can only
+            # ever repeat the same "no" — an eviction-time check adds no coverage, only a second
+            # pass over turns already decided. Only user turns are eligible (Nova's own reply text
+            # can accidentally contain a life-event keyword, e.g. "congratulations on the new job",
+            # which is not something the *user* experienced).
+            promotable = []
+            if stm_store is not None:
+                stm = stm_store.get_or_create(key, ctx.user_id)
+                if message:
+                    user_turn = ConversationTurn(
+                        role="user", content=message, timestamp=now,
+                        word_count=len(message.split()), emotional_annotation=emotion)
+                    if should_promote(user_turn):
+                        promotable.append(user_turn)
+                    add_turn(stm, user_turn)
+                if response:
+                    assistant_turn = ConversationTurn(
+                        role="assistant", content=response, timestamp=now,
+                        word_count=len(response.split()))
+                    add_turn(stm, assistant_turn)   # kept for in-session coherence
+                stm_store.save(key, stm)
+            else:
+                stm = ShortTermMemoryBuffer(session_id=key, user_id=ctx.user_id)
+
+            def _extractor(_stm, _emotion):
+                episodes = []
+                for turn in promotable:
+                    summary, entities = _summarize_promoted_turn(summarizer_llm, turn)
+                    ep = EpisodicMemory(
+                        user_id=ctx.user_id, summary=summary, entity_refs=entities,
+                        embedding=embed_client.embed([summary])[0], created_at=turn.timestamp or now,
+                        importance_score=0.5, S_current=1.0, creation_agent="api.state_update",
+                        emotion_vector=turn.emotional_annotation or EmotionVector())
+                    if vector_store is not None:   # index for the ANN live recall path (best-effort)
+                        try:
+                            vector_store.add("episodic", ids=[str(ep.memory_id)],
+                                             embeddings=[ep.embedding],
+                                             metadatas=[{"user_id": str(ctx.user_id)}],
+                                             documents=[summary[:500]])
+                        except Exception:
+                            logger.exception("vector-store index failed; recall falls back to linear")
+                    episodes.append(ep)
+                if episodes:
+                    _link_narrative_chains(store, ctx.user_id, episodes, now)
+                return episodes
+
+            touched_people = (social_writer_fn(ctx.user_id, key, message, now)
+                             if social_writer_fn is not None else [])
+
+            def _uwm_updater(existing_uwm):
+                extracted = _extract_uwm_signals(summarizer_llm, message)
+                if touched_people:
+                    extracted["people"] = [_person_projection(n) for n in touched_people]
+                return merge_uwm_update(existing_uwm, ctx.user_id, extracted, now)
+
             audit = PostgresAuditTrail(session_factory, ctx.user_id)
-            state_updater(ctx.user_id, key, stm, store, audit, EmotionVector(), now, _extractor,
-                          last_recall=recalled, used_memory_ids=used)
+            state_updater(ctx.user_id, key, stm, store, audit, emotion, now, _extractor,
+                          last_recall=recalled, used_memory_ids=used,
+                          uwm_updater_fn=_uwm_updater)
         except Exception:
             logger.exception("state-update writer failed; turn already delivered")
     return _write
@@ -203,10 +483,19 @@ def make_message_writer(session_factory) -> Callable:
 
 
 def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
-    """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres."""
+    """Post-turn: run the real Layer-7 goal pipeline (extract + progress) against Postgres, then
+    SC-5-decompose any newly created goal into milestones/habits (architecture doc §7). Without
+    this, every goal created through the live pipeline has milestones=[] and deadline=None, which
+    is why Layer 6's goal_checkin_item intake never produced a real candidate -- see
+    docs/POLISH_BACKLOG.md's Layer 7 entry. decompose_goal's own JSON parsing already handles an
+    ISO target_date per milestone, so no separate natural-language date parser is needed."""
     def _extractor_llm(prompt):
         from infra.llm.json_extract import extract_json
         return extract_json(system1_client.complete(prompt))   # clean fenced/prose JSON for the extractor
+
+    def _decomposer_llm(prompt):
+        from infra.llm.json_extract import extract_json
+        return extract_json(system1_client.complete(prompt))
 
     def _sim(a, b):
         return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
@@ -214,18 +503,31 @@ def make_goal_writer(session_factory, system1_client, embed_client) -> Callable:
     def _write(ctx) -> None:
         try:
             store = PostgresGoalStore(session_factory, ctx.user_id)
-            run_goal_pipeline(
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            output = run_goal_pipeline(
                 getattr(ctx, "message", "") or "", goal_store=store,
                 message_id=getattr(ctx, "session_id", "") or "",
-                extractor_llm_fn=_extractor_llm, similarity_fn=_sim,
-                now=getattr(ctx, "now", None) or datetime.now(timezone.utc))
+                extractor_llm_fn=_extractor_llm, similarity_fn=_sim, now=now)
+            for goal_id in output.new_goals_created:
+                goal = store.get(goal_id)
+                if goal is None:
+                    continue
+                milestones, habits = decompose_goal(goal, llm_fn=_decomposer_llm, now=now)
+                if milestones or habits:
+                    goal.milestones = milestones
+                    goal.habits = habits
+                    store.update_goal(goal)
         except Exception:
             logger.exception("goal writer failed; turn already delivered")
     return _write
 
 
 def make_safety_writer(session_factory) -> Callable:
-    """Post-turn: append the turn's crisis assessment to the safety log (append-only; NONE skipped)."""
+    """Post-turn: append the turn's crisis assessment to the safety log (append-only; NONE skipped),
+    and to the tamper-evident SafetyRecord hash chain (§8) -- content_hash covers the actual
+    message+response text but only the SHA-256 digest is ever persisted, matching the access
+    policy's "metadata_only" content rule (a hash reveals nothing about the conversation itself,
+    it only lets a later audit prove nothing was altered)."""
     def _write(ctx) -> None:
         try:
             assessment = getattr(ctx, "crisis_assessment", None)
@@ -235,6 +537,11 @@ def make_safety_writer(session_factory) -> Callable:
             signal.user_id = signal.user_id or ctx.user_id
             signal.session_id = signal.session_id or getattr(ctx, "session_id", "") or ""
             PostgresSafetyLog(session_factory).record(signal)
+            now = getattr(ctx, "now", None)
+            content = f"{getattr(ctx, 'message', '') or ''}\n{getattr(ctx, 'response_text', '') or ''}"
+            PostgresSafetyRecordStore(session_factory, ctx.user_id).append(
+                "crisis_signal_detected", detail=f"tier={signal.tier}", tier=signal.tier,
+                session_id=signal.session_id, content=content, now=now)
         except Exception:
             logger.exception("safety writer failed; turn already delivered")
     return _write
@@ -282,15 +589,30 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
 
 
 def make_goal_provider(session_factory, embed_client) -> Callable:
-    """Layer-7 → Layer-4: return the titles of goals relevant to this turn, for accountability
-    injection into the planner prompt (via response_instruction)."""
+    """Layer-7 SC-4 -> Layer-4: the real accountability decision (architecture doc §6), computed
+    pre-generation with this turn's real live context. SC-4's `decide_goal_reference` is pure and
+    read-only (no store mutation) -- it was already called for real, but only post-turn inside
+    `run_goal_pipeline` (make_goal_writer), where its rich, mode/progress-differentiated
+    `GoalContextPacket` was computed and then discarded every turn. Calling it here instead,
+    same-turn, avoids the one-turn staleness a persist-and-replay approach would have introduced
+    against "goals yield to the present moment" (§11 principle 3) -- a mode/stage change between
+    turns must never reference a goal using last turn's now-wrong gate decision."""
+    from backend.layer7_goals.accountability_modifier import decide_goal_reference
+    from backend.layer7_goals.progress_monitor import classify_progress_signal
+    from backend.layer7_goals.schemas import GoalContextPacket
+
     def _sim(a, b):
         return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
 
-    def _provider(user_id, message):
+    def _provider(user_id, message, conversation_mode="casual", emotional_state=None,
+                 relationship_stage="new", now=None) -> GoalContextPacket:
+        message = message or ""
         relevant = PostgresGoalStore(session_factory, user_id).get_relevant_goals(
-            message or "", similarity_fn=_sim)
-        return [rg.goal.title for rg in relevant if getattr(rg.goal, "title", None)]
+            message, emotional_state=emotional_state, similarity_fn=_sim, now=now)
+        progress_signal = (classify_progress_signal(message, relevant[0].goal)
+                          if relevant else None)
+        return decide_goal_reference(relevant, progress_signal, emotional_state,
+                                     conversation_mode, relationship_stage, now=now)
     return _provider
 
 
@@ -301,11 +623,330 @@ def make_relationship_provider(session_factory) -> Callable:
     return _provider
 
 
-def make_temporal_profile_provider(session_factory) -> Callable:
+def make_uwm_provider(session_factory) -> Callable:
+    """Load the persisted per-user User World Model for the persona packet (§7). Returns
+    ``None`` until the first real signal is extracted (see uwm_updater_fn in
+    make_state_update_writer) — the persona packet degrades to no UWM directive, matching every
+    other provider's cold-start behavior."""
+    store = PostgresMemoryStore(session_factory)
+
+    def _provider(user_id):
+        return store.load_uwm(user_id)
+    return _provider
+
+
+def make_identity_provider(session_factory) -> Callable:
+    """Select a small, prompt-sized slice of Nova's self-model for the persona directive (§6) —
+    the highest-centrality non-immutable beliefs, not the whole table. Identity Memory is Nova's
+    own self-model, shared across the single user this app serves (IdentityMemory uses
+    TimestampMixin, not UserScopedMixin) — the ``user_id`` param exists only so this provider has
+    the same call shape as every other one (``provider(ctx.user_id)``)."""
+    store = PostgresMemoryStore(session_factory)
+    _TOP_N = 3
+
+    def _provider(user_id=None):
+        beliefs = [b for b in store.identity_beliefs() if not b.is_immutable]
+        beliefs.sort(key=lambda b: b.centrality, reverse=True)
+        return beliefs[:_TOP_N]
+    return _provider
+
+
+def make_social_provider(session_factory) -> Callable:
+    """Read-side Layer 5 provider for the coaching-injection hook: the persisted SocialGraph,
+    recent events, and active (batch-detected) patterns for one user. Returns a graph/events/
+    patterns triple with sensible empty defaults (a fresh SocialGraph, no events, no patterns)
+    when nothing has been persisted yet -- detect_coaching_opportunity's own gate 1 already
+    degrades to "nothing to say" on empty inputs, so this provider doesn't need its own
+    cold-start branch."""
+    store = PostgresSocialStore(session_factory)
+
+    def _provider(user_id):
+        graph = store.load_graph(user_id) or SocialGraph(user_id=str(user_id))
+        return graph, store.recent_events(user_id), store.active_patterns(user_id)
+    return _provider
+
+
+def make_social_surface_writer(session_factory) -> Callable:
+    """Write side of the coaching-injection hook: marks a pattern surfaced the moment its
+    observation is actually delivered (not merely detected -- gate_2/3 can still defer it), so
+    gate_3_recency's repeat-block can actually fire on a later turn."""
+    store = PostgresSocialStore(session_factory)
+
+    def _mark(pattern_id):
+        store.mark_pattern_surfaced(pattern_id)
+    return _mark
+
+
+def make_proactive_coaching_writer(session_factory) -> Callable:
+    """Layer 5 -> Layer 6 handoff: a coaching opportunity ``build_social_intelligence_packet``
+    deferred (timing/recency gate, or no length headroom this turn) becomes a durable
+    SOCIAL_PATTERN_COACHING candidate in the Layer-6 outreach queue, via the real
+    ``on_deferred_coaching`` intake contract -- so a pattern the user isn't ready to hear about
+    right now isn't just dropped. Deterministic item_id (keyed off the triggering pattern/event,
+    matching the goal-check-in idempotency pattern) so re-deferring the same opportunity upserts
+    instead of duplicating."""
+    from backend.layer6_proactivity.intake import on_deferred_coaching
+    social_store = PostgresSocialStore(session_factory)
+
+    def _write(user_id, opportunity, now=None) -> None:
+        now = now or datetime.now(timezone.utc)
+        display_name = None
+        if opportunity.triggering_person is not None:
+            graph = social_store.load_graph(user_id)
+            node = graph.nodes.get(opportunity.triggering_person) if graph else None
+            display_name = node.display_name if node else None
+        item = on_deferred_coaching(opportunity, person_display_name=display_name, now=now)
+        if opportunity.triggering_pattern is not None:
+            item.item_id = f"coaching-{opportunity.triggering_pattern.pattern_id}"
+        elif opportunity.triggering_event is not None:
+            item.item_id = f"coaching-{opportunity.triggering_event.event_id}"
+        PostgresProactiveQueue(session_factory, user_id).upsert(item)
+    return _write
+
+
+def make_thread_provider(session_factory) -> Callable:
+    """Layer 1 SC-5 input: a per-user, real ``ThreadStore`` for ``perceive()`` to read
+    ``due_threads`` from -- replaces the always-fresh, always-empty ``InMemoryThreadStore()``
+    ``process_input_event`` falls back to when no store is passed (architecture doc §3.5)."""
+    from infra.db.thread_store import PostgresThreadStore
+
+    def _provider(user_id):
+        return PostgresThreadStore(session_factory, user_id)
+    return _provider
+
+
+def make_thread_writer(session_factory, system1_client) -> Callable:
+    """Post-turn: extract a narrative thread from the user's message and persist it. Layer 1's
+    ``ThreadStore`` Protocol is deliberately read-only (``get_all`` only) -- its own module
+    docstring (``thread_tracker.py``) says thread *records* are created by "the Layer 2 State
+    Updater," i.e. a post-turn writer like this one, not by ``perceive()`` itself."""
+    from backend.layer1_input.thread_extractor import extract_thread
+    from infra.db.thread_store import PostgresThreadStore
+    from infra.llm.json_extract import extract_json
+
+    def _llm(prompt):
+        return extract_json(system1_client.complete(prompt))
+
+    def _write(ctx) -> None:
+        try:
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            thread = extract_thread(message, llm_fn=_llm, now=now,
+                                    source_session_id=getattr(ctx, "session_id", "") or "")
+            if thread is not None:
+                PostgresThreadStore(session_factory, ctx.user_id).save(thread)
+        except Exception:
+            logger.exception("thread writer failed; turn already delivered")
+    return _write
+
+
+def make_thread_proactive_writer(session_factory) -> Callable:
+    """Layer 1 -> Layer 6 handoff: hands each thread due on this turn's ``InputPerceptionPacket``
+    to the real ``on_thread_due`` intake, upserting an idempotent ``ProactiveItem`` per thread
+    (deterministic item_id, same pattern as ``api/proactive_gen.py::goal_checkin_item``) --
+    previously ``on_thread_due`` had zero production callers, so due threads were computed
+    (once a real store existed) but never reached the outreach queue."""
+    from backend.layer6_proactivity.intake import on_thread_due
+
+    def _write(ctx) -> None:
+        try:
+            due = getattr(getattr(ctx, "input_packet", None), "due_threads", None) or []
+            if not due:
+                return
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            queue = PostgresProactiveQueue(session_factory, ctx.user_id)
+            for thread in due:
+                item = on_thread_due(thread, now=now)
+                item.item_id = f"thread-{thread.thread_id}"   # deterministic -> idempotent upsert
+                queue.upsert(item)
+        except Exception:
+            logger.exception("thread proactive writer failed; turn already delivered")
+    return _write
+
+
+def make_life_event_writer(session_factory, system1_client) -> Callable:
+    """Post-turn: extract a significant life event from the user's message and persist it
+    (architecture doc §3.4). No detector existed anywhere -- `detect_chapter_boundaries`
+    (narrative_arc.py) was real and callable but always received `life_events=[]`, so no user's
+    narrative arc ever gets a second chapter. Mirrors make_thread_writer's shape exactly."""
+    from backend.layer10_longitudinal.life_event_extractor import extract_life_event
+    from infra.llm.json_extract import extract_json
+
+    def _llm(prompt):
+        return extract_json(system1_client.complete(prompt))
+
+    def _write(ctx) -> None:
+        try:
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            event = extract_life_event(message, llm_fn=_llm, now=now, user_id=str(ctx.user_id))
+            if event is not None:
+                PostgresLongitudinalStore(session_factory, ctx.user_id).save_life_event(event)
+        except Exception:
+            logger.exception("life event writer failed; turn already delivered")
+    return _write
+
+
+def make_format_profile_provider(session_factory) -> Callable:
+    """Read-side Layer 9 provider for deliver(): the persisted UserFormatProfile so
+    compute_format_spec's length target actually reflects what's been learned, instead of every
+    turn re-deriving from UserFormatProfile()'s hardcoded defaults."""
+    def _provider(user_id):
+        return PostgresFormatProfileStore(session_factory, user_id).load()
+    return _provider
+
+
+def make_format_profile_writer(session_factory) -> Callable:
+    """Post-turn: fold this turn's engagement signals into the Layer-9 UserFormatProfile
+    (architecture doc §6.6). The 'user skimmed a long response' signal needs Nova's PREVIOUS
+    response length compared against THIS turn's user reply latency/length -- last_response_length
+    is bookkept directly on the profile (set at the end of this write) so no other store needs to
+    be queried for it. Latency reuses Layer 1's already-computed response_latency_ms rather than
+    re-deriving timing here. explicit_format_feedback is only passed through when
+    classify_format_feedback's own keyword gate actually matches, so ordinary turns don't pollute
+    explicit_format_feedback_events with None-preference noise."""
+    store_cls = PostgresFormatProfileStore
+
+    def _write(ctx) -> None:
+        try:
+            uid = ctx.user_id
+            store = store_cls(session_factory, uid)
+            profile = store.load()
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            latency_ms = getattr(ctx.input_packet, "response_latency_ms", None) or 0
+            prev_length = profile.last_response_length
+            feedback_text = message if classify_format_feedback(message) is not None else None
+            update_format_profile(
+                profile, nova_response_length=prev_length,
+                user_response_latency_ms=latency_ms, user_response_length=len(message),
+                explicit_format_feedback=feedback_text, user_message_text=message)
+            profile.last_response_length = len(getattr(ctx, "response_text", "") or "")
+            profile.last_response_at = now
+            store.save(profile)
+        except Exception:
+            logger.exception("format profile writer failed; turn already delivered")
+    return _write
+
+
+def make_longitudinal_provider(session_factory) -> Callable:
+    """Read-side Layer 10 provider for the planner directive: assembles the real
+    Layer10ContextPacket (§8) from persisted narrative arc / weekly summaries / retrospectives /
+    patterns, all cheap Postgres reads -- ProgressSnapshot is computed live (no LLM, deterministic)
+    rather than persisted separately, since nothing else needs it as a standalone artifact."""
+    def _provider(user_id, now=None):
+        now = now or datetime.now(timezone.utc)
+        long_store = PostgresLongitudinalStore(session_factory, user_id)
+        rel_store = PostgresRelationshipStore(session_factory, user_id)
+        first_session = rel_store.first_session_date()
+        days_since = (now.date() - first_session).days if first_session else 0
+
+        memory_store = PostgresMemoryStore(session_factory)
+        from background._adapters import emotional_records, episodic_records
+        emos = emotional_records(memory_store, user_id)
+        eps = episodic_records(memory_store, user_id)
+        goals = PostgresGoalStore(session_factory, user_id).load_by_status(
+            [s.value for s in GoalStatus])
+        progress = compute_progress_snapshot(user_id, now.date(), emos, [], goals, eps)
+
+        weeklies = long_store.summaries(period="weekly", limit=2)
+        current_week = weeklies[0] if weeklies else None
+        last_week = weeklies[1] if len(weeklies) > 1 else None
+
+        # primary_active_goals (top 3 by emotional stake) and upcoming_goal_deadlines (next 14
+        # days) were both real, documented Layer10ContextPacket fields (docs/layer-10-
+        # architecture.md §8) that assemble_context_packet already accepts -- just never passed.
+        from api.proactive_gen import _nearest_future_target
+        active_goals = [g for g in goals
+                       if g.status in (GoalStatus.ACTIVE.value, GoalStatus.ON_TRACK.value)]
+        primary_goals = [g.title for g in
+                         sorted(active_goals, key=lambda g: g.emotional_weight, reverse=True)[:3]
+                         if g.title]
+        deadline_horizon = now + timedelta(days=14)
+        upcoming_deadlines = []
+        for g in active_goals:
+            target = _nearest_future_target(g, now)
+            if target is not None and target[0] <= deadline_horizon:
+                upcoming_deadlines.append((g.title, target[0].date()))
+        upcoming_deadlines.sort(key=lambda t: t[1])
+
+        life_events = long_store.life_events()
+        recent_life_event = life_events[0] if life_events else None
+
+        return assemble_context_packet(
+            user_id=str(user_id), narrative_arc=long_store.load_narrative_arc(),
+            progress_snapshot=progress, current_week_summary=current_week,
+            last_week_summary=last_week, pending_retrospectives=long_store.pending_retrospectives(),
+            active_patterns=long_store.active_patterns(), days_since_started=days_since,
+            primary_active_goals=primary_goals, upcoming_goal_deadlines=upcoming_deadlines,
+            recent_life_event=recent_life_event, now=now)
+    return _provider
+
+
+def _revise_belief_statement(client, belief, contradiction) -> str:
+    """LLM rewrite of one identity belief's statement, given the evidence that contradicted it.
+    Falls back to the belief's *unchanged* statement (never a placeholder like "[revised] X") on
+    any failure — apply_identity_update treats an unchanged return as "couldn't rewrite this
+    turn," not as a real update, so a failed call here correctly leaves the belief untouched
+    rather than persisting garbage."""
+    if client is None:
+        return belief.statement
+    prompt = (
+        f"Nova (an AI companion) currently believes about herself: \"{belief.statement}\". "
+        f"A conversation with the user gave this evidence against it: "
+        f"\"{contradiction.evidence_summary}\". Write a revised version of the belief statement "
+        f"that honestly incorporates this evidence -- one sentence, third person, starting with "
+        f"\"Nova\", same style as the original. Return ONLY the revised sentence, no quotes, no "
+        f"commentary.")
+    try:
+        revised = client.complete(prompt).strip().strip('"')
+        return revised or belief.statement
+    except Exception:
+        return belief.statement
+
+
+def make_identity_writer(session_factory, llm_client) -> Callable:
+    """Post-turn: SC-4 contradiction detection + belief update (§6.4). One combined LLM call
+    (backend/layer2_memory/identity.py::detect_identity_contradictions) checks the turn's message
+    against every non-immutable belief; any belief it genuinely contradicts accumulates evidence
+    toward its centrality-scaled threshold (§6.3) and is rewritten (by a second, real LLM call —
+    see _revise_belief_statement) once crossed."""
+    def _write(ctx) -> None:
+        try:
+            message = getattr(ctx, "message", "") or ""
+            if not message:
+                return
+            store = PostgresMemoryStore(session_factory)
+            beliefs = store.identity_beliefs()
+            session_id = getattr(ctx, "session_id", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            contradictions = detect_identity_contradictions(llm_client, message, beliefs, session_id)
+            if not contradictions:
+                return
+            by_id = {b.belief_id: b for b in beliefs}
+            for contradiction in contradictions:
+                belief = by_id.get(contradiction.belief_id)
+                if belief is None:
+                    continue
+                apply_identity_update(
+                    belief, contradiction, now=now,
+                    generate_fn=lambda b, c: _revise_belief_statement(llm_client, b, c))
+                store.save_identity(belief)
+        except Exception:
+            logger.exception("identity writer failed; turn already delivered")
+    return _write
+
+
+def make_temporal_profile_provider(session_factory, timezone_offset_hours: float = 0.0) -> Callable:
     """Layer 1 profile source: derive per-user temporal-history signals from state that is
     already persisted for Layer 4/5 (session counters) and the message log, instead of a
     dedicated Layer-1 store — see docs/layer-1-architecture.md §16 "Live wiring status". Without
     this, Layer 1 has no way to know a user's session history and every turn looks cold-start.
+
+    ``timezone_offset_hours`` must match the same value threaded into ``UserTemporalProfile`` in
+    ``api/assembly.py::perceive`` — the live circadian band is computed from local time, so the
+    historical band histogram built here has to apply the identical offset or the two will
+    silently diverge (see docs/layer-1-architecture.md §16, "Circadian histogram is UTC-based").
 
     Returns a plain dict (not a Layer-1 schema type — ``api/assembly.py`` owns building the
     ``UserTemporalProfile``/``UserBehaviorBaseline`` objects, matching ``make_goal_provider``
@@ -356,7 +997,8 @@ def make_temporal_profile_provider(session_factory) -> Callable:
 
         band_counts: dict[str, int] = {}
         for r in recent_user:
-            band = map_circadian_band(r["created_at"].hour).value
+            local_hour = (_as_utc(r["created_at"]) + timedelta(hours=timezone_offset_hours)).hour
+            band = map_circadian_band(local_hour).value
             band_counts[band] = band_counts.get(band, 0) + 1
         total_banded = sum(band_counts.values())
         # Require a handful of samples before trusting the histogram — with too few, an unseen
@@ -381,13 +1023,55 @@ def make_temporal_profile_provider(session_factory) -> Callable:
     return _provider
 
 
+def make_session_last_delivered_provider(session_factory) -> Callable:
+    """Layer 1 SC-2 latency signal source: when Nova last delivered a response in this session,
+    read back from ``Session.last_delivered_at`` (stamped every turn by
+    ``make_state_update_writer``). Real, server-side -- no client instrumentation needed, unlike
+    the rest of ``ClientMetadata`` (typing/deletion/burst, see docs/FRONTEND_TODO.md)."""
+    def _provider(session_key: str):
+        with session_scope(session_factory) as s:
+            row = s.query(models.Session).filter_by(session_key=str(session_key or "default")) \
+                .one_or_none()
+            dt = row.last_delivered_at if row is not None else None
+            # SQLite (the offline test substrate) strips tzinfo on round-trip; Postgres doesn't.
+            # Always stamped UTC-aware on write (datetime.now(timezone.utc)), so a naive read-back
+            # is always UTC -- same convention as make_temporal_profile_provider's `_as_utc`.
+            if dt is not None and dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+    return _provider
+
+
+def make_nova_positions_provider(session_factory) -> Callable:
+    """Layer 4 SC-4 Check 3 input: Nova's own recent replies in this session (architecture doc
+    §6.3's ``nova_recent_positions``). The finding was "no cross-turn stance history is tracked
+    anywhere" -- it already is, via the real conversation-message log
+    (``infra/db/message_store.py``); Check 3 just never had a real reader wired to it."""
+    from infra.db.message_store import PostgresMessageStore
+
+    def _provider(user_id, session_id):
+        return PostgresMessageStore(session_factory, user_id).recent_by_role(
+            session_id or "", "nova", limit=5)
+    return _provider
+
+
 def make_relationship_writer(session_factory) -> Callable:
-    """Post-turn: advance the per-user relationship (message/session counters + stage)."""
+    """Post-turn: advance the per-user relationship (message/session counters + stage + a
+    session-accumulated tie-strength delta, see PostgresRelationshipStore.record_turn).
+    `emotional_intensity`/`had_vulnerability_moment` are derived from Layer 3's real, already-
+    computed `EmotionClassification` for this turn -- intensity is the packet's own normalised
+    (valence, arousal) magnitude; a "vulnerability moment" is a conservative, internally-consistent
+    reading of that same signal (high intensity + negative valence), not a new detector."""
     def _write(ctx) -> None:
         try:
+            emotion = getattr(getattr(ctx, "emotion_intent", None), "primary_emotion", None)
+            intensity = float(getattr(emotion, "intensity", 0.0) or 0.0) if emotion else 0.0
+            vulnerability = bool(
+                emotion and intensity > 0.6 and getattr(emotion, "valence", 0.0) < 0)
             PostgresRelationshipStore(session_factory, ctx.user_id).record_turn(
                 getattr(ctx, "session_id", "") or "default",
-                user_message=getattr(ctx, "message", "") or "")
+                user_message=getattr(ctx, "message", "") or "",
+                emotional_intensity=intensity, had_vulnerability_moment=vulnerability)
         except Exception:
             logger.exception("relationship writer failed; turn already delivered")
     return _write
@@ -431,6 +1115,77 @@ def make_onboarding_writer(session_factory, graduation_sessions: int) -> Callabl
     return _write
 
 
+def make_cold_start_writer(session_factory, graduation_sessions: int) -> Callable:
+    """Post-turn: Layer 13 SC-1 passive elicitation + SC-2 real graduation evaluation. Runs the
+    real PassiveElicitationEngine/ColdStartContextBuilder/GraduationEvaluator (previously zero
+    production callers -- ColdStartEngine itself is a complete, correct in-memory coordinator with
+    nowhere to persist its state across turns) against a persisted InitialState. Two of
+    GraduationEvaluator's required criteria have no real extractor anywhere in Layer 13
+    (emotional_baseline_calibrated, primary_topic_areas) -- both are derived here from signals
+    Layer 2/13 already compute elsewhere rather than inventing new extraction logic:
+    emotional_baseline_calibrated from the passive engine's own emotional-style confidence ramp
+    (already scaled by history length), primary_topic_areas from Layer 2's real episodic
+    topic_tags. The bare session-counter graduation in make_onboarding_writer stays as a fallback
+    so a terse user is never permanently stuck in cold start; this writer can graduate earlier."""
+    def _write(ctx) -> None:
+        try:
+            onboarding = PostgresOnboardingStore(session_factory, ctx.user_id, graduation_sessions)
+            if not onboarding.state().get("cold_start_active"):
+                return
+            from backend.layer13_onboarding.passive_elicitation import PassiveElicitationEngine
+            from backend.layer13_onboarding.context_constructor import ColdStartContextBuilder
+            from backend.layer13_onboarding.graduation_evaluator import GraduationEvaluator
+            from infra.db.initial_state_store import PostgresInitialStateStore
+            from infra.db.message_store import PostgresMessageStore
+
+            message = getattr(ctx, "message", "") or ""
+            if not message:
+                return
+            session_key = getattr(ctx, "session_id", "") or "default"
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+
+            state_store = PostgresInitialStateStore(session_factory, ctx.user_id)
+            state = state_store.load()
+            state.cold_start_session_count = onboarding.state().get("session_index", 0) or 1
+            state.total_exchange_count += 1
+
+            msg_store = PostgresMessageStore(session_factory, ctx.user_id)
+            session_history = [
+                SimpleNamespace(user_message=m["content"]) for m in msg_store.history(limit=50)
+                if m.get("session_key") == session_key and m.get("role") == "user"
+            ]
+            session_history.reverse()   # oldest first, matching how the extractors expect history
+
+            engine = PassiveElicitationEngine()
+            signals = engine.extract(
+                message=message, message_index=state.total_exchange_count - 1,
+                session_number=state.cold_start_session_count, timestamp=now,
+                session_history=session_history)
+            update = ColdStartContextBuilder(engine).process_message(
+                message=message, message_index=state.total_exchange_count - 1,
+                session_number=state.cold_start_session_count, timestamp=now,
+                initial_state=state, session_history=session_history)
+            state.apply_update(update)
+
+            if signals.emotional_expression_style.confidence >= 0.8:
+                state.emotional_baseline_calibrated = True
+
+            memory_store = PostgresMemoryStore(session_factory)
+            tags = {t for ep in memory_store.active_episodic(ctx.user_id)
+                   for t in (getattr(ep, "topic_tags", None) or [])}
+            if len(tags) >= len(state.primary_topic_areas or []):
+                state.primary_topic_areas = sorted(tags)
+
+            state_store.save(state)
+
+            result = GraduationEvaluator().evaluate(state)
+            if result.should_graduate:
+                onboarding.graduate_now()
+        except Exception:
+            logger.exception("cold-start writer failed; turn already delivered")
+    return _write
+
+
 def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=None,
                     vector_store=None) -> AppState:
     # Each layerN.yaml overlay is optional (skipped if absent) and merges over defaults.yaml;
@@ -449,20 +1204,39 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         vector_store = build_vector_store(config)
 
     store = PostgresMemoryStore(session_factory)
+    # Idempotent: seeds Nova's self-model once, on whichever process first finds it empty — not
+    # in a separate script a deployer has to remember to run, or identity_beliefs() stays []
+    # forever and the persona directive wired below has nothing to read.
+    if not store.identity_beliefs():
+        for belief in default_identity_beliefs():
+            store.save_identity(belief)
     threshold = config.get("memory", {}).get("reinforcement_similarity_threshold", 0.5)
     grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
+    tz_offset = config.get("system", {}).get("timezone_offset_hours", 0.0)
+    from infra.stm_store import InProcessSTMStore
+    stm_store = InProcessSTMStore()
     session_writer = _chain_writers(
         make_message_writer(session_factory),
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
-                                 vector_store=vector_store),
+                                 vector_store=vector_store, stm_store=stm_store,
+                                 summarizer_llm=llm_clients["system1"],
+                                 social_writer_fn=make_social_writer(
+                                     session_factory, llm_clients["system1"])),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
         make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
+        make_cold_start_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory),
-        make_proactive_writer(session_factory, grad_sessions))
+        make_proactive_writer(session_factory, grad_sessions),
+        make_identity_writer(session_factory, llm_clients["system1"]),
+        make_format_profile_writer(session_factory),
+        make_thread_writer(session_factory, llm_clients["system1"]),
+        make_thread_proactive_writer(session_factory),
+        make_life_event_writer(session_factory, llm_clients["system1"]))
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
+    from backend.layer1_input.config import Layer1Config
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
@@ -470,11 +1244,23 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
         relationship_provider=make_relationship_provider(session_factory),
-        profile_provider=make_temporal_profile_provider(session_factory),
-        vector_store=vector_store)
+        uwm_provider=make_uwm_provider(session_factory),
+        identity_provider=make_identity_provider(session_factory),
+        social_provider=make_social_provider(session_factory),
+        social_surface_writer=make_social_surface_writer(session_factory),
+        proactive_coaching_writer=make_proactive_coaching_writer(session_factory),
+        format_profile_provider=make_format_profile_provider(session_factory),
+        longitudinal_provider=make_longitudinal_provider(session_factory),
+        profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
+        session_last_delivered_provider=make_session_last_delivered_provider(session_factory),
+        thread_provider=make_thread_provider(session_factory),
+        nova_positions_provider=make_nova_positions_provider(session_factory),
+        vector_store=vector_store,
+        layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset,
+        region=config.get("layer11", {}).get("escalation", {}).get("default_region", "india"))
     return AppState(
         config=config, llm_clients=llm_clients, engine=engine,
         session_factory=session_factory, vector_store=vector_store,
         orchestrator=ConversationOrchestrator(steps),
         default_user_id=default_user_id, tool_manager=tool_manager,
-        voice_backend=build_voice_backend(config))
+        voice_backend=build_voice_backend(config), stm_store=stm_store)

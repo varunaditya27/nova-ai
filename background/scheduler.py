@@ -1,6 +1,6 @@
 """In-process background scheduler (APScheduler), opt-in via ``config['scheduler']['enabled']``.
 
-The six jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
+The eleven jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
 needed). ``start_scheduler`` lazily imports APScheduler so importing this module never requires it
 (the offline test gate runs on a bare interpreter); if APScheduler is missing or the config flag is
 off, it is a logged no-op. ``run_job`` executes one job by name (used by the manual-trigger route).
@@ -11,11 +11,16 @@ import logging
 
 from background import (
     dependency_monitor_job,
+    distress_gap_job,
+    goal_staleness_job,
     integrity_check_job,
+    life_calendar_job,
     longitudinal_summary_job,
     memory_consolidation_job,
+    narrative_arc_job,
     pattern_detection_job,
     proactive_check_job,
+    social_pattern_job,
 )
 
 logger = logging.getLogger("nova.jobs")
@@ -24,9 +29,14 @@ JOBS = {
     "memory_consolidation": memory_consolidation_job.run,
     "proactive_check": proactive_check_job.run,
     "pattern_detection": pattern_detection_job.run,
+    "social_pattern_detection": social_pattern_job.run,
     "integrity_check": integrity_check_job.run,
     "longitudinal_summary": longitudinal_summary_job.run,
     "dependency_monitor": dependency_monitor_job.run,
+    "narrative_arc": narrative_arc_job.run,
+    "life_calendar": life_calendar_job.run,
+    "goal_staleness": goal_staleness_job.run,
+    "distress_gap": distress_gap_job.run,
 }
 
 
@@ -67,10 +77,20 @@ def start_scheduler(app_state):
                   hours=cfg.get("integrity_check_hours", 24), id="integrity_check")
     sched.add_job(_wrap("pattern_detection"), "interval",
                   days=cfg.get("pattern_detection_days", 7), id="pattern_detection")
+    sched.add_job(_wrap("social_pattern_detection"), "interval",
+                  days=cfg.get("social_pattern_detection_days", 7), id="social_pattern_detection")
     sched.add_job(_wrap("longitudinal_summary"), "interval",
                   days=cfg.get("longitudinal_summary_days", 7), id="longitudinal_summary")
     sched.add_job(_wrap("dependency_monitor"), "interval",
                   days=cfg.get("dependency_monitor_days", 7), id="dependency_monitor")
+    sched.add_job(_wrap("narrative_arc"), "interval",
+                  days=cfg.get("narrative_arc_days", 7), id="narrative_arc")
+    sched.add_job(_wrap("life_calendar"), "interval",
+                  days=cfg.get("life_calendar_days", 1), id="life_calendar")
+    sched.add_job(_wrap("goal_staleness"), "interval",
+                  days=cfg.get("goal_staleness_days", 7), id="goal_staleness")
+    sched.add_job(_wrap("distress_gap"), "interval",
+                  days=cfg.get("distress_gap_days", 1), id="distress_gap")
     sched.start()
     logger.info("scheduler started with %d jobs", len(JOBS))
     return sched

@@ -69,3 +69,75 @@ def test_custom_generator_sets_statement():
         generate_fn=lambda b, c: "Nova adapts answer length to the user",
     )
     assert belief.statement == "Nova adapts answer length to the user"
+
+
+def test_evidence_against_accumulates_structured_strength_across_calls():
+    """Without an explicit prior_against_strength, it's computed from belief.evidence_against's
+    own stored strengths -- proving accumulation genuinely works turn to turn, not just when a
+    caller manually threads a running total through (test_accumulated_evidence_eventually_updates
+    _central_belief covers that explicit-override path)."""
+    belief = _belief(centrality=0.9)  # threshold 0.905
+    changed = identity.apply_identity_update(belief, _contradiction(belief, 0.5))
+    assert changed is False
+    assert len(belief.evidence_against) == 1
+    assert belief.evidence_against[0].strength == 0.5
+
+    changed = identity.apply_identity_update(belief, _contradiction(belief, 0.5))
+    assert changed is True   # 0.5 (accumulated) + 0.5 (this call) = 1.0 >= 0.905
+    assert belief.evidence_against == []   # spent -- fresh slate for the new statement
+
+
+def test_evidence_against_resets_after_an_actual_update():
+    belief = _belief(centrality=0.2)  # threshold 0.52
+    identity.apply_identity_update(belief, _contradiction(belief, 0.7))
+    assert belief.evidence_against == []
+    assert len(belief.update_history) == 1
+
+
+class _StubLLM:
+    def __init__(self, response):
+        self._response = response
+    def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+        return self._response
+
+
+def test_detect_identity_contradictions_matches_flagged_belief_by_id():
+    belief = _belief(centrality=0.5)
+    llm = _StubLLM(
+        f'[{{"belief_id": "{belief.belief_id}", "contradiction_score": 0.8, '
+        f'"reason": "user asked for a long, detailed answer"}}]')
+    out = identity.detect_identity_contradictions(
+        llm, "give me every detail, don't summarize", [belief], session_id=uuid4())
+    assert len(out) == 1
+    assert out[0].belief_id == belief.belief_id
+    assert out[0].strength == 0.8
+
+
+def test_detect_identity_contradictions_excludes_immutable_beliefs_from_the_prompt():
+    immutable = _belief(centrality=1.0, immutable=True)
+    calls = []
+
+    class RecordingLLM:
+        def complete(self, prompt, **k):
+            calls.append(prompt)
+            return "[]"
+
+    identity.detect_identity_contradictions(RecordingLLM(), "hello", [immutable], session_id=uuid4())
+    assert calls == []   # no candidates -> no LLM call at all
+
+
+def test_detect_identity_contradictions_drops_scores_below_the_noise_floor():
+    belief = _belief(centrality=0.5)
+    llm = _StubLLM(f'[{{"belief_id": "{belief.belief_id}", "contradiction_score": 0.05, '
+                   f'"reason": "very weak signal"}}]')
+    out = identity.detect_identity_contradictions(
+        llm, "hmm maybe", [belief], session_id=uuid4())
+    assert out == []
+
+
+def test_detect_identity_contradictions_degrades_to_empty_on_malformed_response():
+    belief = _belief(centrality=0.5)
+    llm = _StubLLM("not json at all")
+    out = identity.detect_identity_contradictions(
+        llm, "whatever", [belief], session_id=uuid4())
+    assert out == []

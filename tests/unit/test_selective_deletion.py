@@ -80,10 +80,13 @@ def test_full_wipe_scope_resolves_everything():
 
 # ── Dry run cascade (§4.4) ───────────────────────────────────────────────────
 def test_dry_run_reports_cascade_for_semantic_facts():
+    # SemanticMemory's real fields are memory_id/statement/supporting_episode_ids -- a prior
+    # mismatch here (fact_id/fact_text/derived_from_episodes) would have raised AttributeError
+    # the first time a real semantic_store was ever passed in (docs/POLISH_BACKLOG.md).
     store = _store()
     semantic = SimpleNamespace(all=lambda: [
-        SimpleNamespace(fact_id="f1", fact_text="knows Arjun", derived_from_episodes=["m1", "m2"]),
-        SimpleNamespace(fact_id="f2", fact_text="likes work", derived_from_episodes=["m3", "x9"]),
+        SimpleNamespace(memory_id="f1", statement="knows Arjun", supporting_episode_ids=["m1", "m2"]),
+        SimpleNamespace(memory_id="f2", statement="likes work", supporting_episode_ids=["m3", "x9"]),
     ])
     req = sd.create_deletion_request("u1", DeletionType.TOPIC_BASED.value,
                                      DeletionScope(topic_tags=["arjun"]), now=NOW)
@@ -98,7 +101,7 @@ def test_dry_run_reports_cascade_for_semantic_facts():
 def test_dry_run_marks_partially_cited_fact_for_update():
     store = _store()
     semantic = SimpleNamespace(all=lambda: [
-        SimpleNamespace(fact_id="f1", fact_text="x", derived_from_episodes=["m1", "keep1"]),
+        SimpleNamespace(memory_id="f1", statement="x", supporting_episode_ids=["m1", "keep1"]),
     ])
     req = sd.create_deletion_request("u1", DeletionType.TOPIC_BASED.value,
                                      DeletionScope(topic_tags=["arjun"]), now=NOW)
