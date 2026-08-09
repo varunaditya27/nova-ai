@@ -528,10 +528,11 @@ deriving records from the same per-episode `emotion_vector` data already read el
   the assembled context packet are now populated — `assemble_context_packet` already accepted all
   three as real params; `make_longitudinal_provider` just never sourced them. See
   `docs/layer-10-architecture.md` §17.2.
-- **Still open**: Layer 6 SC-3 (Timing & Delivery Gate) is still unwired, so nothing yet *gates*
-  delivery of the pattern/retrospective/milestone/year-in-review queue items using this context —
-  they only populate the queue, same caveat as every other Layer 6 intake contract (genuinely
-  blocked on Layer 6's own delivery-pipeline infra).
+- **[done, 2026-08-09]** Layer 6 SC-3 (Timing & Delivery Gate) is wired now (`docs/layer-6-
+  architecture.md` §19) — `GET /proactive` gates every queue item through `evaluate_timing_gate`
+  regardless of `item_type`, so pattern/retrospective/milestone/year-in-review items are covered
+  by the same fix, not just goal check-ins. What's still missing is a *push* channel (no
+  transport exists) — the gate now decides correctly, but delivery is still poll-only.
 
 ---
 

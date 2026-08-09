@@ -77,8 +77,9 @@ gap was found and why it wasn't fixed inline.
   the architecture doc's own §15.1 already calls building this from scratch "exactly the
   reimplementation anti-pattern CLAUDE.md warns against" — a deliberate prior decision, not an
   oversight, left as-is.
-- `event_tracker.extract_events` stores near-verbatim message text as its "summary," contradicting
-  its own module's constraint — flagged for Layer 12's future on-device encryption story.
+- **[done, 2026-08-09]** `event_tracker.extract_events` no longer stores near-verbatim message
+  text as its "summary" — the rule-based pass now uses a neutral per-event-type template. See
+  `docs/layer-5-architecture.md` §18.
 - Tentative (0.70-confidence) entity-match rejection can create duplicate person nodes across
   turns — no UI confirmation surface exists to resolve the ambiguity instead.
 - **[done, 2026-08-09]** Three coaching delivery types (`INLINE`/`STRENGTH_ACKNOWLEDGMENT`/
@@ -131,10 +132,9 @@ Nothing pending. Re-confirmed clean 2026-08-09.
 - **[done, 2026-08-09]** `upcoming_goal_deadlines`/`recent_life_event`/`primary_active_goals` on
   the assembled `Layer10ContextPacket` are now populated. See `docs/layer-10-architecture.md`
   §17.2.
-- Layer 6 SC-3 (Timing & Delivery Gate) doesn't exist, so nothing gates delivery of the
-  pattern/retrospective/milestone/year-in-review items now reaching the proactive queue — they
-  only populate it. Genuinely blocked on Layer 6's own delivery-pipeline infra
-  (`docs/layer-6-architecture.md`), not a Layer 10 gap.
+- **[done, 2026-08-09]** Layer 6 SC-3 now gates every proactive queue item generically (not just
+  goal check-ins), so pattern/retrospective/milestone/year-in-review items are covered too. Still
+  no push channel — delivery is poll-only. See `docs/layer-6-architecture.md` §19.
 
 ## Layer 11 — Safety & Crisis Architecture
 

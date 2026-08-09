@@ -1621,8 +1621,12 @@ Three genuinely out-of-scope items from §15.1/15.2 are now closed:
   `update_episodic`'s `hasattr` guard. `EpisodicMemory` gained those five fields (all additive,
   default `False`/`None`, safe for the existing JSONB payload), and `EDIT` now writes both
   `content` and `summary` (mirrors `execute_deletion`'s existing dual-field secure-zero, since the
-  real field is `summary`). All six correction types are now genuinely functional, not five
-  silently inert.
+  real field is `summary`). Persisting the field alone left EXPIRE incomplete, though — nothing
+  consumed `auto_expiry_date` (`memory_consolidation_job`'s `decay_sweep` predates the field). Layer
+  2's `decay_sweep` now checks it unconditionally, ahead of the strength-based decision, and
+  `ANCHOR`'s `decay_rate=0.0` was verified to actually survive the sweep untouched (both have
+  regression tests in `tests/unit/test_forgetting_engine.py`). All six correction types are now
+  genuinely functional end to end, not five out of six with the field just sitting unread.
 - **Cascade mutation** (vs. the §15.2 dry-run *reporting*): product decision, 2026-08-09 —
   redact in place, don't hard-delete. `selective_deletion.redact_cascade` strips the deleted
   episode's id from every affected semantic fact's `supporting_episode_ids`; a fact left with zero

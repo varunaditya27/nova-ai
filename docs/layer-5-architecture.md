@@ -1320,6 +1320,20 @@ test_real_layer5_wiring_strength_acknowledgment_delivers_a_templated_inline_obse
 persisted `SocialPattern` of the matching type and asserting the template text (not a mock)
 appears in the delivered response through the real orchestrator.
 
+## 18. Fixed (2026-08-09): rule-based event summaries contradicted the module's own constraint
+
+`event_tracker.py`'s docstring and `SocialEvent.summary`'s own field comment both promise "a
+neutral extracted description — never the raw conversation text" (§10 Constraint 3). The
+rule-based Pass 1 (`extract_events`, no `llm_fn` needed) violated this on every call:
+`summary = " ".join(text.split())[:200]` was a whitespace-normalized, truncated copy of the
+user's actual message — names, amounts, anything in the first 200 characters, verbatim. Only the
+optional LLM pass (Pass 2, background-only, rarely exercised) produced a genuinely neutral
+summary. Fixed with `_NEUTRAL_SUMMARY`, a small per-`SocialEventType` template dict covering the
+seven event types the rule-based patterns can actually produce (conflict onset/resolution,
+support withheld/received, boundary violation/set, reconnection) — no LLM call added, still fully
+deterministic and offline. See `tests/unit/test_event_tracker.py::
+test_rule_based_summary_is_neutral_never_raw_text`.
+
 ---
 
 *This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 5 requires assumptions or inferences from other documents.*

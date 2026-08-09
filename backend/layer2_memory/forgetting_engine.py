@@ -7,7 +7,7 @@ episodic patterns compress into stable semantic facts; irrelevant episodes are d
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Callable, Optional
 from uuid import UUID
 
@@ -42,8 +42,16 @@ def should_trigger_fce(new_episodes: int, sessions_since: int, days_since: int) 
 def decay_sweep(episodes: list[EpisodicMemory], now: datetime) -> tuple[int, int]:
     """Recompute strength and delete/archive weak memories (§9.3). Returns (deleted, archived)."""
     deleted = archived = 0
+    today = now.date() if isinstance(now, datetime) else now
     for ep in episodes:
         if ep.is_deleted:
+            continue
+        # Layer-12 SC-3's EXPIRE correction (§5.5) sets this; honor it unconditionally, ahead of
+        # (and regardless of) the strength-based decision below -- a user-requested expiry isn't
+        # negotiable by importance or reinforcement the way natural decay is.
+        if getattr(ep, "auto_expiry_date", None) is not None and today >= ep.auto_expiry_date:
+            ep.is_deleted = True
+            deleted += 1
             continue
         last = ep.last_decay_computed_at or ep.created_at or now
         time_elapsed_days = max(0.0, (now - last).total_seconds() / 86400.0)

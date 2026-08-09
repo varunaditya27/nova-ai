@@ -1,6 +1,6 @@
 """Tests for SC-7 Forgetting & Consolidation Engine (architecture doc §9)."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from uuid import uuid4
 
 from backend.layer2_memory import forgetting_engine as fce
@@ -57,6 +57,32 @@ def test_decay_sweep_keeps_strong_memory():
              last_decay_computed_at=NOW - timedelta(days=1))
     fce.decay_sweep([ep], now=NOW)
     assert ep.is_deleted is False and ep.is_archived is False
+
+
+def test_decay_sweep_anchored_memory_never_decays():
+    # SC-3 ANCHOR correction (§5.5): decay_rate=0.0 -- must survive many elapsed days untouched.
+    ep = _ep(S_current=0.95, decay_rate=0.0, importance_score=0.95, is_anchored=True,
+             last_decay_computed_at=NOW - timedelta(days=500))
+    fce.decay_sweep([ep], now=NOW)
+    assert ep.S_current == 0.95
+    assert ep.is_deleted is False and ep.is_archived is False
+
+
+def test_decay_sweep_honors_expired_memory_regardless_of_strength():
+    # SC-3 EXPIRE correction (§5.5): a due auto_expiry_date deletes even a strong, important
+    # memory -- the user asked for it to be gone by this date, not decayed toward it.
+    ep = _ep(S_current=0.9, decay_rate=0.01, importance_score=0.9,
+             auto_expiry_date=date(2026, 6, 20))
+    deleted, archived = fce.decay_sweep([ep], now=NOW)
+    assert ep.is_deleted is True
+    assert deleted == 1 and archived == 0
+
+
+def test_decay_sweep_leaves_future_expiry_untouched():
+    ep = _ep(S_current=0.9, decay_rate=0.01, importance_score=0.9,
+             auto_expiry_date=date(2026, 12, 31))
+    fce.decay_sweep([ep], now=NOW)
+    assert ep.is_deleted is False
 
 
 # ── Cluster detection (§9.4) ─────────────────────────────────────────────────

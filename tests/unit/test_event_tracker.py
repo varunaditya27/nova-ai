@@ -53,6 +53,18 @@ def test_extract_events_builds_social_event():
     assert ev.reported_timestamp == NOW
 
 
+def test_rule_based_summary_is_neutral_never_raw_text():
+    # §10 Constraint 3: "summary ... never the raw conversation text" -- the rule-based pass used
+    # to violate its own module's contract by storing a truncated, near-verbatim copy of the
+    # message. A specific, identifying detail from the input must not survive into the summary.
+    ev = et.extract_events(
+        "I had a huge fight with my sister Priya about the inheritance money, "
+        "it was really ugly", session_id="s1", person_id="p1", now=NOW)[0]
+    assert "Priya" not in ev.summary
+    assert "inheritance" not in ev.summary
+    assert ev.summary == "Mentioned a conflict or falling-out with someone."
+
+
 def test_extract_events_support_received_is_positive():
     events = et.extract_events("she really showed up for me when it mattered", now=NOW)
     assert events

@@ -91,6 +91,18 @@ EVENT_DETECTION_RULES: list[dict] = [
     },
 ]
 
+# Neutral, templated summaries for the rule-based pass (§10 Constraint 3: never raw text). Keyed
+# to the seven event types EVENT_DETECTION_RULES can actually produce.
+_NEUTRAL_SUMMARY: dict[str, str] = {
+    SocialEventType.CONFLICT_ONSET.value: "Mentioned a conflict or falling-out with someone.",
+    SocialEventType.SUPPORT_WITHHELD.value: "Mentioned someone not being there for them when expected.",
+    SocialEventType.BOUNDARY_VIOLATION.value: "Mentioned someone crossing a boundary.",
+    SocialEventType.RECONNECTION.value: "Mentioned reconnecting with someone.",
+    SocialEventType.USER_SET_BOUNDARY.value: "Mentioned setting a boundary with someone.",
+    SocialEventType.SUPPORT_RECEIVED.value: "Mentioned someone being supportive.",
+    SocialEventType.CONFLICT_RESOLUTION.value: "Mentioned resolving a conflict with someone.",
+}
+
 # Valence hint by event type (architecture doc §4.3; sign drives SC-3/SC-4 reasoning).
 _EVENT_VALENCE: dict[str, float] = {
     SocialEventType.CONFLICT_ONSET.value: -0.6,
@@ -238,11 +250,11 @@ def extract_events(
 
     hits = detect_events_rule_based(text)
     if hits:
-        summary = " ".join(text.split())[:200]
         return [
             _build_event(
                 etype, conf, session_id=session_id, person_id=person_id,
-                summary=summary, recency=recency, now=now,
+                summary=_NEUTRAL_SUMMARY.get(etype, "Mentioned a social event."),
+                recency=recency, now=now,
             )
             for etype, conf in hits
         ]
