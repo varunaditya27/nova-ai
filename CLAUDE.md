@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers implemented and wired through the conversation orchestrator (130 layer modules + 6 pipeline modules). **~1360 tests passing** — run with `.venv/bin/pytest` (or any interpreter with the project's deps; `tests/unit/api/` needs SQLAlchemy on the path). 40+ routes live — see `docs/API_REFERENCE.md`. Layer code is pure-stdlib and dependency-injected; production swaps concrete backends behind the same interfaces.
+**Implementation status:** all 13 layers implemented and wired through the conversation orchestrator (130 layer modules + 6 pipeline modules). **1573 tests passing** — run with `.venv/bin/pytest` (or any interpreter with the project's deps; `tests/unit/api/` needs SQLAlchemy on the path). 40+ routes live — see `docs/API_REFERENCE.md`. Layer code is pure-stdlib and dependency-injected; production swaps concrete backends behind the same interfaces.
 
 **Docs hierarchy:** `docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical source of truth (read first) → `docs/layer-N-architecture.md` per layer (each ending in a "Live Wiring Status (current state)" section + a dated "Decision Log") → `docs/POLISH_BACKLOG.md` for open follow-ups found during the audit pass (source of truth; `docs/PENDING_WORK.md` is its generated filtered view). **When code and docs disagree, the code wins** — then fix the doc.
 
@@ -19,7 +19,7 @@ Nova AI is a **13-layer cognitive architecture** for long-term human-AI companio
 - **Keep this file lean.** Add facts, not narration. When a finding needs more than 2–3 lines, it belongs in `docs/POLISH_BACKLOG.md` or the relevant `docs/layer-N-architecture.md`'s as-built section — link to it from here instead of inlining it.
 - **Wire to the real module, don't reimplement it.** When closing a backlog item, call the existing tested function/class rather than rewriting its logic in the adapter. This audit pass initially flagged three apparent divergent-reimplementation pairs; all three are now resolved — one (sync) turned out to be a correct client/server split, not a duplication, on closer investigation (docs/layer-12-architecture.md); the other two (elicitation surfacing, graduation paths) were genuinely reconciled by wiring the real module in (docs/layer-13-architecture.md). If the real module's shape doesn't fit the call site, that's a sign to fix the call site's contract, not to fork the logic.
 - **Every wiring/bug fix needs a test through the real orchestrator or route**, not mocked pipeline steps. Every field-name and dropped-parameter bug found across Layers 4–12 was invisible to mocked-step tests and only surfaced against real object shapes.
-- **Closing a backlog item:** mark its bullet `[done]` in `docs/POLISH_BACKLOG.md` with the commit/PR, update the relevant `docs/layer-N-architecture.md` "Live wiring status" section, and update CLAUDE.md's one-line layer summary if it no longer holds.
+- **Closing a backlog item:** mark its bullet `[done]` in `docs/POLISH_BACKLOG.md` with the commit/PR, update the relevant `docs/layer-N-architecture.md` "Live Wiring Status" section, and update CLAUDE.md's one-line layer summary if it no longer holds.
 
 ## Commands
 

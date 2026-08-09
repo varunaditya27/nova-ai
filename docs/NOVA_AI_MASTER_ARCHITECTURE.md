@@ -1,8 +1,8 @@
 # Nova AI — Master Architecture & Single Source of Truth
 
 > **Status:** All 13 cognitive layers implemented, tested, documented, and integrated through a
-> live conversation orchestrator. **1120 tests passing** (1057 unit + 21 integration + 42
-> cross-layer consistency guards). **130 layer modules (~19.6k LOC) + 6 pipeline modules**, pure
+> live conversation orchestrator. **1573 tests passing** (run with `.venv/bin/pytest`).
+> **130 layer modules (~19.6k LOC) + 6 pipeline modules**, pure
 > Python standard library, dependency-injected throughout.
 >
 > **Scope of this document.** This is the authoritative, top-level map of the entire system: what

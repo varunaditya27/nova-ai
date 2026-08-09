@@ -1591,7 +1591,7 @@ What the user experiences across the cold start period:
 
 The implementation is **pure Python stdlib** (dataclasses + str-`Enum`, `re`, `datetime`, `uuid`)
 — no third-party dependencies, no LLM calls in any extractor or policy (matching the <20ms / <60ms
-performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1369
+performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1573
 passing). Module map: schemas (§4.2/§5.1/§6.2) in `schemas.py`; SC-1 passive (§4.5) in
 `passive_elicitation.py` (`PassiveElicitationEngine.extract()` + 8 `_extract_*` methods); SC-1
 active (§4.3-§4.4) in `active_elicitation_queue.py` (`INITIAL_ELICITATION_ITEMS`,
