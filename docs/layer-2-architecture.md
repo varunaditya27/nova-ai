@@ -79,13 +79,13 @@ class ShortTermMemoryBuffer:
     session_id: UUID
     user_id: UUID
     turns: list[ConversationTurn]         # ordered; oldest first
-    max_turns: int = 100                  # rolling window; oldest evicted when full (§21: raised
+    max_turns: int = 100                  # rolling window; oldest evicted when full (raised
                                            # from the original 40 once promotion-only extraction
                                            # went live, so ordinary conversation has room to
-                                           # breathe before anything is evicted)
+                                           # breathe before anything is evicted — see §19)
     total_chars: int                      # running character count
-    char_limit: int = 30000               # approximate context window budget (§21: raised from
-                                           # the original 12,000 alongside max_turns)
+    char_limit: int = 30000               # approximate context window budget (raised from
+                                           # the original 12,000 alongside max_turns — see §19)
 
 class ConversationTurn:
     turn_id: UUID

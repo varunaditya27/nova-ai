@@ -1430,7 +1430,7 @@ scoped follow-up work, not bug-fixing.
   expects). This is safe despite SC-2's "must run before/parallel to Layer 2 recall" constraint
   (§2) because `memory_store.active_episodic(user_id)` is a raw store read, not Layer 2's
   recall/scoring pipeline — `classify()` already relies on the same fact for the BES's episodic
-  inputs (`docs/layer-3-architecture.md` §18). An explicit tz-aware `now` is passed rather than
+  inputs (`docs/layer-3-architecture.md`). An explicit tz-aware `now` is passed rather than
   relying on `evaluate_longitudinal_pattern`'s own `date.today()` default, matching how "today" is
   computed everywhere else in this codebase (`timezone_offset_hours`-adjusted). Proven end to end
   by `tests/unit/api/test_assembly_turn.py::

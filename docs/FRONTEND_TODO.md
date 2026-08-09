@@ -3,7 +3,7 @@
 Backend follow-up (2026-08-09) made Layer 1 SC-2's implicit-signal plumbing real end-to-end:
 `api/schemas.py::ChatRequest` now carries additive client-behavioral fields, and
 `api/assembly.py::perceive` forwards them into a real `ClientMetadata` object consumed by
-`backend/layer1_input/implicit_signals.py`. See `docs/layer-1-architecture.md` §18 for the backend
+`backend/layer1_input/implicit_signals.py`. See `docs/layer-1-architecture.md` for the backend
 side. **No frontend client sends non-default values for any of these fields yet** — this doc is
 the scoped, standalone spec for whoever picks up that half. Not built this pass (explicit scope
 decision, 2026-08-09).

@@ -1215,7 +1215,7 @@ delivered the observation, not when deferred for lack of length headroom) now se
 `inject_observation` deferred for lack of length headroom) is no longer dropped:
 `api/state.py::make_proactive_coaching_writer` turns `packet.proactive_coaching_queue` entries into
 durable `ProactiveItem`s via Layer 6's real `on_deferred_coaching` intake contract and upserts them
-into `PostgresProactiveQueue`. Full detail: `docs/layer-6-architecture.md` §15.
+into `PostgresProactiveQueue`. Full detail: `docs/layer-6-architecture.md`.
 
 **UWM reconciliation — live, Layer 5 is now the sole person-mention resolver.** Rather than run two
 independent LLM calls both trying to notice "who did the user mention" — the divergent-

@@ -1241,7 +1241,7 @@ signals from fields that do: humor receptivity → `CommunicationModel.uses_humo
 known sensitivities → descriptions of `PsychologicalModel.known_triggers`.
 
 Other behavioral deviations from the design text: `nova_stated_position` (§6.3 Check 3) is supplied
-as `nova_recent_positions: list[str]` (see §15.5 below) rather than read off `ConversationTurn`,
+as `nova_recent_positions: list[str]` (see §15.3's SC-4 Persona Drift Detector entry below) rather than read off `ConversationTurn`,
 which doesn't carry a per-turn stated position; drift detection runs pre-draft on the user
 message/history (catching role abandonment and capitulation, which must gate generation) rather
 than exactly as §6's `pending_draft_intent` sequencing describes; `VoiceParameters.self_disclosure_depth`
@@ -1272,9 +1272,9 @@ tagged `PERSONALITY_TRAIT`. No matching belief leaves the anchor's constant unch
 forced, misleading match. Only `value` is overridden; `centrality`/`immutable` stay the anchor's own
 constants (they drive resolver logic tuned to the anchors' abstract 0–1 scale, not a belief's
 independently calibrated centrality); `name` is excluded from the map entirely, always immutable.
-`known_sensitivities` still returns `[]` for every user (needs `psychological_model`, out of the UWM
-narrow-slice scope) and Identity Memory separately reaches the prompt via `_identity_directive`
-(Layer 2 doc §24) regardless of this path.
+`known_sensitivities` now derives from `psychological_model.known_triggers` (Layer 2's Live Wiring
+Status section) once populated, and Identity Memory separately reaches the prompt via
+`_identity_directive` (also Layer 2's Live Wiring Status section) regardless of this path.
 
 **SC-2 Relationship State Manager — live, tie strength is a real moving number.**
 `build_persona()` calls `compute_relationship_state(persisted=rel)` (deliberately without

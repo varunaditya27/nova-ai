@@ -1073,7 +1073,7 @@ silent surprise.
 **Cross-reference:** the critical-drift (`REFUSE_GRACEFULLY`) hard override that `plan()`/
 `refine()` were missing in `api/assembly.py` was found while investigating this layer's
 `build_final_response_packet` pending item, but is a Layer 4 fix — documented in
-`docs/layer-4-architecture.md` §19, not here.
+`docs/layer-4-architecture.md`, not here.
 
 ## 16. Decision Log
 
@@ -1099,7 +1099,7 @@ silent surprise.
   anywhere in the codebase). Built narrative-thread detection (§3.5) end to end: `thread_extractor.py`,
   `PostgresThreadStore`, and wiring into Layer 6's `on_thread_due` intake.
 - **2026-08-09 (found during Layer 4 investigation):** The critical-drift hard-override gap
-  belongs to Layer 4, not Layer 1 — documented in `docs/layer-4-architecture.md` §19 instead of
+  belongs to Layer 4, not Layer 1 — documented in `docs/layer-4-architecture.md` instead of
   duplicated here.
 
 ---

@@ -1158,7 +1158,7 @@ when an LLM is configured; always failure-tolerant, so extraction can never bloc
 correctly transitions to `"completed"`/`"abandoned"` (with a new `status_changed_at` timestamp)
 when `run_goal_pipeline` sees a terminal `progress_signal` — previously no live code path ever set
 a terminal status at all (see Decision Log, 2026-08-09), which also silently starved Year in
-Review's achievement counting (`docs/layer-10-architecture.md` §16.2).
+Review's achievement counting (`docs/layer-10-architecture.md`).
 
 **SC-3 Progress Monitor**: live inline (keyword-based `classify_progress_signal` on every turn) plus
 an async post-session deep-inference path. `run_staleness_scan` (the `TENTATIVE`→`ARCHIVED`/

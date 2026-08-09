@@ -1295,7 +1295,7 @@ modules use `stranger/acquaintance/friend/close_friend` — only `acquaintance` 
 brand-new user into `register="intimate"`. `semantic_draft` (for self-edit replay),
 `complexity_score`, `turn_type`, `urgency_level`, and `voice_mode` are **not** forwarded —
 `turn_type`/`urgency_level`/`complexity_score` have no live source anywhere upstream, and
-`voice_mode` needs the Layer 1 attachment/multimodal gap (`docs/layer-1-architecture.md` §18.1),
+`voice_mode` needs the Layer 1 attachment/multimodal gap (`docs/layer-1-architecture.md`),
 which stays correctly unwired since no backend exists for it; `semantic_draft` was deliberately
 scoped out (see event replay below).
 

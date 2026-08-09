@@ -1377,7 +1377,7 @@ reconciling it project-wide was out of scope here.
 `relationship_depth` is now forwarded live: its natural source, `RelationshipState.tie_strength`,
 used to stay pinned at `0.0` forever because nothing called Layer 4's real
 `compute_session_delta`/`update_tie_strength` — fixed at the root in Layer 4
-(`docs/layer-4-architecture.md` §18, not duplicated here). `api/assembly.py::classify` reads
+(`docs/layer-4-architecture.md`, not duplicated here). `api/assembly.py::classify` reads
 `relationship_provider(user_id).tie_strength` and forwards it, reaching SC-4's `relationship_depth
 < 0.3` posture gate and SC-5 Empathy Hypothesis for real.
 

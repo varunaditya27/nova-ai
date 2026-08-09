@@ -20,8 +20,7 @@ if nothing about the still-open item remains).
 
 Module (`backend/layer1_input/`) itself had no dead code or bloat — every symbol has a caller.
 The findings below are gaps between what the module can do and what the live pipeline actually
-feeds it. Full detail: `docs/layer-1-architecture.md` §16 (initial audit), §17 (config + timezone
-follow-up, 2026-08-04).
+feeds it. Full detail: `docs/layer-1-architecture.md`.
 
 - **Narrative-thread creation.** Nothing anywhere constructs a `NarrativeThread` — `due_threads`
   is always `[]` live, and `backend/layer6_proactivity/intake.py::on_thread_due` is an orphaned
@@ -38,7 +37,7 @@ follow-up, 2026-08-04).
 - **`config/layerN.yaml` files are unread — `[done]` for layer1 (2026-08-04, follow-up pass).**
   `backend/layer1_input/config.py::Layer1Config` now reads every `config['layer1']` key live,
   threaded through all 6 sub-component modules as an optional `cfg` param; see
-  `docs/layer-1-architecture.md` §17. Layers 2–13 remain unread — wire each as its layer is
+  `docs/layer-1-architecture.md`. Layers 2–13 remain unread — wire each as its layer is
   revisited, not as one cross-cutting change (original reasoning still holds).
 - **Circadian histogram is UTC-based — `[done]` (2026-08-04, follow-up pass).** Fixed by setting
   a real `config['system']['timezone_offset_hours']` (5.5, IST — single-user personal deployment)
@@ -47,7 +46,7 @@ follow-up, 2026-08-04).
   derivations found via grep once the pattern was understood — Layer 1's own `make_fuzzy_labeler`
   same-day/yesterday check (the sole path temporal info reaches the LLM), the Digital Desk
   greeting, the calendar heatmap's day bucketing, and Layer 10's day-of-week pattern detector's
-  date derivation — all fixed together; see `docs/layer-1-architecture.md` §17 for the full list
+  date derivation — all fixed together; see `docs/layer-1-architecture.md` for the full list
   and reasoning.
   `api/streaming.py::_circadian_band` (the `/chat/stream` pacing overlay) was deliberately left
   UTC-only — it's cosmetic pacing feel, not a data-attribution path, and already flagged as a
@@ -63,8 +62,7 @@ in isolation with **zero live production callers** — bigger in aggregate than 
 because each one needed a new detector, table, or LLM step rather than a small adapter. As of the
 2026-08-05 follow-up passes below, all eight have real production callers (some narrowed in
 scope — see each bullet's `[done]` note for exactly what's still deferred). Full detail:
-`docs/layer-2-architecture.md` §20 (initial audit), §21 (STM + episodic extraction), §22
-(narrative-chain linking), §23 (User World Model), §24 (Identity Memory).
+`docs/layer-2-architecture.md`.
 
 - **User World Model is never created for any real user — `[done]` (2026-08-05, follow-up pass;
   narrow slice).** New `backend/layer2_memory/uwm_updater.py::merge_uwm_update` (pure merge logic)
@@ -77,10 +75,10 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   would be exactly the "divergent reimplementation pair" this file already warns about) and
   **`psychological_model`** (attachment/regulation/trigger inference — higher-stakes, separate
   scoping decision, deferred at the time; **[done, 2026-08-09]** the user was asked explicitly
-  and chose to build it — see §25). See `docs/layer-2-architecture.md` §23 for the full design,
+  and chose to build it). See `docs/layer-2-architecture.md` for the full design,
   including why the read side goes through `build_persona`'s own provider rather than
   `MemoryPacket.uwm_context` (nothing forwards the full packet past `recall()`'s
-  `list[memory]`-only contract — same finding as §22's narrative-chain read-side gap).
+  `list[memory]`-only contract — same finding as the narrative-chain read-side gap noted in `docs/layer-2-architecture.md`).
 - **Identity Memory is never seeded or updated — `[done]` (2026-08-05, follow-up pass).**
   `api/state.py::build_app_state` seeds Nova's self-model idempotently on boot
   (`backend/layer2_memory/identity_seed.py::default_identity_beliefs` — the 5 immutable safety
@@ -97,7 +95,7 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   Nova's literal belief the first time a threshold was crossed — fixed with a real second LLM
   call (`api/state.py::_revise_belief_statement`) and a defense-in-depth change to
   `apply_identity_update` itself (an unchanged/empty `generate_fn` result is now "no update," not
-  a real one). See `docs/layer-2-architecture.md` §24 for the full design, including why a
+  a real one). See `docs/layer-2-architecture.md` for the full design, including why a
   combined single-call detector (not per-belief, not embedding-pre-filtered) was chosen for this
   app's small, single-user belief set.
 - **Narrative-chain linking (SC-8, distinct from Layer 1's narrative *threads*) is orphaned —
@@ -109,7 +107,7 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   `0.65` threshold can never cross threshold when `entity_overlap` is always `0` (nothing
   populated `EpisodicMemory.entity_refs`), so linking could never actually fire — caught in
   review before commit; fixed by extending the existing per-promoted-turn summarization LLM call
-  to also extract named entities into `entity_refs`. See `docs/layer-2-architecture.md` §22 for
+  to also extract named entities into `entity_refs`. See `docs/layer-2-architecture.md` for
   the full before/after and what's still **not** closed: nothing reads `active_narrative_chains`
   back into generation — `api/assembly.py::recall`'s hook contract only returns
   `recalled_memories`, and there's no prompt-building consumer waiting for chains even if it did.
@@ -118,7 +116,7 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   `api/state.py::make_state_update_writer` now summarizes promoted turns via the injected `system1`
   LLM (`_summarize_promoted_turn`, with the same best-effort fallback shape as
   `memory_consolidation_job.py`'s `_generalize`) instead of truncating the raw message. See
-  `docs/layer-2-architecture.md` §21 for the full design (including the deliberate choice not to
+  `docs/layer-2-architecture.md` for the full design (including the deliberate choice not to
   batch multiple promotable turns into one multi-turn-synthesized episode).
 - **STM buffer (SC-1) is never actually accumulated — `[done]` (2026-08-05, follow-up pass).**
   New `infra/stm_store.py::InProcessSTMStore` (in-process, per-session, RAM-only, LRU-bounded —
@@ -130,10 +128,11 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   (an earlier version of this fix) was dead code — `should_promote` is pure over a turn's own
   fields, which never mutate, so a turn that failed on arrival can only fail again at eviction;
   the eviction-time check and its `promoted_turn_ids` de-duplication guard were removed as
-  unreachable in favor of the single arrival check. See §21 for the corrected design, including
-  the role filter that keeps Nova's own reply text from ever being promoted as if the user said
-  it, and the note that accumulating `stm.turns` still has no prompt-side consumer (§3.1's
-  in-session coherence purpose remains undelivered).
+  unreachable in favor of the single arrival check. See `docs/layer-2-architecture.md`'s Live
+  Wiring Status section for the corrected design, including the role filter that keeps Nova's own
+  reply text from ever being promoted as if the user said it, and the note that accumulating
+  `stm.turns` still has no prompt-side consumer (§3.1's in-session coherence purpose remains
+  undelivered).
   `max_turns`/`char_limit` raised from 40/12,000 to 100/30,000 for in-session coherence headroom.
   **Real behavior change, chosen deliberately:** Nova now remembers far less by default (only
   emotionally significant or explicitly-flagged moments become long-term memories) — this is what
@@ -150,7 +149,7 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
 
 Two critical safety/routing bugs found and **fixed** this phase (attribute-name mismatches
 invisible to the test suite because every orchestrator test mocks `classify`) — see
-`docs/layer-3-architecture.md` §17 for full detail. This layer had far less "complete but
+`docs/layer-3-architecture.md` for full detail. This layer had far less "complete but
 unwired" scaffolding than Layers 1-2; most of what's left is smaller connection gaps.
 
 - **`alert_fn` (async CrisisAlert push to Layer 11) is never wired.** [investigated 2026-08-07,
@@ -175,8 +174,8 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
   Layer 2's UWM/episodic write path is real. A serious bug was caught and fixed in the same pass:
   the first version crashed on every turn with real episodic data (naive vs. tz-aware datetime
   subtraction inside `compute_background_state`'s `_recent()`), silently swallowed by `_safe()`
-  down to `insufficient_data` — see `docs/layer-3-architecture.md` §18. **[done, 2026-08-09]**
-  `psychological_model` is now forwarded too, now that Layer 2 §25 built real extraction for it —
+  down to `insufficient_data` — see `docs/layer-3-architecture.md`. **[done, 2026-08-09]**
+  `psychological_model` is now forwarded too, now that Layer 2's Live Wiring Status section notes real extraction was built for it —
   `classify()` pulls it off the same `uwm_provider(user_id)` call already fetching
   `active_stressors`.
 - **[done, 2026-08-09]** `relationship_depth` now forwarded live. Its natural source,
@@ -185,7 +184,7 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
   `update_tie_strength`. Fixed at the root (Layer 4, see below) — `record_turn` now genuinely
   updates `tie_strength`, and `api/assembly.py::classify` reads it via the existing
   `relationship_provider` closure and forwards it into `build_emotion_intent_packet`, reaching
-  SC-4 Mismatch and SC-5 Empathy Hypothesis for real. See `docs/layer-4-architecture.md` §18.
+  SC-4 Mismatch and SC-5 Empathy Hypothesis for real. See `docs/layer-4-architecture.md`.
   `advice_frustration_count` still has no real source anywhere in the codebase — inventing one
   from `unsolicited_advice_tolerance` (a differently-shaped EMA preference score, not a count)
   would be exactly the "reimplement rather than wire to the real module" anti-pattern CLAUDE.md
@@ -205,29 +204,29 @@ real orchestrator (`packet_builder.build_final_response_packet`, SC-1 through SC
 production callers** — `api/assembly.py` runs a separate, much thinner hand-built path. Four small
 signal-forwarding gaps in that path were fixed this phase (recalled memories, advice gate,
 circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
-`docs/layer-4-architecture.md` §16 for full detail. What's left is real feature work, not wiring:
+`docs/layer-4-architecture.md` for full detail. What's left is real feature work, not wiring:
 
 - **[done, 2026-08-08]** `refine()` now calls the real `emotion_refiner.refine_emotion` — full
   five-condition skip policy, factual-preservation validation/reinsertion, voice parameters and
   persona packet threaded in. The feared `ctx.refined` contract break didn't materialize: kept
   its existing "the refinement stage ran this turn" meaning (unaffected by the skip policy),
   rather than conflating it with `RefinementOutput.refinement_applied` ("the text was actually
-  rewritten") — see `docs/layer-4-architecture.md` §17.4.
+  rewritten") — see `docs/layer-4-architecture.md`.
 - **[done, 2026-08-08]** SC-1 (persona_resolver), SC-3 (tone_calibrator), SC-4 (drift_detector) now
-  run live in `build_persona()`/`plan()`. Full detail: `docs/layer-4-architecture.md` §17.
+  run live in `build_persona()`/`plan()`. Full detail: `docs/layer-4-architecture.md`.
 - **[done, 2026-08-09]** SC-1's real-inputs caveat closed — `load_core_anchors` now actually reads
   `identity_memory_entries`, overriding an anchor's `value` from a real, topically-matching
   `IdentityMemory` belief (category + keyword-hint match, not a blind "closest in category"
   guess) instead of ignoring the parameter entirely. **[done, 2026-08-09]** `known_sensitivities`
-  now genuinely populates too — Layer 2 §25 built real `psychological_model` extraction, and
+  now genuinely populates too — Layer 2's Live Wiring Status section notes real `psychological_model` extraction was built, and
   `build_persona` now fetches and forwards it into `resolve_persona_state`. See
-  `docs/layer-4-architecture.md` §20.2.
+  `docs/layer-4-architecture.md`.
 - **[done, 2026-08-09]** SC-4's Check 3 (sycophantic capitulation) is no longer permanently
   inert — "no cross-turn Nova-stance history is tracked anywhere" turned out to be wrong on
   re-investigation: Nova's replies are already tracked, in the real conversation-message log; the
   check just had no reader wired to it. `PostgresMessageStore.recent_by_role` + a new
   `nova_positions_provider` close that. Checks 1/2 already worked fully. See
-  `docs/layer-4-architecture.md` §20.1.
+  `docs/layer-4-architecture.md`.
 - **A real gap found while wiring the above:** `infra/db/relationship_store.py::record_turn`
   advanced `RelationshipState`'s counters/stage but never stamped the stage-derived behavioral
   gates (`memory_reference_policy` etc, §4.4) — fixed by having `build_persona` call
@@ -238,7 +237,7 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
   always runs it) — unchanged. Re-investigation found every real sub-component the monolithic
   function calls is already wired individually via `build_persona`/`plan`/`refine`; the only real
   gap was the critical-drift (`REFUSE_GRACEFULLY`) hard override, which `plan()`/`refine()` now
-  replicate without needing the wholesale rewrite. See `docs/layer-4-architecture.md` §19.
+  replicate without needing the wholesale rewrite. See `docs/layer-4-architecture.md`.
 - **`RelationshipState.compute_relationship_state`'s style-calibration overwrite is a latent
   trap.** `_apply_style_calibration` unconditionally overwrites the four EMA-learned
   communication-style params (`response_length_preference`, etc.) from a coarse one-shot
@@ -259,8 +258,7 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
   "session end" event in this continuous-chat system, so the delta lands retroactively for the
   session that just ended). `explicit_trust_signals_count`/`repair_occurred` have no real detector
   anywhere yet and stay at their falsy defaults — honest degradation, not a fabricated signal. This
-  directly unblocked Layer 3's `relationship_depth` gap above. See `docs/layer-4-architecture.md`
-  §18.
+  directly unblocked Layer 3's `relationship_depth` gap above. See `docs/layer-4-architecture.md`.
 
 ---
 
@@ -270,7 +268,7 @@ The cleanest audit so far: `backend/layer5_relationship/` has zero bugs found an
 pass. Nothing was fixed inline this phase because there is nothing small to fix — the entire
 layer is complete, tested, and has **zero production callers**, with no existing integration
 point to hang a small adapter fix on (unlike Layer 4, which at least had a parallel hand-built
-path to forward signals into). Full detail: `docs/layer-5-architecture.md` §15. This is one
+path to forward signals into). Full detail: `docs/layer-5-architecture.md`. This is one
 feature to build, in dependency order:
 
 - **[done, 2026-08-08]** Persistence — `social_graph`/`social_event`/`social_pattern` tables
@@ -285,10 +283,11 @@ feature to build, in dependency order:
   `inject_observation` directly; corrected to call the real, unmodified Layer 5 orchestrator
   (`packet_builder.build_social_intelligence_packet`) instead, since that module already existed
   with the LLM observation-regeneration step and the deferred-opportunity queue wired in — see
-  `docs/layer-5-architecture.md` §16.3.
+  `docs/layer-5-architecture.md`.
 - **[done, 2026-08-08]** Per-turn entity/event extraction — `api/state.py::make_social_writer`,
   a new post-turn writer. One LLM call surfaces mentions; `resolve_entity`/`create_node`/
-  `extract_events` do the real resolution/attribution work. See §16.2 and §16.5 (four bugs caught
+  `extract_events` do the real resolution/attribution work. See `docs/layer-5-architecture.md`'s
+  Live Wiring Status section (four bugs caught
   and fixed in review, each with a regression test: a naive/aware datetime crash identical in
   shape to Layer 3's BES bug, silent merging of distinct same-relationship-type people, a
   permanently-inert recency gate, and same-turn double-counting of a repeated mention).
@@ -296,11 +295,12 @@ feature to build, in dependency order:
   registered as `social_pattern_detection` (`background/scheduler.py`'s `JOBS`, now 7 entries),
   fixed weekly interval (see below). Re-identifies patterns across runs by `(pattern_type,
   person_ids_involved)` so `has_been_surfaced` history survives and duplicates don't accumulate
-  — a bug caught and fixed in review, see §16.5 point 3/§16.4.
+  — a bug caught and fixed in review, see `docs/layer-5-architecture.md`'s Live Wiring Status section.
 - **UWM social-context write-back was resolved differently than originally scoped.**
-  `build_social_context_update` (§9's full `SocialContextUpdate`) is still unreachable, but the
+  `build_social_context_update` (the layer's own §9 `SocialContextUpdate`) is still unreachable, but the
   underlying goal — Layer 5 informing the UWM — is now live via a narrower path: Layer 5's
-  per-turn extraction directly projects onto `UWM.relationship_graph.people` (see §16.2), and
+  per-turn extraction directly projects onto `UWM.relationship_graph.people` (see
+  `docs/layer-5-architecture.md`'s Live Wiring Status section), and
   became the *sole* source of that projection, replacing Layer 2's own independent people-LLM-call
   (an explicit product decision to avoid two divergent extraction pipelines both guessing "who did
   the user mention"). The richer `SocialContextUpdate` (active conflicts, support-network health,
@@ -314,8 +314,7 @@ feature to build, in dependency order:
     (would mean rewriting `event_tracker.py`'s summary logic, out of scope for this pass) — needs
     its own task if the raw-text storage is unacceptable for the eventual on-device encryption
     story (Layer 12).
-  - Rejecting tentative (0.70-confidence) entity matches to avoid merging distinct people (§16.5
-    point 2) means a person referred to by relationship term rather than name across turns ("my
+  - Rejecting tentative (0.70-confidence) entity matches to avoid merging distinct people means a person referred to by relationship term rather than name across turns ("my
     sister Maya" then later just "my sister") can create a duplicate node instead of resolving to
     the same one. §3.4's tentative-match confirmation mechanism (surfacing an ambiguous match for
     the user to confirm) doesn't exist in this app — would need a UI surface, not just a backend
@@ -325,7 +324,7 @@ feature to build, in dependency order:
     NETWORK_NUDGE` coaching types (both `DeliveryMode.INLINE`, canned-template observations) now
     have real end-to-end tests too, seeding an actual persisted `SocialPattern` of each matching
     type through the real orchestrator. No code changes needed — the functions already worked.
-    See `docs/layer-5-architecture.md` §17.
+    See `docs/layer-5-architecture.md`.
 
 ---
 
@@ -335,12 +334,12 @@ Another clean module audit — `backend/layer6_proactivity/` has zero bugs found
 and matches its architecture doc precisely. Unlike Layer 5, Layer 6 is *partially* live: SC-1's
 scoring/expiry runs every 30 minutes via `background/proactive_check_job.py`, and the Layer 7 →
 Layer 6 goal-check-in intake (`api/proactive_gen.py`) creates real candidates each turn. Full
-detail: `docs/layer-6-architecture.md` §15.
+detail: `docs/layer-6-architecture.md`.
 
 - **[done, 2026-08-09]** `GET /proactive` no longer returns ungated `content_basis` — it now runs
   every candidate through the real SC-3 `evaluate_timing_gate` server-side, with a live
   `UserTimingContext` built from the persisted stores (SC-3 had zero production callers before
-  this). See `docs/layer-6-architecture.md` §19.
+  this). See `docs/layer-6-architecture.md`.
 - **[done, 2026-08-09]** SC-4 (Message Generator) and SC-5 (Response Tracker) are wired — product
   decision split this from the transport question, since neither needed one:
   `api/proactive_delivery.py` generates a real message for each gate-passing item inside
@@ -352,14 +351,14 @@ detail: `docs/layer-6-architecture.md` §15.
   which a bare `SimpleNamespace` background-job context didn't have — silently caught by
   `build_persona`'s own try/except, degrading `voice_parameters` to defaults rather than
   crashing. No test using a stub `steps` object could have caught this; a new regression test
-  runs against the real `build_persona`. See `docs/layer-6-architecture.md` §20.
+  runs against the real `build_persona`. See `docs/layer-6-architecture.md`.
 - **[done, 2026-08-09]** Push transport (SSE) and the frontend consumer are built too — product
   decision: do it now, not defer to a later frontend phase. `GET /proactive/stream` pushes
   gate-passing, message-generated items; `frontend/app/proactive/page.tsx` was fixed to render
   the real `message` (it previously rendered `content_basis` directly — the exact bug the gating
   work was meant to prevent a future consumer from committing). Verified in a real browser via
   Playwright against seeded Postgres state (the Chrome MCP extension wasn't connected in this
-  environment). See `docs/layer-6-architecture.md` §21.
+  environment). See `docs/layer-6-architecture.md`.
 - **Three of four intake contracts are unwired**, each blocked on a different upstream layer, not
   on Layer 6 itself: `on_thread_due` needs Layer 1's narrative-thread detector (Layer 1's own
   audited gap); `on_post_distress_gap` needs a Layer 2 state-updater hook that doesn't exist yet;
@@ -369,13 +368,13 @@ detail: `docs/layer-6-architecture.md` §15.
   - **[done, 2026-08-09]** `on_deferred_coaching` — now wired. Layer 5's follow-up build
     (2026-08-08) made `proactive_coaching_queue` real; `api/state.py::make_proactive_coaching_writer`
     turns a deferred opportunity into a durable `social_pattern_coaching` `ProactiveItem` via the
-    real intake contract. See `docs/layer-6-architecture.md` §16.
+    real intake contract. See `docs/layer-6-architecture.md`.
   - **[done, 2026-08-09]** `on_thread_due` — Layer 1's narrative-thread detector shipped
-    (`docs/layer-1-architecture.md` §18.2); `make_thread_proactive_writer` calls it for real.
+    (`docs/layer-1-architecture.md`); `make_thread_proactive_writer` calls it for real.
   - **[done, 2026-08-09]** `on_post_distress_gap` — "needs a Layer 2 state-updater hook that
     doesn't exist yet" turned out to be avoidable; `background/distress_gap_job.py` derives the
     real gap directly from already-persisted episodic `emotion_vector` data, no new hook needed.
-    See `docs/layer-6-architecture.md` §18.
+    See `docs/layer-6-architecture.md`.
 
 **Correction (2026-08-04, from the Layer 7 audit):** the goal→proactive intake described above as
 "the one live intake contract" produces **zero real candidates today**. `goal_checkin_item` needs
@@ -383,7 +382,7 @@ a milestone or deadline date on the goal; Layer 7's live extraction path never s
 unwired, and the extractor only returns a free-text deadline description, never a parsed date).
 The intake wiring itself is correct — it simply has no populated input yet. See the Layer 7 entry
 below. **[resolved, 2026-08-09]**: Layer 7's SC-5 is now wired and gives goals real dated
-milestones — see `docs/layer-7-architecture.md` §14. `goal_checkin_item` produces real candidates
+milestones — see `docs/layer-7-architecture.md`. `goal_checkin_item` produces real candidates
 today for any goal the decomposition LLM assigns a milestone date to.
 
 **Correction (2026-08-04, from the Layer 1 timezone follow-up):** `evaluate_timing_gate`'s daily
@@ -391,8 +390,7 @@ cap (`ctx.proactive_messages_sent_today >= 1`) reads a pre-computed field on `Us
 the day-boundary computation lives entirely with whatever caller builds that context, not in
 `timing_gate.py` itself. Not fixable here: SC-3 has zero production callers (see above), so there
 is no live call site to check yet. Whoever wires SC-3 needs to make sure "today" is computed with
-the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1-architecture.md`
-§17) — a raw-UTC day boundary would let the cap reset at the wrong local hour.
+the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1-architecture.md`) — a raw-UTC day boundary would let the cap reset at the wrong local hour.
 
 ---
 
@@ -400,7 +398,7 @@ the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1
 
 The best-wired layer audited so far: `run_goal_pipeline` (SC-1/2/3/4) runs for real every turn.
 Module itself is clean — 58/58 tests, matches spec. One real bug fixed, two structural gaps
-logged. Full detail: `docs/layer-7-architecture.md` §13.
+logged. Full detail: `docs/layer-7-architecture.md`.
 
 - **Fixed:** `api/assembly.py::_goal_directive` was injecting goal-accountability directives
   regardless of conversation mode or relationship stage, violating §6.3's hard blocks (no goal
@@ -416,7 +414,7 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
   turn's live context — avoiding the staleness a persist-and-replay fix would have introduced
   against "goals yield to the present moment." `_goal_directive`'s hand-rolled directive and
   duplicated blocked-mode check are gone; the real, progress-differentiated instruction is used
-  instead. See `docs/layer-7-architecture.md` §16.2.
+  instead. See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** SC-5 (Goal Decomposer) wired — `api/state.py::make_goal_writer` calls
   `decompose_goal` for each newly created goal and persists the resulting milestones/habits;
   `engine.py`'s `Goal(...)` construction now also threads `deadline_description`/
@@ -426,7 +424,7 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
   in the same pass. `Goal.deadline` (a parsed date) still never populates — no NL date parser
   exists — but milestone `target_date` (LLM-returned as ISO, parsed by `decompose_goal`'s existing
   `_parse_date`) closes the practical gap: `goal_checkin_item` can now produce real candidates.
-  See `docs/layer-7-architecture.md` §14.
+  See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** Goals never reached a terminal status live. Investigating Layer 10's
   Year-in-Review `"achieved"`-string bug surfaced a deeper one: `update_progress_score` deliberately
   leaves `.status` alone on a completed/abandoned signal ("status handled by the transition
@@ -435,11 +433,11 @@ logged. Full detail: `docs/layer-7-architecture.md` §13.
   even exist as a field. Fixed: `Goal.status_changed_at` added; `run_goal_pipeline` now transitions
   status + stamps the timestamp on a completed/abandoned signal. Two new regression tests assert on
   `.status` directly (the old test only checked `progress_score`, which is exactly why this was
-  invisible). See `docs/layer-7-architecture.md` §15.
+  invisible). See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** `progress_monitor.run_staleness_scan` (§5.6 — decays a goal's status over
   time when the user simply stops mentioning it) now has a real caller:
   `background/goal_staleness_job.py` (weekly), applying each `GoalStateChange` back through the
-  real `PostgresGoalStore`. See `docs/layer-7-architecture.md` §16.1.
+  real `PostgresGoalStore`. See `docs/layer-7-architecture.md`.
 
 ---
 
@@ -488,7 +486,7 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   the learned length preference back into `deliver()`'s length target. `/chat/stream` now replays
   `thinking_pause`/`backchannel` events as new, additive SSE frames (existing `meta`/`token`/`done`
   frames unchanged) — confirmed with the user that self-edit visual replay specifically is not a
-  real product need and was dropped from scope. See `docs/layer-9-architecture.md` §13.
+  real product need and was dropped from scope. See `docs/layer-9-architecture.md`.
 - **`turn_type`, `urgency_level`, `complexity_score`, `voice_mode` have no live source at all**,
   independent of the forwarding gap: `turn_type` (question/venting/request_advice/etc.) isn't
   computed anywhere in Layers 3-4 today; `urgency_level` doesn't exist on `EmotionIntentPacket`;
@@ -503,7 +501,7 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   signals now do, off the user's actual message text. `circadian_band` now reaches `deliver()`
   for real too (was silently always `"afternoon"`), and `format_spec_applied` survives onto
   `ctx`/`OrchestratedOutput` (no client consumer exists yet, so no new API field was added ahead
-  of one). See `docs/layer-9-architecture.md` §14.
+  of one). See `docs/layer-9-architecture.md`.
 
 ---
 
@@ -511,7 +509,7 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
 
 Module clean (65 tests). Live wiring is partial: 2 of 5 sub-components run as background jobs
 (weekly summary, pattern detection); SC-1/4/5 and the `Layer10ContextPacket` read path are
-unwired. Two real bugs fixed this phase — see `docs/layer-10-architecture.md` §15 for detail:
+unwired. Two real bugs fixed this phase — see `docs/layer-10-architecture.md` for detail:
 a field-name bug (`content_basis_valence` doesn't exist on `EpisodicMemory`, silently zeroing
 every episode's emotional intensity) and a hardcoded-empty-list gap (`emotional_records=[]`
 meant weekly summaries never had real emotional texture and the emotional-cycle pattern
@@ -530,30 +528,31 @@ deriving records from the same per-episode `emotion_vector` data already read el
   (`infra/db/longitudinal_store.py::save_life_event`/`life_events`), and wiring into both
   `narrative_arc_job.py` (chapter-boundary detection can now actually fire) and
   `life_calendar_job.py` (the real, previously-uncalled `LifeCalendar.register_life_event` now
-  runs for every persisted event). See `docs/layer-10-architecture.md` §17.1.
+  runs for every persisted event). See `docs/layer-10-architecture.md`.
 - **[done, 2026-08-09]** SC-4 (Retrospective Engine) now runs live from `life_calendar_job.py`:
   a fired calendar entry that maps to a retrospective type generates and persists a real
   `RetrospectivePacket` and hands it to Layer 6 via a new `on_retrospective_ready` intake
   function; a fired entry that doesn't map to one (the relationship-day milestones SC-5 registers
   for every user) goes through a third new intake function, `on_calendar_entry_due`, discovered
   necessary mid-build since `_ENTRY_TO_RETRO` never mapped those types. See
-  `docs/layer-10-architecture.md` §16 and `docs/layer-6-architecture.md` §17 for the full design.
+  `docs/layer-10-architecture.md` and `docs/layer-6-architecture.md` for the full design.
 - **Real bug found and fixed while wiring `compute_progress_snapshot` to real `Goal` objects for
   the first time**: it counted achieved goals by `status == "achieved"`, but Layer 7's real
   terminal `GoalStatus` value is `"completed"` — `goals_achieved_lifetime`/`achievement_rate_
   lifetime` would have silently stayed 0 forever. Fixed in `progress_tracker.py`; the existing
   unit test asserting against the wrong status string was fixed too.
 - **[done, 2026-08-09]** Year in Review's data-completeness blocker is fixed — `Goal.status_
-  changed_at` now exists and gets stamped (Layer 7 follow-up, `docs/layer-7-architecture.md` §15).
+  changed_at` now exists and gets stamped (Layer 7 follow-up, `docs/layer-7-architecture.md`).
   **[done, 2026-08-09]** Its annual trigger is decided too — the Nova relationship's own day-365
   milestone firing generates and persists a real `YearInReview`, then re-registers itself for the
-  following year. See `docs/layer-10-architecture.md` §17.3.
+  following year. See `docs/layer-10-architecture.md`.
 - **[done, 2026-08-09]** `upcoming_goal_deadlines`/`recent_life_event`/`primary_active_goals` on
   the assembled context packet are now populated — `assemble_context_packet` already accepted all
   three as real params; `make_longitudinal_provider` just never sourced them. See
-  `docs/layer-10-architecture.md` §17.2.
-- **[done, 2026-08-09]** Layer 6 SC-3 (Timing & Delivery Gate) is wired now (`docs/layer-6-
-  architecture.md` §19) — `GET /proactive` gates every queue item through `evaluate_timing_gate`
+  `docs/layer-10-architecture.md`.
+- **[done, 2026-08-09]** Layer 6 SC-3 (Timing & Delivery Gate) is wired now (see
+  `docs/layer-6-architecture.md`'s Live Wiring Status section) — `GET /proactive` gates every
+  queue item through `evaluate_timing_gate`
   regardless of `item_type`, so pattern/retrospective/milestone/year-in-review items are covered
   by the same fix, not just goal check-ins. What's still missing is a *push* channel (no
   transport exists) — the gate now decides correctly, but delivery is still poll-only.
@@ -565,8 +564,7 @@ deriving records from the same per-episode `emotion_vector` data already read el
 The best-built and best-wired layer of the entire audit pass: zero bugs found, and — unlike every
 other layer — all four sub-components have real production callers (SC-1 guardrails post-gen on
 every response, SC-2 crisis detection on every message, SC-3 escalation on the veto path, SC-4
-dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-architecture.md`
-§15.
+dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-architecture.md`.
 
 - **[done, 2026-08-09]** SC-2's longitudinal detection layer is now live —
   `api/assembly.py::safety_scan` forwards `episodic_memories`/`emotional_records` (via Layer 10's
@@ -574,18 +572,17 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
   turned out not to block this: `memory_store.active_episodic` is a raw store read, not the
   recall/scoring pipeline — `classify()` already relied on the same fact for BES. The semantic
   layer remains correctly unwired: no fine-tuned classifier model exists to inject. See
-  `docs/layer-11-architecture.md` §16.1.
+  `docs/layer-11-architecture.md`.
 - **[done, 2026-08-09]** `SafetyRecord`'s tamper-evident hash chain (§8) is now wired — a new
   `safety_record_entry` table + `PostgresSafetyRecordStore` wraps the real, already-complete
   `SafetyRecord.append()`/`.verify_chain()` (zero callers before this). `make_safety_writer`
   appends a chained entry for every crisis turn; `GET /memory/integrity` and the `integrity_check`
   job now verify three chains, not two. Only `crisis_signal_detected` entries flow through it —
   §8's other entry types have no live call sites of their own yet. See
-  `docs/layer-11-architecture.md` §16.2.
+  `docs/layer-11-architecture.md`.
 - **[done, 2026-08-09]** `region` now reads from the real, already-merged
   `config['layer11']['escalation']['default_region']` instead of `build_pipeline_steps`'s
-  hardcoded `"india"` default standing in silently forever. See `docs/layer-11-architecture.md`
-  §16.3.
+  hardcoded `"india"` default standing in silently forever. See `docs/layer-11-architecture.md`.
 
 ---
 
@@ -597,7 +594,7 @@ where only a fraction has a production caller. **Only SC-2 (Selective Deletion) 
 unrecallability through the `GET /memory/search` keyword fallback (new test:
 `tests/unit/api/test_routes_privacy.py::test_deleted_memory_unrecallable_via_keyword_search`).
 SC-1, SC-3, SC-4, and `privacy_agent.py` all have zero callers outside their own tests. Full
-detail: `docs/layer-12-architecture.md` §14.
+detail: `docs/layer-12-architecture.md`.
 
 Fixed inline this pass (both in `selective_deletion.py`, no observable behavior change to the
 live delete path — `PostgresMemoryStore.delete_episodic` already independently zeroed content —
@@ -616,7 +613,7 @@ below was a misdiagnosis, investigated and corrected rather than "reconciled": `
 device-held `sync_key` the server must never see, by the zero-knowledge design's own definition —
 so it has no server caller *by design*, not by neglect. `PostgresSyncStore` is correctly the only
 thing this backend-only repo's server could ever call. No code changed; the docs did. See
-`docs/layer-12-architecture.md` §15.1.
+`docs/layer-12-architecture.md`.
 
 **[done, 2026-08-09]** `dry_run_deletion`'s cascade checks are now genuinely wired into
 `DELETE /memory/{id}` (semantic + longitudinal), surfacing two real field-mismatch bugs that would
@@ -627,7 +624,7 @@ have crashed on first real use: the semantic check read fields that don't exist 
 mismatch in the membership check was also found and fixed. `execute_deletion` itself still only
 mutates the primary episodic store; deciding what cascade-store *mutation* should mean is a real
 product decision, not made here. Personality-vector cascade stays permanently unreported — no
-such store exists anywhere in this codebase. See `docs/layer-12-architecture.md` §15.2.
+such store exists anywhere in this codebase. See `docs/layer-12-architecture.md`.
 
 Larger, real feature work (not fixed inline):
 - **SC-1 (encryption-at-rest) is entirely undeployed.** The stdlib-honest PBKDF2/HKDF/HMAC
@@ -642,7 +639,8 @@ no seam exists to hang key management off of.
 
 **[done, 2026-08-09]** SC-3's audit/correction views are wired: `GET /memory/audit/full`,
 `GET /memory/audit/query`, `POST /memory/{id}/correct`. Wiring them for the first time surfaced
-the same class of bug §15.2 already found in `dry_run_deletion` — `_to_auditable_fact` read
+the same class of bug already found in `dry_run_deletion` (see `docs/layer-12-architecture.md`'s
+Live Wiring Status section) — `_to_auditable_fact` read
 `fact_id`/`fact_text`/`category`/`source_episode_ids`, none of which exist on the real
 `SemanticMemory`, and would have raised `AttributeError` on first use; `IdentityMemory` needed its
 own converter entirely (different real field shape). `apply_correction`'s six correction types
@@ -650,15 +648,14 @@ also targeted mostly-nonexistent `EpisodicMemory` fields (`content`, `is_anchore
 `is_user_downgraded`, `auto_expiry_date`, `is_user_confirmed`, `last_corrected_at`) — silently
 no-op'd by `update_episodic`'s `hasattr` guard, so five of six correction types did nothing against
 a real memory. `EpisodicMemory` gained those five fields (additive, safe defaults) and `EDIT` now
-writes both `content` and `summary`. See `docs/layer-12-architecture.md` §15.3.
+writes both `content` and `summary`. See `docs/layer-12-architecture.md`.
 
 **[done, 2026-08-09]** `privacy_agent.py`'s `ConsentManager` — product decision: skip. No real
 operation in this single-user local deployment needs consent-gating today.
 
 **[done, 2026-08-09]** Cascade-store *mutation* — product decision: redact in place. New
 `selective_deletion.redact_cascade` strips deleted-episode references from affected semantic
-facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`
-§15.3.
+facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`.
 
 ---
 
@@ -666,10 +663,10 @@ facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-arc
 
 Zero bugs in the module — every file faithfully implements its spec section, all 66 tests pass.
 Fixed two stale "wired by the orchestrator in production" claims inline (module docstring +
-architecture doc §12.2) — no behavior change, just correcting what the code/doc say about
+the architecture doc) — no behavior change, just correcting what the code/doc say about
 themselves. The most unwired layer of the whole 13-layer pass: only the active-elicitation queue
 has a production caller (via a lighter reimplementation in `api/elicitation.py`, not the spec'd
-`ElicitationSurfacingPolicy`/`ColdStartEngine`). Full detail: `docs/layer-13-architecture.md` §13.
+`ElicitationSurfacingPolicy`/`ColdStartEngine`). Full detail: `docs/layer-13-architecture.md`.
 
 - **[done, 2026-08-09]** Elicitation answers are now captured. Nova asks "what should I call
   you?" and "are you a student, or working?" but `PostgresOnboardingStore.record_elicitation` only
@@ -677,7 +674,7 @@ has a production caller (via a lighter reimplementation in `api/elicitation.py`,
   make_cold_start_writer` now runs the real `ColdStartContextBuilder.process_message` every turn
   while cold-starting, which regex-matches a stated name into `user_handle` the next time the user
   says it in any message — not narrowly tied to being a direct reply to that one question, but a
-  real, general capture path. See `docs/layer-13-architecture.md` §14.2.
+  real, general capture path. See `docs/layer-13-architecture.md`.
 - **[done, 2026-08-09]** `PassiveElicitationEngine` (all 8 extractors) now runs live every turn via
   `make_cold_start_writer`, feeding a real, persisted `InitialState` (new
   `infra/db/initial_state_store.py`). Caught and fixed a bare-`list` serde bug on
@@ -692,12 +689,12 @@ has a production caller (via a lighter reimplementation in `api/elicitation.py`,
   logic. `FeaturePacingController`/`ColdStartEngine` itself were not instantiated directly — its
   real logic was wired via its own component modules instead, since `ColdStartEngine` bundles
   session-start/feature-pacing concerns unrelated to what needed fixing. See
-  `docs/layer-13-architecture.md` §14.3-§14.4.
+  `docs/layer-13-architecture.md`.
 - **[done, 2026-08-09]** `ElicitationSurfacingPolicy` vs. `api/elicitation.py`'s reimplementation
   reconciled — `select_elicitation` now runs the real `ElicitationQueue.next_surfaceable_item` +
   `ElicitationSurfacingPolicy.can_surface` in sequence (the same two-step gate
   `ColdStartEngine.on_message` uses), not a single looser inline check. See
-  `docs/layer-13-architecture.md` §14.1.
+  `docs/layer-13-architecture.md`.
 - **Still unwired, correctly**: `FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` — no
   feature in Nova is gated or introduced via this mechanism, and none was built this pass just to
   give it a caller. `ColdStartEngine`'s `activate_proactivity_engine`/
