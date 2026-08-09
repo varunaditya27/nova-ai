@@ -1399,3 +1399,167 @@ advice-seeking → advice tolerance) and emits a plain-language `persona_style_d
 scores to the LLM). The relationship writer applies it (`PostgresRelationshipStore.record_turn(
 user_message=…)`), `api/assembly.build_persona` folds the directive into the persona instruction, and
 `GET /relationship` exposes the learned params. See `docs/API_REFERENCE.md`.
+
+## 18. Follow-up (2026-08-09): real tie-strength wiring
+
+§17.2 noted `compute_session_delta`/`update_tie_strength` (real, tested functions in
+`relationship_manager.py`) had zero callers — `RelationshipState.tie_strength` stayed pinned at
+`0.0` forever in production, which was also the root cause of Layer 3's `relationship_depth`
+forwarding gap (`docs/layer-3-architecture.md`).
+
+**The design problem:** `compute_session_delta` takes a `SessionSummary` — signals aggregated
+*across a whole session* (`had_vulnerability_moment`, `explicit_trust_signals_count`,
+`total_messages`, `max_emotional_intensity`, `repair_occurred`) — and the module's own docstring
+says tie strength updates "at session end." But `record_turn` runs on *every turn*, and this is a
+continuous-chat product with no explicit "session end" event to hang a one-shot batch update on.
+
+**The fix:** `infra/db/relationship_store.py::record_turn` now accumulates two real per-turn
+signals into the payload dict — outside the `RelationshipState` dataclass, the same convention
+already used for `_counted_session_keys` (`_current_session_key`,
+`_current_session_message_count`, `_current_session_max_intensity`,
+`_current_session_had_vulnerability`) — and applies the accumulated session's `compute_session_delta`
+the moment a *new* `session_key` is observed, i.e. retroactively for the session that just ended.
+This mirrors how `total_sessions` already detects session boundaries by `session_key` change, so it
+needed no new boundary-detection concept.
+
+**Signal sources** (`api/state.py::make_relationship_writer`), both derived from Layer 3's
+already-computed `EmotionClassification` for the turn, not new detectors:
+- `emotional_intensity` — `ctx.emotion_intent.primary_emotion.intensity`, the packet's own
+  normalised `(valence, arousal)` magnitude property.
+- `had_vulnerability_moment` — `intensity > 0.6 and valence < 0`: a conservative, internally
+  consistent reading of the same signal (high intensity + negative valence), using the same `0.6`
+  threshold `compute_session_delta` itself already applies to `max_emotional_intensity`.
+
+`explicit_trust_signals_count` and `repair_occurred` have no real detector anywhere in the
+codebase and are left at their falsy defaults — an honest degradation (same pattern as Layer 10's
+`life_events=[]` and Layer 13's derived graduation criteria), not a fabricated signal. Because
+`compute_session_delta` is purely additive (a `0.02` floor plus optional bumps), a session with
+real vulnerability/intensity signals but no trust/repair data still yields a real, non-constant
+delta — categorically different from forwarding a hardcoded zero.
+
+**Reaches `relationship_depth` for real:** `api/assembly.py::classify` now reads
+`relationship_provider(user_id).tie_strength` and forwards it as `relationship_depth` into
+`build_emotion_intent_packet`, reaching SC-4 Mismatch (`select_mismatch_posture`'s
+`relationship_depth < 0.3` → unconditional `hold_and_watch` gate) and SC-5 Empathy Hypothesis.
+`advice_frustration_count` remains unforwarded — no real counter exists anywhere yet (Layer 3 doc).
+
+**Tests:** `tests/unit/infra/test_relationship_store.py` (`test_tie_strength_stays_zero_until_
+the_session_that_earned_it_ends`, `test_tie_strength_delta_reflects_real_session_signals`) prove
+the accumulator/boundary logic directly; `tests/unit/api/test_assembly_turn.py::
+test_real_layer3_wiring_relationship_depth_reaches_mismatch_posture` proves the end-to-end wiring
+through the real `classify()` closure by asserting an observable posture change (never a raw
+score) between `tie_strength=0.0` and `tie_strength=0.5`.
+
+## 19. Follow-up (2026-08-09): `build_final_response_packet`'s critical-drift override
+
+§17.5 flagged `build_final_response_packet` (the real orchestrator function) as having zero
+production callers because wiring it wholesale would collide with the orchestrator's own
+System 1/2 routing decision (both would independently decide whether the Emotion Refiner runs).
+
+**Re-investigated before building anything:** a full read of `build_final_response_packet`
+against `api/assembly.py`'s `build_persona()`/`plan()`/`refine()` showed every real sub-component
+it calls — `persona_resolver`, `relationship_manager.compute_relationship_state`,
+`tone_calibrator`, `drift_detector`, `generate_semantic_draft` (Agent 4a), `refine_emotion`
+(Agent 4b, including `should_skip_refinement`'s real 5-condition policy) — is **already** called
+for real from those three hooks (§17.2, §17.3). Wiring the monolithic function wholesale would
+mean ripping out three working, individually-tested orchestrator hooks to replace them with one
+call that doesn't decompose cleanly into the orchestrator's `build_persona`/`plan`/`refine`
+contract — exactly the kind of reimplementation-for-its-own-sake CLAUDE.md warns against, with no
+functional gain, since the same real functions already run.
+
+**The one real gap found:** `build_final_response_packet` has a critical-drift early-return
+(§12) that `plan()` didn't replicate. When SC-4's Check 2 (role abandonment, e.g. "forget you're
+an AI", "stop being nova") fires, `detect_drift` returns `recommended_action =
+RecommendedAction.REFUSE_GRACEFULLY` with `risk_level = CRITICAL` — this is meant as a **hard
+stop**, never reaching the planner or refiner LLM at all, per the architecture's own reasoning:
+a role-abandonment/jailbreak attempt is exactly the case where the planner LLM can't be trusted
+to comply with a nudge. Before this fix, `plan()` only folded `drift.planner_directive` into the
+planner's `response_instruction` as one more piece of text the LLM was *hoped* to follow — a soft
+nudge, not the hard override the architecture specifies.
+
+**The fix**, entirely inside the existing three-hook design (per the answered scoping question —
+"orchestrator decides," i.e. System 1's structural refiner-skip and System 2's always-refine stay
+exactly as they are):
+- `plan()`: when `pre_drift.recommended_action == RecommendedAction.REFUSE_GRACEFULLY`, return
+  `GRACEFUL_REFUSAL_TEXT` (the same constant `build_final_response_packet` uses) immediately,
+  without ever calling the planner LLM. Stashes `pre_drift` onto
+  `ctx.persona_packet.drift_check_result` so `refine()` (System 2 only) can see it too.
+- `refine()`: force `skip=True` whenever `drift_check_result.recommended_action ==
+  REFUSE_GRACEFULLY`, regardless of `should_skip_refinement`'s 5-condition policy — a hard refusal
+  must never be softened, rephrased, or have its wording second-guessed by the refiner, the same
+  invariant `build_final_response_packet` enforces by returning before the refiner is ever
+  reached.
+
+**Tried and reverted:** also considered passing a real `similarity_fn` (embedding cosine
+similarity via the injected `embed` client) into `refine_emotion`'s factual-preservation check,
+since CLAUDE.md's Layer 4 summary mentions "embedding cosine similarity." Investigation showed
+`validate_factual_preservation`'s own default (`similarity_fn=None` → token-overlap `_coverage`)
+is already real, working validation — not a stub — confirmed by the pre-existing, still-passing
+`test_real_layer4_wiring_refine_emotion_reinserts_a_dropped_factual_claim`. Passing an
+embedding-based `similarity_fn` broke that test: `FakeLLM.embed()`'s crude length-based stub isn't
+a stand-in for real semantic similarity, and there was no evidence the token-overlap default is
+actually failing in production to justify the swap risk. Reverted; left as a possible future
+enhancement, not a gap to close.
+
+**Tests:** `test_real_layer4_wiring_drift_detector_flags_role_abandonment_as_a_hard_refusal`
+(System 2 path) and `test_real_layer4_wiring_drift_hard_refusal_fires_on_system1_turns_too`
+(System 1 path) both replace the prior softer-directive tests and assert the planner/refiner LLM
+is never invoked and the response is exactly `GRACEFUL_REFUSAL_TEXT`, through the real
+orchestrator (`tests/unit/api/test_assembly_turn.py`).
+
+## 20. Follow-up (2026-08-09): SC-4 Check 3 stance tracking + SC-1 identity-anchor mapping
+
+Two more §17 pending items, closed the same pass as §18-19.
+
+### 20.1 SC-4 Check 3 (sycophantic capitulation) — no longer permanently inert
+
+§17.2's finding was "no cross-turn Nova-stance history is tracked anywhere." Re-investigated: the
+history already *is* tracked — every Nova reply is persisted per-session in the real conversation-
+message log (`infra/db/message_store.py`) — Check 3 just never had a reader wired to it.
+
+- `PostgresMessageStore.recent_by_role(session_key, role, limit)` (new) — the last N message
+  contents for one role within one session, oldest-first (so `positions[0]` reads as "the earlier
+  position," matching `detect_drift`'s own `planner_directive` wording).
+- `api/state.py::make_nova_positions_provider` — wraps it for Nova's own replies, 5 most recent.
+- `api/assembly.py::plan()` — both `detect_drift` calls (pre-draft and post-draft) now receive
+  real `nova_recent_positions` from this provider instead of a hardcoded `[]`. Fetched once per
+  turn, reused for both passes.
+
+Check 3's own gate (`len(positions) >= 3`, variance `> 0.6` via lexical Jaccard distance +
+polarity-flip) is unchanged — this closes the *input* gap, not the detection logic, which was
+already real and tested.
+
+**Tests:** `tests/unit/infra/test_message_store.py` (`recent_by_role` ordering/scoping),
+`tests/unit/api/test_assembly_turn.py::test_real_layer4_wiring_sc4_check3_reaches_the_planner_
+with_real_stance_history` (a real capitulation-shaped position sequence trips the check and its
+directive reaches the planner prompt) and `..._stays_inert_with_no_position_history` (no
+provider → no false positive, proving the wiring doesn't fabricate a finding).
+
+### 20.2 SC-1 `PersonaState` — no longer build-time-constant
+
+§17.2/§17.3 found `persona_resolver.load_core_anchors(identity_memory_entries=None)` completely
+ignored its own parameter, and flagged inventing a mapping between Layer 4's 7 fixed anchor keys
+and Layer 2's free-text `IdentityMemory` (`category`/`statement`) as "new business logic," left
+open. Built now, deliberately narrow to avoid the failure mode that made this hard: a naive
+"closest belief in the same category" match would happily override `humor_style` with an
+unrelated personality-trait belief just because both are `PERSONALITY_TRAIT`, producing a
+plausible-looking but wrong override.
+
+**The design:** `_ANCHOR_OVERRIDE_HINTS` maps each non-immutable anchor to `(IdentityCategory,
+keyword_hints)`. An anchor only gets overridden when a belief in the matched category's
+*statement* actually contains one of the anchor's hint keywords — category narrows the search,
+the keyword match confirms actual topical relevance. Ties within a category break on centrality
+(already the "how strongly held" signal, same scale the anchors' own constants use). No matching
+belief → the anchor's constant, unchanged — most of the 7 anchors have no real correspondent in
+the default identity seed (e.g. no belief about humor exists), and that has to stay an honest
+`None` rather than a forced, misleading match. Only `value` is overridden; `centrality`/
+`immutable` stay the anchor's own constants, since those drive downstream resolver logic tuned to
+the anchors' abstract 0-1 scale, not a belief's independently-calibrated centrality. `name` is
+excluded from the map entirely — always the immutable constant.
+
+**Tests:** `tests/unit/test_persona_resolver.py` — no-topical-match stays at the constant,
+a real topical match overrides `value`, `name` is never touched, highest-centrality wins among
+multiple category matches, and one end-to-end test through `resolve_persona_state` itself (not
+just `load_core_anchors`) proving the override reaches `PersonaState.character_description`.
+`tests/unit/api/test_assembly_turn.py::test_real_layer4_wiring_identity_override_reaches_persona_
+state` proves the same through the real `build_persona()` closure.

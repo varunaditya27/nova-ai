@@ -135,3 +135,20 @@ def test_day_activity_local_date_key_can_extend_past_end_boundary():
     counts = st.day_activity(datetime(2026, 7, 1, tzinfo=timezone.utc), boundary_end,
                              timezone_offset_hours=5.5)
     assert counts == {"2026-08-01": 1}
+
+
+def test_recent_by_role_returns_oldest_first_within_the_session():
+    """Layer 4 SC-4 Check 3's real nova_recent_positions source -- oldest-first so
+    positions[0] reads as "the earlier position" (matches detect_drift's planner_directive)."""
+    st = _store()
+    for i in range(4):
+        st.append("nova", f"nova reply {i}", session_key="s1")
+        st.append("user", f"user reply {i}", session_key="s1")
+    st.append("nova", "other session reply", session_key="s2")
+
+    recent = st.recent_by_role("s1", "nova", limit=3)
+    assert recent == ["nova reply 1", "nova reply 2", "nova reply 3"]
+
+
+def test_recent_by_role_empty_when_no_history():
+    assert _store().recent_by_role("s1", "nova") == []

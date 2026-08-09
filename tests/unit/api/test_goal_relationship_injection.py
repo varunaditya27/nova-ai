@@ -44,11 +44,29 @@ def _steps(llm, goal_provider=None, relationship_provider=None, uwm_provider=Non
 
 
 def test_goal_titles_injected_into_prompt():
+    """goal_provider now returns the real SC-4 accountability decision (architecture doc §6),
+    not bare title strings -- a real persisted Goal, mentioned via a completion-signal phrase,
+    proves the directive (which always includes the goal's title, see
+    accountability_modifier.py's `packet()` helper) reaches the planner prompt."""
+    from datetime import datetime, timezone
+    from infra.db import make_engine, make_session_factory, init_db
+    from infra.db.goal_store import PostgresGoalStore
+    from backend.layer7_goals.schemas import Goal
+    from api.state import make_goal_provider
+
+    now = datetime.now(timezone.utc)
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    PostgresGoalStore(factory, "u1").add_goal(
+        Goal(title="run a 5k", status="active", last_mentioned_at=now, created_at=now))
+
     llm = CapturingLLM()
     rel = RelationshipState(stage="developing", total_messages_exchanged=120, total_sessions=20)
-    steps = _steps(llm, goal_provider=lambda uid, msg: ["run a 5k", "learn guitar"],
+    steps = _steps(llm, goal_provider=make_goal_provider(factory, llm),
                   relationship_provider=lambda uid: rel)
-    ConversationOrchestrator(steps).run_turn("u1", "I want to set a new goal this quarter")
+    ConversationOrchestrator(steps).run_turn(
+        "u1", "I finally did it, I officially finished my goal!", now=now)
     assert any("run a 5k" in p for p in llm.prompts)
 
 

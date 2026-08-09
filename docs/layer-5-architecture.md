@@ -1300,6 +1300,26 @@ turns `packet.proactive_coaching_queue` entries into durable `ProactiveItem`s vi
 pattern the user isn't ready to hear about right now becomes a real outreach candidate instead of
 silently vanishing. Full detail and the regression test: `docs/layer-6-architecture.md` §16.
 
+## 17. Follow-up (2026-08-09): the third coaching type/delivery combination tested end-to-end
+
+`docs/POLISH_BACKLOG.md`/`docs/PENDING_WORK.md` flagged the three coaching delivery types
+(`DeliveryMode.INLINE`, `CoachingType.STRENGTH_ACKNOWLEDGMENT`, `CoachingType.SUPPORT_NETWORK_
+NUDGE`) as real, unmodified functions with no test proving they reach a delivered response
+through the real orchestrator — only `PATTERN_REFLECTION` (`AS_QUESTION` delivery, LLM-generated
+text) had a real end-to-end test (§16.6's sibling, `test_real_layer5_wiring_coaching_observation_
+reaches_delivered_response`).
+
+Investigated `coaching_detector.py`'s `_PATTERN_TO_COACHING` map and confirmed
+`STRENGTH_ACKNOWLEDGMENT`/`SUPPORT_NETWORK_NUDGE` are canned-template types (`OBSERVATION_
+TEMPLATES`, no LLM call), reached via `SocialPatternType.HEALTHY_RELATIONSHIP_PATTERN`/
+`SOCIAL_WITHDRAWAL_PATTERN` and always delivered `DeliveryMode.INLINE` (per
+`build_opportunity_from_pattern`'s `is_reflection` branch). No code changes were needed — the
+functions already work — only test coverage: `tests/unit/api/test_assembly_turn.py::
+test_real_layer5_wiring_strength_acknowledgment_delivers_a_templated_inline_observation` and
+`..._support_network_nudge_delivers_a_templated_inline_observation`, each seeding a real
+persisted `SocialPattern` of the matching type and asserting the template text (not a mock)
+appears in the delivered response through the real orchestrator.
+
 ---
 
 *This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation. No behavior of Layer 5 requires assumptions or inferences from other documents.*

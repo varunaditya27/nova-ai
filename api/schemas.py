@@ -1,6 +1,7 @@
 """HTTP request/response models for the Nova API."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -9,6 +10,19 @@ from pydantic import BaseModel
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    # Layer 1 SC-2 implicit-signal inputs (architecture doc §2) -- all optional and additive so
+    # existing clients keep working unchanged. No client sends these yet; see
+    # docs/FRONTEND_TODO.md for what a client needs to capture to populate them for real.
+    # `nova_last_delivered_at` is deliberately NOT a field here -- it's derived server-side
+    # (api/state.py::make_session_last_delivered_provider), not something the client can know.
+    user_typing_started_at: datetime | None = None
+    deletion_occurred: bool = False
+    deletion_count: int = 0
+    peak_draft_length_chars: int = 0
+    final_draft_length_chars: int = 0
+    is_burst: bool = False
+    burst_count: int = 1
+    is_reply_to_proactive: bool = False
 
 
 class EchoOut(BaseModel):

@@ -1399,9 +1399,62 @@ test_real_layer9_wiring_thinking_pause_and_backchannel_reach_the_sse_stream`, wh
 high-emotional-intensity turn through the real orchestrator and `stream_turn`, and asserts a
 `thinking_pause` frame is emitted before the first `token` frame.
 
-**Still open**: `format_spec_applied` (structure/length-target metadata) still isn't forwarded to
-any client — no consumer has asked for it yet. `emoji_usage_rate`/`avg_user_message_length`/
-`uses_slang_themselves` remain uncomputed by the module itself (13.1). `circadian_band`,
-`complexity_score`, `turn_type`, `urgency_level`, `voice_mode` still aren't forwarded through
-`deliver()`'s adapter — `complexity_score`/`turn_type`/`urgency_level` still have no live source
-anywhere upstream (unchanged from the Phase 9 finding above).
+**Still open at the time**: `format_spec_applied` wasn't forwarded to any client;
+`emoji_usage_rate`/`avg_user_message_length`/`uses_slang_themselves` were uncomputed;
+`circadian_band` wasn't forwarded through `deliver()`. All four closed in §14 below.
+
+## 14. Follow-up (2026-08-09): real emoji/slang/length signals + format_spec_applied/circadian_band
+
+### 14.1 `UserFormatProfile`'s three uncomputed fields
+
+`emoji_usage_rate`/`avg_user_message_length`/`uses_slang_themselves` were declared on the schema
+and genuinely *consumed* downstream — `format_adapter.compute_format_spec` reads
+`emoji_usage_rate` to pick `EmojiPolicy.NONE`/`RARE`/`NATURAL` and `uses_slang_themselves` to set
+`allow_slang` — but `update_format_profile` never computed either, so they stayed pinned at their
+`0.0`/`False` defaults forever: the emoji policy always resolved to `NONE` and slang was always
+disallowed, regardless of how the user actually writes, silently defeating the feature.
+
+`update_format_profile` gained a `user_message_text: str = ""` parameter (the writer already had
+`ctx.message` available; it just wasn't being passed through). Three real, gentle-EMA-blended
+signals (`_ENGAGEMENT_EMA = 0.2`, matching `style_learning.py`'s own learning rate):
+- `avg_user_message_length` — blended toward this turn's real `user_response_length`.
+- `emoji_usage_rate` — blended toward a 0/1 "did this message contain an emoji" signal, detected
+  with `format_adapter.py`'s own real `_EMOJI_RE` (imported, not re-derived — a second emoji
+  regex would inevitably drift from the first).
+- `uses_slang_themselves` — flips to `True` (sticky, never resets) the first time
+  `backend/layer4_persona/style_learning.py`'s real `_CASUAL` regex matches the user's message.
+  Cross-layer reuse deliberately, not a second slang detector: Layer 4 already classifies exactly
+  this signal for its own `formality_preference` EMA, off the identical set of casual markers.
+
+`api/state.py::make_format_profile_writer` now passes `user_message_text=message` into the call.
+
+**Tests:** `tests/unit/test_user_format_profile.py` — five new unit tests (length moves toward a
+real average, emoji rate rises for an emoji-using message and stays exactly `0.0` for one
+without, slang flips true/stays false). `tests/unit/api/test_assembly_turn.py::
+test_real_layer9_wiring_emoji_and_slang_habits_reach_the_persisted_profile` proves it through the
+real orchestrator + writer, not a unit-level call to `update_format_profile`.
+
+### 14.2 `circadian_band` forwarded to `deliver()`; `format_spec_applied` survives to `ctx`
+
+`api/assembly.py::deliver()` called the real Layer 9 `deliver()` without a `circadian_band=`
+argument at all, so it silently used the hardcoded `"afternoon"` default every turn regardless of
+the real value Layer 1 already computes (`ctx.input_packet.circadian_band`) — `thinking_pause.py`'s
+real late-night (`×1.25`) / morning (`×0.85`) modifiers and `voice_synthesizer`'s circadian-aware
+phrasing never engaged. Now forwarded for real.
+
+`format_spec_applied` (the `FormatSpec` Layer 9 computes every turn — structure, length target)
+was computed and discarded. Rather than invent unused `ChatResponse` API surface ahead of any
+real client need (the same restraint applied to `GET /proactive`'s ungated `content_basis`,
+`docs/layer-6-architecture.md`), it's stashed on `ctx`/`OrchestratedOutput` the same way
+`layer9_events` already is (`TurnContext.format_spec_applied` → `_to_output` →
+`OrchestratedOutput.format_spec_applied`) — reachable by a future API consumer without a premature
+contract.
+
+**Tests:** `tests/unit/api/test_assembly_turn.py::test_real_layer9_wiring_circadian_band_reaches_
+thinking_pause` (same heavy-emotion turn run at a late-night vs. an afternoon local time, Python's
+global `random` seeded identically before each so only the circadian multiplier differs, asserts
+a real, larger thinking pause at night) and `..._format_spec_applied_reaches_orchestrated_output`.
+
+`turn_type`/`urgency_level`/`complexity_score` still have no live source anywhere upstream
+(unchanged); `voice_mode` still needs the Layer 1 attachment/multimodal gap
+(`docs/layer-1-architecture.md` §18.1), which stays correctly unwired (no backend exists).

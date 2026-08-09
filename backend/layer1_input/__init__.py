@@ -41,6 +41,7 @@ from .service import (
     process_input_event,
 )
 from .thread_tracker import InMemoryThreadStore, ThreadStore
+from .thread_extractor import extract_thread, should_run_extractor as should_run_thread_extractor
 
 __all__ = [
     "process_input_event",
@@ -66,4 +67,6 @@ __all__ = [
     "InMemoryProfileStore",
     "ThreadStore",
     "InMemoryThreadStore",
+    "extract_thread",
+    "should_run_thread_extractor",
 ]

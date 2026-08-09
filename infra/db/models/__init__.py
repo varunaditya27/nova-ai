@@ -14,13 +14,14 @@ from infra.db.models.proactivity import ProactiveItem
 from infra.db.models.safety import SafetyEvent, SafetyRecordEntry
 from infra.db.models.privacy import PrivacyAudit
 from infra.db.models.longitudinal import (
-    LongitudinalSummary, BehavioralPattern, LifeCalendarEntry, Retrospective,
+    LongitudinalSummary, BehavioralPattern, LifeCalendarEntry, Retrospective, LifeEventRow,
 )
 from infra.db.models.tools import ToolAction
 from infra.db.models.output_prefs import OutputPref
 from infra.db.models.onboarding import OnboardingState
 from infra.db.models.sync import SyncDelta
 from infra.db.models.format_profile import FormatProfile
+from infra.db.models.narrative_thread import NarrativeThreadRow
 
 __all__ = [
     "Session", "ConversationMessage",
@@ -30,4 +31,5 @@ __all__ = [
     "PrivacyAudit", "LongitudinalSummary", "ToolAction", "OutputPref", "OnboardingState",
     "SyncDelta", "SocialGraph", "SocialEvent", "SocialPattern", "FormatProfile",
     "BehavioralPattern", "LifeCalendarEntry", "Retrospective", "SafetyRecordEntry",
+    "NarrativeThreadRow", "LifeEventRow",
 ]

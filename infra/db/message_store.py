@@ -58,6 +58,17 @@ class PostgresMessageStore:
             rows = q.order_by(m.ConversationMessage.id.desc()).limit(max(1, min(limit, 200))).all()
             return [_row_to_dict(r) for r in rows]
 
+    def recent_by_role(self, session_key: str, role: str, limit: int = 5) -> list[str]:
+        """The last ``limit`` message contents for one role within one session, oldest first --
+        e.g. Nova's own recent replies in this session, the real source for Layer 4 SC-4's
+        cross-turn stance history (``nova_recent_positions``, architecture doc §6.3 Check 3)."""
+        with session_scope(self._sf) as s:
+            rows = (s.query(m.ConversationMessage)
+                    .filter_by(user_id=self._uid, session_key=str(session_key or ""), role=role)
+                    .order_by(m.ConversationMessage.id.desc())
+                    .limit(max(1, limit)).all())
+            return [r.content for r in reversed(rows)]
+
     def search(self, query: str = "", start: Optional[datetime] = None,
                end: Optional[datetime] = None, limit: int = 50) -> list[dict]:
         with session_scope(self._sf) as s:

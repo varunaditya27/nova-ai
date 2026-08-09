@@ -39,7 +39,7 @@ _CRISIS_FALLBACK = ("I'm here with you. If you're in immediate danger, please co
 @dataclass
 class PipelineSteps:
     """Injectable layer entry points. All optional; production wires real layer adapters."""
-    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id) -> input_packet
+    perceive: Optional[Callable] = None         # L1  (user_id, message, now, session_id, client_metadata=None) -> input_packet
     recall: Optional[Callable] = None           # L2  (user_id, input_packet) -> list[memory]
     cold_start: Optional[Callable] = None       # L13 (user_id, message) -> directives | None
     classify: Optional[Callable] = None         # L3  (user_id, message, input_packet, recalled) -> EI
@@ -61,6 +61,7 @@ class TurnContext:
     message: str
     now: datetime
     session_id: str = ""
+    client_metadata: dict = field(default_factory=dict)   # L1 SC-2 raw client signals, see ChatRequest
     input_packet: Any = None
     recalled_memories: list = field(default_factory=list)
     confabulation_guard: bool = False
@@ -86,6 +87,7 @@ class TurnContext:
     layers_run: list = field(default_factory=list)
     state_updated: bool = False
     layer9_events: list = field(default_factory=list)   # L9's real thinking_pause/backchannel events
+    format_spec_applied: Any = None   # L9's real FormatSpec (structure/length target), see deliver()
 
 
 @dataclass
@@ -108,6 +110,7 @@ class OrchestratedOutput:
     layers_run: list
     recalled_memories: list = field(default_factory=list)   # for "echoes" — what Nova recalled
     layer9_events: list = field(default_factory=list)   # L9's real thinking_pause/backchannel events
+    format_spec_applied: Any = None   # L9's real FormatSpec (structure/length target), see deliver()
 
 
 def route_system(emotion_intent) -> str:
@@ -147,17 +150,19 @@ class ConversationOrchestrator:
         self.steps = steps
 
     def run_turn(self, user_id: str, message: str, now: Optional[datetime] = None,
-                 session_id: str = "") -> OrchestratedOutput:
+                 session_id: str = "", client_metadata: Optional[dict] = None) -> OrchestratedOutput:
         s = self.steps
         ctx = TurnContext(user_id=user_id, message=message,
-                          now=now or datetime.now(timezone.utc), session_id=session_id)
+                          now=now or datetime.now(timezone.utc), session_id=session_id,
+                          client_metadata=client_metadata or {})
 
         # ── Layer 11 SC-2: crisis detection runs first and is NEVER blocked ──
         ctx.crisis_assessment = self._safe_safety_scan(ctx)
 
         try:
             # ── Layer 1: input perception ───────────────────────────────────
-            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id)
+            ctx.input_packet = s.perceive(user_id, message, ctx.now, ctx.session_id,
+                                          client_metadata=ctx.client_metadata)
             ctx.layers_run.append("layer1_input")
 
             # ── Layer 2: memory recall (read-only during inference) ─────────
@@ -324,4 +329,5 @@ class ConversationOrchestrator:
             guardrail_flags=ctx.guardrail_flags, degraded=ctx.degraded,
             state_updated=ctx.state_updated, layers_run=ctx.layers_run,
             recalled_memories=list(ctx.recalled_memories or []),
-            layer9_events=list(ctx.layer9_events or []))
+            layer9_events=list(ctx.layer9_events or []),
+            format_spec_applied=ctx.format_spec_applied)

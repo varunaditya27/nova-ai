@@ -1371,6 +1371,16 @@ call) was explicitly deferred to the backlog rather than implemented this pass �
 engineering work (prompt/parse contracts for both classifiers, partial-failure degradation
 semantics), not a wiring fix, and both calls work correctly today.
 
+**Follow-up (2026-08-09): `relationship_depth` now forwarded live.** Its natural source,
+`RelationshipState.tie_strength`, used to stay pinned at `0.0` forever because nothing called
+Layer 4's real `compute_session_delta`/`update_tie_strength` — fixed at the root, in Layer 4
+(`docs/layer-4-architecture.md` §18). `api/assembly.py::classify` now reads
+`relationship_provider(user_id).tie_strength` and forwards it into `build_emotion_intent_packet`,
+reaching SC-4 Mismatch's `relationship_depth < 0.3` posture gate and SC-5 Empathy Hypothesis for
+real. `advice_frustration_count` still has no real source anywhere in the codebase (needs a new
+tracked counter, Layer 4/5 feature work) and stays unforwarded. `composite_prior`'s gate remains
+blocked on Layer 1's implicit-signal gap, unaffected by this fix.
+
 ---
 
 *This document specifies Layer 3 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (stated-vs-felt mismatch handling, Background Emotional State derivation, crisis detection mechanism, Empathy Hypothesis schema) are resolved. No behavior of Layer 3 requires assumptions or inferences from other documents.*

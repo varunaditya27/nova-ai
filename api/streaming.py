@@ -60,11 +60,13 @@ def _sse(event: str, data: dict) -> str:
 
 
 def stream_turn(orchestrator, overlay, user_id: str, message: str, *, session_id: str = "",
-                now: Optional[datetime] = None, rng=_random) -> Iterator[str]:
+                now: Optional[datetime] = None, client_metadata: Optional[dict] = None,
+                rng=_random) -> Iterator[str]:
     """Run a full turn, then yield SSE frames (meta -> token* -> done) with overlay-paced delays."""
     now = now or datetime.now(timezone.utc)
     try:
-        out = orchestrator.run_turn(user_id, message, now=now, session_id=session_id)
+        out = orchestrator.run_turn(user_id, message, now=now, session_id=session_id,
+                                    client_metadata=client_metadata)
 
         mode = getattr(out, "conversation_mode", "casual")
         typing_mode = _MODE_TO_TYPING.get(mode, _DEFAULT_TYPING_MODE)

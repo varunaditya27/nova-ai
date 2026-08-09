@@ -353,14 +353,16 @@ def make_state_update_writer(store, embed_client, session_factory, threshold: fl
     def _write(ctx) -> None:
         try:
             key = getattr(ctx, "session_id", "") or "default"
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
             with session_scope(session_factory) as s:
                 row = s.query(models.Session).filter_by(session_key=key).one_or_none()
                 if row is None:
-                    s.add(models.Session(user_id=ctx.user_id, session_key=key, turn_count=1))
+                    s.add(models.Session(user_id=ctx.user_id, session_key=key, turn_count=1,
+                                          last_delivered_at=now))
                 else:
                     row.turn_count += 1
+                    row.last_delivered_at = now
 
-            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
             message = getattr(ctx, "message", "") or ""
             response = getattr(ctx, "response_text", "") or ""
             recalled = getattr(ctx, "recalled_memories", []) or []
@@ -587,15 +589,30 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
 
 
 def make_goal_provider(session_factory, embed_client) -> Callable:
-    """Layer-7 → Layer-4: return the titles of goals relevant to this turn, for accountability
-    injection into the planner prompt (via response_instruction)."""
+    """Layer-7 SC-4 -> Layer-4: the real accountability decision (architecture doc §6), computed
+    pre-generation with this turn's real live context. SC-4's `decide_goal_reference` is pure and
+    read-only (no store mutation) -- it was already called for real, but only post-turn inside
+    `run_goal_pipeline` (make_goal_writer), where its rich, mode/progress-differentiated
+    `GoalContextPacket` was computed and then discarded every turn. Calling it here instead,
+    same-turn, avoids the one-turn staleness a persist-and-replay approach would have introduced
+    against "goals yield to the present moment" (§11 principle 3) -- a mode/stage change between
+    turns must never reference a goal using last turn's now-wrong gate decision."""
+    from backend.layer7_goals.accountability_modifier import decide_goal_reference
+    from backend.layer7_goals.progress_monitor import classify_progress_signal
+    from backend.layer7_goals.schemas import GoalContextPacket
+
     def _sim(a, b):
         return cosine_similarity(embed_client.embed([a])[0], embed_client.embed([b])[0])
 
-    def _provider(user_id, message):
+    def _provider(user_id, message, conversation_mode="casual", emotional_state=None,
+                 relationship_stage="new", now=None) -> GoalContextPacket:
+        message = message or ""
         relevant = PostgresGoalStore(session_factory, user_id).get_relevant_goals(
-            message or "", similarity_fn=_sim)
-        return [rg.goal.title for rg in relevant if getattr(rg.goal, "title", None)]
+            message, emotional_state=emotional_state, similarity_fn=_sim, now=now)
+        progress_signal = (classify_progress_signal(message, relevant[0].goal)
+                          if relevant else None)
+        return decide_goal_reference(relevant, progress_signal, emotional_state,
+                                     conversation_mode, relationship_stage, now=now)
     return _provider
 
 
@@ -687,6 +704,89 @@ def make_proactive_coaching_writer(session_factory) -> Callable:
     return _write
 
 
+def make_thread_provider(session_factory) -> Callable:
+    """Layer 1 SC-5 input: a per-user, real ``ThreadStore`` for ``perceive()`` to read
+    ``due_threads`` from -- replaces the always-fresh, always-empty ``InMemoryThreadStore()``
+    ``process_input_event`` falls back to when no store is passed (architecture doc §3.5)."""
+    from infra.db.thread_store import PostgresThreadStore
+
+    def _provider(user_id):
+        return PostgresThreadStore(session_factory, user_id)
+    return _provider
+
+
+def make_thread_writer(session_factory, system1_client) -> Callable:
+    """Post-turn: extract a narrative thread from the user's message and persist it. Layer 1's
+    ``ThreadStore`` Protocol is deliberately read-only (``get_all`` only) -- its own module
+    docstring (``thread_tracker.py``) says thread *records* are created by "the Layer 2 State
+    Updater," i.e. a post-turn writer like this one, not by ``perceive()`` itself."""
+    from backend.layer1_input.thread_extractor import extract_thread
+    from infra.db.thread_store import PostgresThreadStore
+    from infra.llm.json_extract import extract_json
+
+    def _llm(prompt):
+        return extract_json(system1_client.complete(prompt))
+
+    def _write(ctx) -> None:
+        try:
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            thread = extract_thread(message, llm_fn=_llm, now=now,
+                                    source_session_id=getattr(ctx, "session_id", "") or "")
+            if thread is not None:
+                PostgresThreadStore(session_factory, ctx.user_id).save(thread)
+        except Exception:
+            logger.exception("thread writer failed; turn already delivered")
+    return _write
+
+
+def make_thread_proactive_writer(session_factory) -> Callable:
+    """Layer 1 -> Layer 6 handoff: hands each thread due on this turn's ``InputPerceptionPacket``
+    to the real ``on_thread_due`` intake, upserting an idempotent ``ProactiveItem`` per thread
+    (deterministic item_id, same pattern as ``api/proactive_gen.py::goal_checkin_item``) --
+    previously ``on_thread_due`` had zero production callers, so due threads were computed
+    (once a real store existed) but never reached the outreach queue."""
+    from backend.layer6_proactivity.intake import on_thread_due
+
+    def _write(ctx) -> None:
+        try:
+            due = getattr(getattr(ctx, "input_packet", None), "due_threads", None) or []
+            if not due:
+                return
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            queue = PostgresProactiveQueue(session_factory, ctx.user_id)
+            for thread in due:
+                item = on_thread_due(thread, now=now)
+                item.item_id = f"thread-{thread.thread_id}"   # deterministic -> idempotent upsert
+                queue.upsert(item)
+        except Exception:
+            logger.exception("thread proactive writer failed; turn already delivered")
+    return _write
+
+
+def make_life_event_writer(session_factory, system1_client) -> Callable:
+    """Post-turn: extract a significant life event from the user's message and persist it
+    (architecture doc §3.4). No detector existed anywhere -- `detect_chapter_boundaries`
+    (narrative_arc.py) was real and callable but always received `life_events=[]`, so no user's
+    narrative arc ever gets a second chapter. Mirrors make_thread_writer's shape exactly."""
+    from backend.layer10_longitudinal.life_event_extractor import extract_life_event
+    from infra.llm.json_extract import extract_json
+
+    def _llm(prompt):
+        return extract_json(system1_client.complete(prompt))
+
+    def _write(ctx) -> None:
+        try:
+            message = getattr(ctx, "message", "") or ""
+            now = getattr(ctx, "now", None) or datetime.now(timezone.utc)
+            event = extract_life_event(message, llm_fn=_llm, now=now, user_id=str(ctx.user_id))
+            if event is not None:
+                PostgresLongitudinalStore(session_factory, ctx.user_id).save_life_event(event)
+        except Exception:
+            logger.exception("life event writer failed; turn already delivered")
+    return _write
+
+
 def make_format_profile_provider(session_factory) -> Callable:
     """Read-side Layer 9 provider for deliver(): the persisted UserFormatProfile so
     compute_format_spec's length target actually reflects what's been learned, instead of every
@@ -720,7 +820,7 @@ def make_format_profile_writer(session_factory) -> Callable:
             update_format_profile(
                 profile, nova_response_length=prev_length,
                 user_response_latency_ms=latency_ms, user_response_length=len(message),
-                explicit_format_feedback=feedback_text)
+                explicit_format_feedback=feedback_text, user_message_text=message)
             profile.last_response_length = len(getattr(ctx, "response_text", "") or "")
             profile.last_response_at = now
             store.save(profile)
@@ -753,11 +853,33 @@ def make_longitudinal_provider(session_factory) -> Callable:
         current_week = weeklies[0] if weeklies else None
         last_week = weeklies[1] if len(weeklies) > 1 else None
 
+        # primary_active_goals (top 3 by emotional stake) and upcoming_goal_deadlines (next 14
+        # days) were both real, documented Layer10ContextPacket fields (docs/layer-10-
+        # architecture.md §8) that assemble_context_packet already accepts -- just never passed.
+        from api.proactive_gen import _nearest_future_target
+        active_goals = [g for g in goals
+                       if g.status in (GoalStatus.ACTIVE.value, GoalStatus.ON_TRACK.value)]
+        primary_goals = [g.title for g in
+                         sorted(active_goals, key=lambda g: g.emotional_weight, reverse=True)[:3]
+                         if g.title]
+        deadline_horizon = now + timedelta(days=14)
+        upcoming_deadlines = []
+        for g in active_goals:
+            target = _nearest_future_target(g, now)
+            if target is not None and target[0] <= deadline_horizon:
+                upcoming_deadlines.append((g.title, target[0].date()))
+        upcoming_deadlines.sort(key=lambda t: t[1])
+
+        life_events = long_store.life_events()
+        recent_life_event = life_events[0] if life_events else None
+
         return assemble_context_packet(
             user_id=str(user_id), narrative_arc=long_store.load_narrative_arc(),
             progress_snapshot=progress, current_week_summary=current_week,
             last_week_summary=last_week, pending_retrospectives=long_store.pending_retrospectives(),
-            active_patterns=long_store.active_patterns(), days_since_started=days_since, now=now)
+            active_patterns=long_store.active_patterns(), days_since_started=days_since,
+            primary_active_goals=primary_goals, upcoming_goal_deadlines=upcoming_deadlines,
+            recent_life_event=recent_life_event, now=now)
     return _provider
 
 
@@ -901,13 +1023,55 @@ def make_temporal_profile_provider(session_factory, timezone_offset_hours: float
     return _provider
 
 
+def make_session_last_delivered_provider(session_factory) -> Callable:
+    """Layer 1 SC-2 latency signal source: when Nova last delivered a response in this session,
+    read back from ``Session.last_delivered_at`` (stamped every turn by
+    ``make_state_update_writer``). Real, server-side -- no client instrumentation needed, unlike
+    the rest of ``ClientMetadata`` (typing/deletion/burst, see docs/FRONTEND_TODO.md)."""
+    def _provider(session_key: str):
+        with session_scope(session_factory) as s:
+            row = s.query(models.Session).filter_by(session_key=str(session_key or "default")) \
+                .one_or_none()
+            dt = row.last_delivered_at if row is not None else None
+            # SQLite (the offline test substrate) strips tzinfo on round-trip; Postgres doesn't.
+            # Always stamped UTC-aware on write (datetime.now(timezone.utc)), so a naive read-back
+            # is always UTC -- same convention as make_temporal_profile_provider's `_as_utc`.
+            if dt is not None and dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+    return _provider
+
+
+def make_nova_positions_provider(session_factory) -> Callable:
+    """Layer 4 SC-4 Check 3 input: Nova's own recent replies in this session (architecture doc
+    §6.3's ``nova_recent_positions``). The finding was "no cross-turn stance history is tracked
+    anywhere" -- it already is, via the real conversation-message log
+    (``infra/db/message_store.py``); Check 3 just never had a real reader wired to it."""
+    from infra.db.message_store import PostgresMessageStore
+
+    def _provider(user_id, session_id):
+        return PostgresMessageStore(session_factory, user_id).recent_by_role(
+            session_id or "", "nova", limit=5)
+    return _provider
+
+
 def make_relationship_writer(session_factory) -> Callable:
-    """Post-turn: advance the per-user relationship (message/session counters + stage)."""
+    """Post-turn: advance the per-user relationship (message/session counters + stage + a
+    session-accumulated tie-strength delta, see PostgresRelationshipStore.record_turn).
+    `emotional_intensity`/`had_vulnerability_moment` are derived from Layer 3's real, already-
+    computed `EmotionClassification` for this turn -- intensity is the packet's own normalised
+    (valence, arousal) magnitude; a "vulnerability moment" is a conservative, internally-consistent
+    reading of that same signal (high intensity + negative valence), not a new detector."""
     def _write(ctx) -> None:
         try:
+            emotion = getattr(getattr(ctx, "emotion_intent", None), "primary_emotion", None)
+            intensity = float(getattr(emotion, "intensity", 0.0) or 0.0) if emotion else 0.0
+            vulnerability = bool(
+                emotion and intensity > 0.6 and getattr(emotion, "valence", 0.0) < 0)
             PostgresRelationshipStore(session_factory, ctx.user_id).record_turn(
                 getattr(ctx, "session_id", "") or "default",
-                user_message=getattr(ctx, "message", "") or "")
+                user_message=getattr(ctx, "message", "") or "",
+                emotional_intensity=intensity, had_vulnerability_moment=vulnerability)
         except Exception:
             logger.exception("relationship writer failed; turn already delivered")
     return _write
@@ -1065,7 +1229,10 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_relationship_writer(session_factory),
         make_proactive_writer(session_factory, grad_sessions),
         make_identity_writer(session_factory, llm_clients["system1"]),
-        make_format_profile_writer(session_factory))
+        make_format_profile_writer(session_factory),
+        make_thread_writer(session_factory, llm_clients["system1"]),
+        make_thread_proactive_writer(session_factory),
+        make_life_event_writer(session_factory, llm_clients["system1"]))
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
@@ -1085,6 +1252,9 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         format_profile_provider=make_format_profile_provider(session_factory),
         longitudinal_provider=make_longitudinal_provider(session_factory),
         profile_provider=make_temporal_profile_provider(session_factory, tz_offset),
+        session_last_delivered_provider=make_session_last_delivered_provider(session_factory),
+        thread_provider=make_thread_provider(session_factory),
+        nova_positions_provider=make_nova_positions_provider(session_factory),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset,
         region=config.get("layer11", {}).get("escalation", {}).get("default_region", "india"))

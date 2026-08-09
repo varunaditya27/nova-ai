@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from backend.layer10_longitudinal.schemas import (
-    BehavioralPattern, CalendarEntry, NarrativeArc, RetrospectivePacket, WeeklySummary,
+    BehavioralPattern, CalendarEntry, LifeEvent, NarrativeArc, RetrospectivePacket, WeeklySummary,
+    YearInReview,
 )
 import infra.db.models as m
 from infra.db.engine import session_scope
@@ -75,6 +76,26 @@ class PostgresLongitudinalStore:
                     period="narrative_arc", payload=payload))
             else:
                 row.payload = payload
+
+    # ── SC-4 Year in Review (one row per user per year) ──────────────────────
+    def save_year_in_review(self, review: YearInReview) -> None:
+        summary_id = f"year_in_review_{review.year}"
+        with session_scope(self._sf) as s:
+            row = s.query(m.LongitudinalSummary).filter_by(
+                summary_id=summary_id, user_id=self._user_id).one_or_none()
+            payload = to_jsonable(review)
+            if row is None:
+                s.add(m.LongitudinalSummary(
+                    user_id=self._user_id, summary_id=summary_id,
+                    period="year_in_review", payload=payload))
+            else:
+                row.payload = payload
+
+    def load_year_in_review(self, year: int) -> Optional[YearInReview]:
+        with session_scope(self._sf) as s:
+            row = s.query(m.LongitudinalSummary).filter_by(
+                summary_id=f"year_in_review_{year}", user_id=self._user_id).one_or_none()
+            return from_jsonable(YearInReview, dict(row.payload)) if row else None
 
     # ── SC-3 Behavioral patterns ──────────────────────────────────────────────
     def save_patterns(self, patterns: list[BehavioralPattern]) -> None:
@@ -156,3 +177,23 @@ class PostgresLongitudinalStore:
             payload["surfaced_at"] = (now or datetime.now(timezone.utc)).isoformat()
             row.has_been_surfaced = True
             row.payload = payload
+
+    # ── Life events (chapter-boundary detection input, Layer10ContextPacket.recent_life_event) ──
+    def save_life_event(self, event: LifeEvent) -> None:
+        with session_scope(self._sf) as s:
+            row = s.query(m.LifeEventRow).filter_by(
+                event_id=event.event_id, user_id=self._user_id).one_or_none()
+            payload = to_jsonable(event)
+            if row is None:
+                s.add(m.LifeEventRow(
+                    user_id=self._user_id, event_id=event.event_id,
+                    event_date=event.event_date.isoformat(), payload=payload))
+            else:
+                row.event_date = event.event_date.isoformat()
+                row.payload = payload
+
+    def life_events(self) -> list[LifeEvent]:
+        with session_scope(self._sf) as s:
+            rows = (s.query(m.LifeEventRow).filter_by(user_id=self._user_id)
+                    .order_by(m.LifeEventRow.event_date.desc()).all())
+            return [from_jsonable(LifeEvent, dict(r.payload)) for r in rows]

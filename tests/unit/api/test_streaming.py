@@ -17,7 +17,7 @@ class FakeOrchestrator:
             response_text=text, delivered=text, conversation_mode=mode,
             cognitive_system=system, crisis_active=False, refined=False,
             confabulation_guard=False)
-    def run_turn(self, user_id, message, now=None, session_id=""):
+    def run_turn(self, user_id, message, now=None, session_id="", client_metadata=None):
         self.seen = (user_id, message, session_id)
         return self._out
 
@@ -60,7 +60,7 @@ def test_stream_emits_error_frame_when_turn_fails():
     """A failure in the turn/pacing must surface as a terminal `error` SSE frame, not a silently
     truncated stream — the frontend needs a clean, handleable signal."""
     class BoomOrchestrator:
-        def run_turn(self, user_id, message, now=None, session_id=""):
+        def run_turn(self, user_id, message, now=None, session_id="", client_metadata=None):
             raise RuntimeError("turn exploded")
 
     chunks = list(stream_turn(BoomOrchestrator(), StreamTypingOverlay(), "local-user", "hi",

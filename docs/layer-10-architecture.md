@@ -1457,23 +1457,89 @@ Proven end to end through the real orchestrator by `tests/unit/api/test_assembly
 test_real_layer10_wiring_narrative_grounding_reaches_the_planner_prompt`: a persisted chapter
 summary reaches the Semantic Planner prompt via the real provider, not a mock.
 
-### 16.6 Still not wired, honestly scoped out
+### 16.6 Still not wired, honestly scoped out at the time
 
-- **Year in Review** (`generate_year_in_review`) is still not called anywhere. Its data-completeness
-  blocker is fixed (`Goal.status_changed_at` now exists and gets stamped — Layer 7 follow-up,
-  2026-08-09, `docs/layer-7-architecture.md` §15), but nothing in this codebase decides *when* to
-  generate one (an annual trigger, presumably from `life_calendar_job.py` or a dedicated yearly
-  job) — that's a real scheduling decision, not made this pass.
-- **`LifeEvent` detection** (16.1) remains unbuilt — chapter boundaries and life-event
-  anniversaries stay inert until it exists. Every user has exactly one ongoing chapter.
-- **`Layer10ContextPacket` → Layer 6** is satisfied only in the narrow sense the doc's §9 table
-  describes (`pending_retrospectives`/`active_behavioral_patterns` feeding Layer 6's queue via
-  16.3/16.4's handoffs) — SC-3 (Timing & Delivery Gate) itself is still unwired (Layer 6's own
-  gap, `docs/POLISH_BACKLOG.md`), so nothing yet *gates* delivery using this context; it only
-  populates the queue.
-- **`upcoming_goal_deadlines`/`recent_life_event`** on the assembled packet are not populated
-  (`assemble_context_packet` accepts them as optional args; no caller sources them yet) — real but
-  smaller follow-ups.
+Year in Review's trigger, `LifeEvent` detection, and the two unpopulated packet fields were all
+open at the end of this section — all four closed in §17 below. `Layer10ContextPacket → Layer 6`'s
+SC-3 gating gap is unchanged (genuinely blocked on Layer 6's own delivery-pipeline infra, not a
+Layer 10 fix — `docs/layer-6-architecture.md`).
+
+## 17. Follow-up (2026-08-09): LifeEvent detection, packet fields, Year in Review's trigger
+
+### 17.1 `LifeEvent` detection — real, end-to-end
+
+§16.1/16.6 flagged no detector existing anywhere: `detect_chapter_boundaries` (narrative_arc.py)
+was real and callable but every caller passed `life_events=[]`, so no user's arc ever grew a
+second chapter, and `LifeCalendar.register_life_event` (1/2/3-year anniversary registration) had
+zero callers either.
+
+- **`backend/layer10_longitudinal/life_event_extractor.py`** (new) — `extract_life_event`, an
+  LLM-driven extractor mirroring `backend/layer1_input/thread_extractor.py`'s pattern exactly:
+  keyword pre-filter → LLM call → JSON parse with fallback → confidence gate (`< 0.6` → `None`) →
+  enum-validated `category` (invalid → `"other"`, never raises) → a real `LifeEvent`.
+- **`infra/db/longitudinal_store.py`** gained `save_life_event`/`life_events()`, backed by a new
+  `LifeEventRow` model (`infra/db/models/longitudinal.py`), same shape as `BehavioralPattern`.
+- **Wiring** (`api/state.py::make_life_event_writer`, post-turn) — extracts and persists a life
+  event from the turn's message, same shape as `make_thread_writer`.
+- **`background/narrative_arc_job.py`** now loads real persisted life events and passes them to
+  `build_narrative_arc` (chapter boundaries) and `synthesize_chapter` (windowed to the current
+  chapter's own events) instead of `[]`.
+- **`background/life_calendar_job.py`** now calls the real, previously-uncalled
+  `LifeCalendar.register_life_event` for every persisted life event not yet represented in the
+  calendar (tracked by `associated_id`, registered exactly once — proven by
+  `test_life_calendar_job_registers_life_event_anniversaries_exactly_once`), so a life event's
+  1/2/3-year anniversaries become real, firing calendar entries that already correctly map to
+  `RetrospectiveType.ONE_YEAR_AGO` via the pre-existing `_ENTRY_TO_RETRO` table.
+
+**Tests:** `tests/unit/test_life_event_extractor.py` (extraction contract, all degradation paths),
+`tests/unit/infra/test_proactive_and_longitudinal_stores.py` (store round-trip),
+`tests/unit/api/test_state.py` (writer round-trip), and
+`tests/unit/background/test_jobs.py::test_narrative_arc_job_opens_a_second_chapter_from_a_real_
+life_event` (a real, persisted `career_transition` event produces a real second chapter through
+the real job, not a mock).
+
+### 17.2 `upcoming_goal_deadlines` / `recent_life_event` / `primary_active_goals`
+
+`assemble_context_packet` already accepted all three as real, documented params (§8:
+`primary_active_goals: list[str]` top-3-by-emotional-stake, `upcoming_goal_deadlines:
+list[tuple[str, date]]` next-14-days) — `make_longitudinal_provider` simply never sourced or
+passed them. Fixed by reusing `api/proactive_gen.py::_nearest_future_target` (the same real
+milestone/deadline-resolution logic `goal_checkin_item` already uses, not a second implementation)
+for the deadlines, sorting active goals by `emotional_weight` for the top-3, and reading
+`long_store.life_events()[0]` (already newest-first) for `recent_life_event`.
+
+**Test:** `tests/unit/api/test_state.py::test_longitudinal_provider_populates_primary_goals_
+deadlines_and_recent_life_event` proves all three reach the real assembled packet.
+
+### 17.3 Year in Review's annual trigger — decided
+
+§16.6 left "no annual trigger decided" open. Investigated `CalendarEntryType.ANNIVERSARY_1YEAR`
+(the type `_ENTRY_TO_RETRO` maps to `RetrospectiveType.ONE_YEAR_AGO`) and found it's never
+actually registered by anything — `register_new_user` uses the separate `NOVA_RELATIONSHIP_
+DAY30/100/365` types instead, so that mapping entry was dead code by omission, not by design.
+
+**Decision**: the Nova-relationship's own day-365 milestone firing is the annual trigger.
+`background/life_calendar_job.py` now, when a `nova_relationship_day365` entry fires:
+1. Generates a real `YearInReview` via `generate_year_in_review` (full-year goal/chapter/
+   emotional-arc aggregation — richer than a look-back `RetrospectivePacket`) and persists it via
+   a new `PostgresLongitudinalStore.save_year_in_review`/`load_year_in_review` pair (mirrors
+   `save_narrative_arc`'s singleton-by-synthetic-id pattern, keyed `year_in_review_{year}` since
+   `YearInReview` itself has no natural id field).
+2. **Re-registers itself for next year** (`entry.date + 365 days`, `is_recurring=True`) so this is
+   a genuinely annual trigger, not a one-time day-365 event — every subsequent year gets its own
+   review without a separate scheduling mechanism.
+3. The pre-existing day-365 celebration nudge (`on_calendar_entry_due`) is unchanged — the
+   YearInReview generation happens *in addition to*, not instead of, that nudge.
+
+No Layer 6 delivery contract was invented for "here's your year in review" specifically — there's
+no established consumer for it yet (same restraint as `GET /proactive`'s ungated `content_basis`
+and Layer 9's `format_spec_applied`); generating and persisting it, readable back through the real
+store, is the actual ask this backlog item described.
+
+**Tests:** `tests/unit/background/test_jobs.py::test_life_calendar_job_generates_a_real_year_in_
+review_on_day365_and_recurs` — a relationship 366 days old fires day 365 (among others), generates
+and persists a real `YearInReview`, leaves the existing celebration nudge intact, and confirms a
+second `nova_relationship_day365` entry (the self-registered successor) exists and hasn't fired.
 
 ---
 

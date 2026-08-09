@@ -23,6 +23,7 @@ from typing import Optional
 from backend.layer2_memory.schemas import (
     CommunicationModel,
     ConversationMode,
+    IdentityCategory,
     PsychologicalModel,
 )
 from backend.layer4_persona.schemas import DynamicPersonaProperty, PersonaState
@@ -96,6 +97,38 @@ CORE_IDENTITY_ANCHORS: dict[str, dict] = {
     },
 }
 
+# Anchor -> (IdentityCategory, keyword hints) for overriding a build-time anchor with a real
+# persisted IdentityMemory belief (§3.4 forward-compatibility, closed 2026-08-09). ``name`` is
+# excluded -- it's immutable and never overridden. Category narrows the search; the keyword hints
+# then require an actual topical match within that category (not just "closest in the same
+# bucket") -- a belief that doesn't mention any hint word never overrides an anchor, which is what
+# keeps e.g. humor_style correctly falling back to its constant when no belief about humor exists.
+_ANCHOR_OVERRIDE_HINTS: dict[str, tuple] = {
+    "character_type": (IdentityCategory.PERSONALITY_TRAIT, ("companion", "curious", "warm", "character")),
+    "primary_orientation": (IdentityCategory.CORE_VALUE, ("wellbeing", "user's", "agreeable")),
+    "honesty_commitment": (IdentityCategory.BEHAVIORAL_POLICY, ("claim", "human", "honest", "qualia", "experience")),
+    "intellectual_curiosity": (IdentityCategory.PERSONALITY_TRAIT, ("curious", "curiosity", "ideas")),
+    "warmth_register": (IdentityCategory.PERSONALITY_TRAIT, ("warm", "warmth")),
+    "humor_style": (IdentityCategory.PERSONALITY_TRAIT, ("humor", "funny", "wit", "joke", "humorous")),
+    "boundary_clarity": (IdentityCategory.PERSONALITY_TRAIT,
+                         ("direct", "boundary", "disagree", "capitulat")),
+}
+
+
+def _best_matching_belief(category, hints, entries):
+    """Highest-centrality belief in ``category`` whose statement contains a hint keyword, or
+    ``None``. Centrality (not recency) breaks ties -- it already represents how strongly held
+    the belief is, the same signal CORE_IDENTITY_ANCHORS' own values encode."""
+    candidates = [
+        e for e in entries
+        if getattr(e, "category", None) == category
+        and any(h in (getattr(e, "statement", "") or "").lower() for h in hints)
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda e: getattr(e, "centrality", 0.0))
+
+
 # Modes in which humor is always suppressed regardless of user receptivity (§3.4).
 _HUMOR_SUPPRESSED_MODES = {
     ConversationMode.CRISIS.value,
@@ -112,13 +145,26 @@ _DEFAULT_DIRECTNESS = 0.6
 def load_core_anchors(identity_memory_entries=None) -> dict[str, dict]:
     """Return the active core identity anchors (architecture doc §3.4).
 
-    The anchors are build-time constants and the §12 fallback. ``identity_memory_entries``
-    is accepted for forward-compatibility (Layer 2 may persist evidence-updated,
-    non-immutable anchors over many sessions); when absent or empty the constant
-    defaults are returned. The immutable ``name`` anchor is never overridden.
+    The anchors are build-time constants and the §12 fallback. When real, persisted
+    ``identity_memory_entries`` (Layer 2's ``IdentityMemory`` beliefs) are supplied, each
+    non-immutable anchor is checked against ``_ANCHOR_OVERRIDE_HINTS``: a belief in the matched
+    category whose statement mentions a topical hint keyword overrides that anchor's ``value``
+    (centrality/immutability stay the constant's own — those drive downstream resolver logic
+    tuned around the anchors' abstract 0-1 scale, not a belief's independent centrality). No
+    matching belief -> the anchor's constant value, unchanged (honest degradation, not every
+    anchor has a real correspondent yet — e.g. no belief about humor is seeded by default). The
+    immutable ``name`` anchor is never overridden.
     """
     # Deep-ish copy so callers cannot mutate the module constant.
-    return {key: dict(anchor) for key, anchor in CORE_IDENTITY_ANCHORS.items()}
+    anchors = {key: dict(anchor) for key, anchor in CORE_IDENTITY_ANCHORS.items()}
+    entries = identity_memory_entries or []
+    if not entries:
+        return anchors
+    for key, (category, hints) in _ANCHOR_OVERRIDE_HINTS.items():
+        belief = _best_matching_belief(category, hints, entries)
+        if belief is not None:
+            anchors[key]["value"] = belief.statement
+    return anchors
 
 
 def _dynamic_float(dynamic: dict, key: str, default: float) -> float:

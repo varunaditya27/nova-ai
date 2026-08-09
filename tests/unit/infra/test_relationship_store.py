@@ -65,3 +65,24 @@ def test_record_turn_without_message_leaves_style_neutral():
     store = _store()
     store.record_turn("s1")                                 # no message → no learning
     assert store.load().response_length_preference == 0.5
+
+
+def test_tie_strength_stays_zero_until_the_session_that_earned_it_ends():
+    store = _store()
+    store.record_turn("s1", emotional_intensity=0.9, had_vulnerability_moment=True)
+    # still mid-session-1 -- the delta is applied retroactively on the next session's first turn.
+    assert store.load().tie_strength == 0.0
+    store.record_turn("s2")
+    rel = store.load()
+    assert rel.tie_strength > 0.0                            # real delta applied, not a constant
+    assert rel.vulnerability_moments == 1
+
+
+def test_tie_strength_delta_reflects_real_session_signals():
+    quiet = _store("quiet")
+    quiet.record_turn("s1", emotional_intensity=0.1)
+    quiet.record_turn("s2")
+    intense = _store("intense")
+    intense.record_turn("s1", emotional_intensity=0.9, had_vulnerability_moment=True)
+    intense.record_turn("s2")
+    assert intense.load().tie_strength > quiet.load().tie_strength

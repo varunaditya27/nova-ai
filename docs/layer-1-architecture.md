@@ -1065,4 +1065,83 @@ work, not wiring, per §16 above.
 
 ---
 
+## 18. Follow-up (2026-08-09): real implicit signals + narrative-thread detection
+
+### 18.1 Implicit signals (SC-2) — real plumbing, backend-only this pass
+
+§16 flagged `ChatRequest` as only carrying `message`/`session_id`, so SC-2's implicit-signal
+scoring and SC-3/SC-4 (multimodal/voice) were always neutral/inactive live. Closed in two parts:
+
+- **`response_latency_ms` is now genuinely real, with zero frontend change.** `Session` gained a
+  `last_delivered_at` column, stamped by `make_state_update_writer`'s post-turn `Session` upsert
+  with this turn's real `ctx.now`. `api/state.py::make_session_last_delivered_provider` reads it
+  back (handling SQLite's tzinfo-stripping round-trip the same way
+  `make_temporal_profile_provider::_as_utc` already does). `api/assembly.py::perceive` passes it
+  as `ClientMetadata.nova_last_delivered_at`; `compute_latency` only needs that plus `received_at`
+  (`user_typing_started_at` is an optional refinement, not required) — so this signal moves for
+  real on every turn regardless of frontend work.
+- **The rest of `ClientMetadata`** (`user_typing_started_at`, `deletion_occurred`,
+  `deletion_count`, `peak_draft_length_chars`, `final_draft_length_chars`, `is_burst`,
+  `burst_count`, `is_reply_to_proactive`) is real, additive plumbing awaiting a producer: added to
+  `api/schemas.py::ChatRequest` (all optional, backward compatible), threaded through
+  `api/routes/chat.py` → `ConversationOrchestrator.run_turn(client_metadata=...)` →
+  `TurnContext.client_metadata` → `PipelineSteps.perceive(..., client_metadata=...)` →
+  a real `ClientMetadata(...)`. No client sends non-default values yet — `docs/FRONTEND_TODO.md`
+  is the scoped spec for that half, deliberately not built this pass (explicit backend-only scope
+  decision). Hand-computed `compute_composite_prior`'s formula to confirm the latency signal alone
+  cannot close Layer 3's `composite_prior > 0.6` gate (tops out ~0.50 even at the most extreme
+  circadian band); the deletion/burst fields specifically are needed for that, so
+  `docs/FRONTEND_TODO.md` documents exactly what unlocks it.
+- **SC-3/SC-4 (multimodal/voice) stay correctly unwired.** No image/voice/document backend is
+  implemented anywhere in this codebase — `multimodal_normalizer.py`'s
+  `ImageBackend`/`VoiceBackend`/`DocumentBackend` are injectable Protocols with zero concrete
+  implementations. Attachments stay `[]`, same as before. A separate infra project (build the
+  backends first), not an implicit-signals gap — tracked in `docs/POLISH_BACKLOG.md`.
+
+### 18.2 Narrative-thread detection (§3.5) — real end-to-end
+
+§16 also flagged `due_threads` as always `[]`: `thread_tracker.py`'s `ThreadStore` Protocol is
+read-only by design (`get_all` only — its own docstring says thread *records* are created by "the
+Layer 2 State Updater," i.e. a post-turn writer, not `perceive()` itself), and nothing in the
+codebase ever called `.add()`/`.save()` on any store, nor did `perceive()` ever pass a real
+`thread_store=` (it always fell back to `process_input_event`'s fresh, empty
+`InMemoryThreadStore()` default).
+
+Closed with three new pieces, mirroring `backend/layer7_goals/goal_extractor.py`'s precedent:
+
+- **`backend/layer1_input/thread_extractor.py`** (new) — `extract_thread(message, llm_fn, now,
+  source_session_id)`: keyword pre-filter (`should_run_extractor`) → LLM call → JSON parse with
+  fallback → confidence gate (`< 0.6` → `None`) → enum-validated `thread_type`/`importance_tier`
+  (invalid values fall back to `FACTUAL_PENDING`/`MEDIUM`, never raise) → a real `NarrativeThread`.
+  Failure-tolerant by construction (any LLM/parse failure → `None`), same degradation contract as
+  `extract_goal`.
+- **`infra/db/thread_store.py::PostgresThreadStore`** (new) — implements both the real write side
+  the Protocol never specified (`save`, `mark_status`) and the `get_all(status=)` read method
+  `thread_tracker.due_candidates`/`get_due_threads` need, backed by a new `NarrativeThreadRow` ORM
+  model (`infra/db/models/narrative_thread.py`, indexed `thread_id`/`status`/`follow_up_due_at`).
+- **Wiring** (`api/state.py`): `make_thread_provider` gives `perceive()` a real per-user
+  `PostgresThreadStore` (so `due_threads` reflects real persisted, overdue threads);
+  `make_thread_writer` (post-turn) extracts and saves a thread from the turn's message;
+  `make_thread_proactive_writer` (post-turn) hands each due thread on `ctx.input_packet` to the
+  real `backend/layer6_proactivity/intake.py::on_thread_due` — previously zero production callers
+  — upserting an idempotent `ProactiveItem` (deterministic `item_id`, same pattern as
+  `api/proactive_gen.py::goal_checkin_item`), so Layer 6's outreach queue finally receives real
+  Layer 1 candidates.
+
+**Tests:** `tests/unit/test_thread_extractor.py` (extraction contract, all degradation paths),
+`tests/unit/infra/test_thread_store.py` (store round-trip + the real `thread_tracker.
+due_candidates` consuming it, not a mock), `tests/unit/api/test_state.py` (writer round-trips
+through the real store, proactive writer's real-queue idempotency), and
+`tests/unit/api/test_assembly_turn.py::test_real_layer1_wiring_due_thread_reaches_input_packet`
+(end-to-end through the real `perceive()` closure).
+
+### 18.3 A drift-detector gap found and fixed while investigating Layer 4
+
+The critical-drift (`REFUSE_GRACEFULLY`) hard override that `plan()`/`refine()` were missing
+in `api/assembly.py` (found while investigating this layer's `build_final_response_packet`
+pending item) is a Layer 4 fix, not a Layer 1 one — documented in
+`docs/layer-4-architecture.md` §19, not duplicated here.
+
+---
+
 *This document specifies Layer 1 completely. No behavior of Layer 1 should require assumptions or inferences from other documents. All schemas, algorithms, data stores, error cases, and downstream contracts are defined above.*

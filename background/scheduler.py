@@ -1,6 +1,6 @@
 """In-process background scheduler (APScheduler), opt-in via ``config['scheduler']['enabled']``.
 
-The nine jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
+The eleven jobs are plain ``run(app_state) -> dict`` callables (directly testable, no scheduler
 needed). ``start_scheduler`` lazily imports APScheduler so importing this module never requires it
 (the offline test gate runs on a bare interpreter); if APScheduler is missing or the config flag is
 off, it is a logged no-op. ``run_job`` executes one job by name (used by the manual-trigger route).
@@ -11,6 +11,8 @@ import logging
 
 from background import (
     dependency_monitor_job,
+    distress_gap_job,
+    goal_staleness_job,
     integrity_check_job,
     life_calendar_job,
     longitudinal_summary_job,
@@ -33,6 +35,8 @@ JOBS = {
     "dependency_monitor": dependency_monitor_job.run,
     "narrative_arc": narrative_arc_job.run,
     "life_calendar": life_calendar_job.run,
+    "goal_staleness": goal_staleness_job.run,
+    "distress_gap": distress_gap_job.run,
 }
 
 
@@ -83,6 +87,10 @@ def start_scheduler(app_state):
                   days=cfg.get("narrative_arc_days", 7), id="narrative_arc")
     sched.add_job(_wrap("life_calendar"), "interval",
                   days=cfg.get("life_calendar_days", 1), id="life_calendar")
+    sched.add_job(_wrap("goal_staleness"), "interval",
+                  days=cfg.get("goal_staleness_days", 7), id="goal_staleness")
+    sched.add_job(_wrap("distress_gap"), "interval",
+                  days=cfg.get("distress_gap_days", 1), id="distress_gap")
     sched.start()
     logger.info("scheduler started with %d jobs", len(JOBS))
     return sched

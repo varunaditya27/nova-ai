@@ -13,7 +13,7 @@ def _client(out=None, raises=False):
     app = FastAPI()
 
     class Orch:
-        def run_turn(self, user_id, message, now=None, session_id=""):
+        def run_turn(self, user_id, message, now=None, session_id="", client_metadata=None):
             if raises:
                 raise RuntimeError("boom")
             return out

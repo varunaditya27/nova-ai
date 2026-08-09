@@ -40,3 +40,13 @@ class Retrospective(UserScopedMixin, Base):
     packet_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     has_been_surfaced: Mapped[bool] = mapped_column(default=False, index=True)
     payload: Mapped[dict] = mapped_column(_JSONB)
+
+
+class LifeEventRow(UserScopedMixin, Base):
+    """One row per detected Layer-10 significant life event (career/relational/geographic/health
+    transitions) -- the real source for chapter-boundary detection (narrative_arc.py) and
+    Layer10ContextPacket.recent_life_event, neither of which had a producer before."""
+    __tablename__ = "life_event"
+    event_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    event_date: Mapped[str] = mapped_column(String(10), index=True)   # ISO date, for ordering
+    payload: Mapped[dict] = mapped_column(_JSONB)

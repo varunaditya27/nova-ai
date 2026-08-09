@@ -41,6 +41,53 @@ def test_engagement_update_bumps_version():
     assert p.version == 1
 
 
+# ── Real emoji/slang/length signals (§6.5-§6.6, closed 2026-08-09) ──────────
+# update_format_profile previously never computed these -- emoji_usage_rate/uses_slang_themselves
+# stayed pinned at their 0.0/False defaults forever, silently defeating format_adapter.py's
+# emoji-policy and allow_slang decisions (both read straight off this profile).
+def test_avg_user_message_length_moves_toward_a_real_users_messages():
+    p = ufp.initialize_defaults("u1")
+    for _ in range(5):
+        p = ufp.update_format_profile(p, nova_response_length=100,
+                                      user_response_latency_ms=8000, user_response_length=200,
+                                      user_message_text="a longer message than before")
+    assert p.avg_user_message_length > 50   # moved up from the 0.0 default toward 200
+
+
+def test_emoji_usage_rate_moves_toward_a_users_real_emoji_habit():
+    p = ufp.initialize_defaults("u1")
+    for _ in range(5):
+        p = ufp.update_format_profile(p, nova_response_length=100,
+                                      user_response_latency_ms=8000, user_response_length=10,
+                                      user_message_text="love this so much! 😊🎉")
+    assert p.emoji_usage_rate > 0.3   # moved up from the 0.0 default
+
+
+def test_emoji_usage_rate_stays_low_for_a_user_who_never_uses_emoji():
+    p = ufp.initialize_defaults("u1")
+    for _ in range(5):
+        p = ufp.update_format_profile(p, nova_response_length=100,
+                                      user_response_latency_ms=8000, user_response_length=10,
+                                      user_message_text="that sounds reasonable to me")
+    assert p.emoji_usage_rate == 0.0
+
+
+def test_uses_slang_themselves_flips_true_on_a_real_casual_message():
+    p = ufp.initialize_defaults("u1")
+    assert p.uses_slang_themselves is False
+    p = ufp.update_format_profile(p, nova_response_length=100, user_response_latency_ms=8000,
+                                  user_response_length=10, user_message_text="lol yeah gonna do that")
+    assert p.uses_slang_themselves is True
+
+
+def test_uses_slang_themselves_stays_false_for_a_formal_user():
+    p = ufp.initialize_defaults("u1")
+    p = ufp.update_format_profile(p, nova_response_length=100, user_response_latency_ms=8000,
+                                  user_response_length=10,
+                                  user_message_text="Regarding your point, I shall consider it.")
+    assert p.uses_slang_themselves is False
+
+
 # ── Explicit feedback (§6.6) ─────────────────────────────────────────────────
 def test_explicit_concise_feedback_sets_always_brief():
     p = ufp.update_format_profile(ufp.initialize_defaults("u1"), nova_response_length=100,

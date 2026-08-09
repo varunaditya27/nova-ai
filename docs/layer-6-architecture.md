@@ -1204,7 +1204,7 @@ reaches the delivered response, and a `social_pattern_coaching` item lands in th
 surface, not a wiring gap); `GET /proactive` still returns ungated `content_basis`, including now
 for `social_pattern_coaching` items — the same caveat above applies, whoever builds the consumer
 must run `evaluate_timing_gate` server-side first, not render `content_basis` directly.
-`on_thread_due`/`on_post_distress_gap` remain blocked on Layer 1/2 respectively.
+`on_thread_due`/`on_post_distress_gap` are no longer blocked — see §18.
 
 ## 17. Three more intake functions for Layer 10 (follow-up, 2026-08-09)
 
@@ -1217,3 +1217,29 @@ the only callers. See `docs/layer-10-architecture.md` §16.3-16.4 for the full d
 why `on_calendar_entry_due` exists separately from `on_retrospective_ready` (a relationship-day
 milestone is a celebration nudge, not a look-back retrospective — the two are semantically
 different even though both originate from a fired `CalendarEntry`).
+
+## 18. Follow-up (2026-08-09): `on_thread_due` and `on_post_distress_gap` both closed
+
+Both intake functions in `docs/PENDING_WORK.md`'s Layer 6 entry were listed as "blocked" —
+re-investigated and both closed, neither needed the blocker it was waiting on.
+
+**`on_thread_due`** was blocked on Layer 1's narrative-thread detector, which shipped this pass
+(`docs/layer-1-architecture.md` §18.2). `api/state.py::make_thread_proactive_writer` (post-turn)
+reads `ctx.input_packet.due_threads` (now real) and calls `on_thread_due` for each, upserting a
+deterministic `ProactiveItem` into the real queue — the same idempotent-`item_id` pattern as
+`goal_checkin_item`.
+
+**`on_post_distress_gap`** was recorded as "blocked on a Layer 2 state-updater hook that doesn't
+exist yet." Re-investigation found no new hook is actually required: the function's three real
+inputs (`session_summary`, `episode_id`, `end_valence`, `gap_days`) are all directly derivable
+from the already-persisted episodic memories' `emotion_vector` — the same real signal
+`background/dependency_monitor_job.py` and Layer 10's jobs already reuse via
+`background/_adapters.py`. `background/distress_gap_job.py` (new, daily) finds the most recent
+episode with `valence < -0.6`, computes the real gap in days since it, and calls the function
+directly — no persisted "last distress session" pointer needed, since it's recomputed from the
+episodic store each run. Registered as the scheduler's eleventh job.
+
+**Tests:** `tests/unit/background/test_jobs.py` — three new tests for `distress_gap` (queues on a
+real gap, doesn't queue without one, ignores non-distressed episodes) plus the two updated
+`on_thread_due` tests in `tests/unit/api/test_state.py`/`test_assembly_turn.py`
+(`docs/layer-1-architecture.md` §18.2).

@@ -80,7 +80,12 @@ def test_writer_updates_session_and_audit_without_creating_an_episode_from_one_o
                              stm_store=InProcessSTMStore())(Ctx())
     assert store.active_episodic("local-user") == []
     with session_scope(factory) as s:
-        assert s.query(models.Session).filter_by(session_key="s1").one().turn_count == 1
+        row = s.query(models.Session).filter_by(session_key="s1").one()
+        assert row.turn_count == 1
+        # last_delivered_at (Layer 1 SC-2's real latency-signal source) stamped for real, not
+        # left null -- the next turn's perceive() reads this back via
+        # make_session_last_delivered_provider.
+        assert row.last_delivered_at is not None
     assert PostgresAuditTrail(factory, "local-user").verify() is True
 
 
@@ -635,6 +640,94 @@ def test_goal_writer_decomposes_a_new_goal_into_a_dated_milestone():
     assert "run 1k without stopping" in item.content_basis or "first checkpoint" in item.content_basis
 
 
+def test_thread_writer_persists_an_extracted_narrative_thread():
+    """SC-5 (narrative-thread detector) had no producer at all -- ThreadStore's Protocol is
+    read-only by design (thread_tracker.py's own docstring: records are created by a post-turn
+    writer). Proves the real writer extracts and persists through PostgresThreadStore."""
+    from infra.db.thread_store import PostgresThreadStore
+    from api.state import make_thread_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class ThreadLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            return ('{"thread_detected": true, "summary": "has a job interview coming up", '
+                    '"thread_type": "future_event", "importance_tier": "high", '
+                    '"confidence": 0.85, "follow_up_in_hours": 30}')
+
+    class ThreadCtx(Ctx):
+        message = "I have an interview on Thursday, kind of nervous about it"
+
+    make_thread_writer(factory, ThreadLLM())(ThreadCtx())
+    threads = PostgresThreadStore(factory, "local-user").get_all()
+    assert any(t.summary == "has a job interview coming up" for t in threads)
+
+
+def test_thread_writer_is_a_noop_when_no_thread_is_detected():
+    from infra.db.thread_store import PostgresThreadStore
+    from api.state import make_thread_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class NeutralCtx(Ctx):
+        message = "the weather is nice today"
+
+    make_thread_writer(factory, FakeLLM())(NeutralCtx())
+    assert PostgresThreadStore(factory, "local-user").get_all() == []
+
+
+def test_thread_proactive_writer_hands_a_due_thread_to_the_real_layer6_queue():
+    """on_thread_due (backend/layer6_proactivity/intake.py) had zero production callers --
+    due_threads was computed by Layer 1 but never reached the outreach queue. Proves the real
+    handoff: a due NarrativeThread on ctx.input_packet becomes a real, idempotent ProactiveItem."""
+    from types import SimpleNamespace
+    from infra.db.proactive_store import PostgresProactiveQueue
+    from api.state import make_thread_proactive_writer
+    from backend.layer1_input.schemas import (
+        ImportanceTier, NarrativeThread, ThreadStatus, ThreadType,
+    )
+    import uuid
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    now = datetime(2026, 8, 9, 12, 0, tzinfo=timezone.utc)
+    thread = NarrativeThread(
+        thread_id=uuid.uuid4(), summary="had a job interview", created_at=now,
+        follow_up_due_at=now, status=ThreadStatus.UNRESOLVED, emotional_weight=0.7,
+        importance_tier=ImportanceTier.HIGH, thread_type=ThreadType.FUTURE_EVENT)
+
+    class ThreadDueCtx(Ctx):
+        input_packet = SimpleNamespace(due_threads=[thread])
+
+    writer = make_thread_proactive_writer(factory)
+    writer(ThreadDueCtx())
+    writer(ThreadDueCtx())   # idempotent: re-running the same due thread must not duplicate
+
+    with session_scope(factory) as s:
+        rows = s.query(models.ProactiveItem).filter_by(user_id="local-user").all()
+    assert len(rows) == 1
+    assert "had a job interview" in rows[0].payload["content_basis"]
+
+
+def test_thread_proactive_writer_is_a_noop_with_no_due_threads():
+    from infra.db.proactive_store import PostgresProactiveQueue
+    from api.state import make_thread_proactive_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    make_thread_proactive_writer(factory)(Ctx())
+    with session_scope(factory) as s:
+        assert s.query(models.ProactiveItem).count() == 0
+
+
 def test_safety_writer_records_crisis_and_skips_none():
     from types import SimpleNamespace
     from infra.db.safety_store import PostgresSafetyLog
@@ -918,3 +1011,100 @@ def test_temporal_profile_provider_empty_history_yields_no_bands():
     assert d["typical_bands"] == {}
     assert d["last_session_end"] is None
     assert d["message_length_median_chars"] is None
+
+
+def test_session_last_delivered_provider_reads_real_persisted_timestamp():
+    """Layer 1 SC-2's latency signal source: Session.last_delivered_at is stamped by
+    make_state_update_writer's Session upsert and read back here for the *next* turn's
+    perceive() -- proves the round-trip through the real store, not a mock."""
+    from datetime import datetime, timezone
+    from api.state import make_session_last_delivered_provider
+    import infra.db.models as models
+    from infra.db.engine import session_scope
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    provider = make_session_last_delivered_provider(factory)
+
+    assert provider("s1") is None                            # no session row yet
+
+    stamped = datetime(2026, 8, 9, 10, 0, tzinfo=timezone.utc)
+    with session_scope(factory) as s:
+        s.add(models.Session(user_id="u1", session_key="s1", turn_count=1,
+                             last_delivered_at=stamped))
+    assert provider("s1") == stamped
+    assert provider("s2") is None                             # a different session, still cold
+
+
+def test_life_event_writer_persists_an_extracted_life_event():
+    """No LifeEvent detector existed anywhere -- detect_chapter_boundaries was real and callable
+    but always received life_events=[]. Proves the real writer extracts and persists through
+    PostgresLongitudinalStore."""
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from api.state import make_life_event_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class LifeEventLLM(FakeLLM):
+        def complete(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            return ('{"life_event_detected": true, "title": "started a new job", '
+                    '"category": "career_transition", "event_date": "2026-08-09", '
+                    '"significance_score": 0.8, "confidence": 0.85}')
+
+    class LifeEventCtx(Ctx):
+        message = "I started a new job this week, feeling good about it"
+
+    make_life_event_writer(factory, LifeEventLLM())(LifeEventCtx())
+    events = PostgresLongitudinalStore(factory, "local-user").life_events()
+    assert any(e.title == "started a new job" for e in events)
+
+
+def test_life_event_writer_is_a_noop_when_no_event_is_detected():
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from api.state import make_life_event_writer
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    class NeutralCtx(Ctx):
+        message = "the weather is nice today"
+
+    make_life_event_writer(factory, FakeLLM())(NeutralCtx())
+    assert PostgresLongitudinalStore(factory, "local-user").life_events() == []
+
+
+def test_longitudinal_provider_populates_primary_goals_deadlines_and_recent_life_event():
+    """primary_active_goals/upcoming_goal_deadlines/recent_life_event were all real,
+    already-accepted assemble_context_packet params that make_longitudinal_provider never passed.
+    Proves all three reach the real Layer10ContextPacket through the real provider."""
+    from datetime import date, timedelta
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from infra.db.goal_store import PostgresGoalStore
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from backend.layer7_goals.schemas import Goal, Milestone
+    from backend.layer10_longitudinal.schemas import LifeEvent
+    from api.state import make_longitudinal_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    now = datetime.now(timezone.utc)
+
+    PostgresRelationshipStore(factory, "local-user").record_turn("s1")   # seeds first_session_date
+    PostgresGoalStore(factory, "local-user").add_goal(Goal(
+        title="run a 5k", status="active", emotional_weight=0.9, created_at=now,
+        milestones=[Milestone(description="first 1k", target_date=now + timedelta(days=5))]))
+    PostgresLongitudinalStore(factory, "local-user").save_life_event(LifeEvent(
+        event_id="e1", user_id="local-user", title="started a new job",
+        category="career_transition", event_date=date.today()))
+
+    packet = make_longitudinal_provider(factory)("local-user", now=now)
+
+    assert "run a 5k" in packet.primary_active_goals
+    assert any(title == "run a 5k" for title, _ in packet.upcoming_goal_deadlines)
+    assert packet.recent_life_event is not None
+    assert packet.recent_life_event.title == "started a new job"

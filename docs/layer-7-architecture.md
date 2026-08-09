@@ -1286,4 +1286,52 @@ Wiring it needs a background-job-shaped caller (a periodic sweep over all active
 shape as `pattern_detection_job.py`/`life_calendar_job.py`), which is real, separate feature work —
 not something to fold silently into this fix. Tracked in `docs/POLISH_BACKLOG.md`.
 
+## 16. Follow-up (2026-08-09): `run_staleness_scan` wired + SC-4 reaches Layer 4 pre-generation
+
+### 16.1 Goal staleness sweep
+
+§15's "found but not fixed" gap is closed: `background/goal_staleness_job.py` (new, weekly) loads
+every goal in `tentative`/`active`/`on_track`/`at_risk` status, runs the real
+`run_staleness_scan`, and applies each `GoalStateChange` (status + `status_changed_at`) back
+through the real `PostgresGoalStore`. Registered in `background/scheduler.py`'s `JOBS` (weekly
+cadence, `goal_staleness_days` config key, default 7). Tests:
+`tests/unit/background/test_jobs.py::test_goal_staleness_job_decays_a_silently_neglected_active_
+goal` (a goal untouched for 20 days transitions to `at_risk` and persists for real) and
+`..._leaves_recently_mentioned_goals_untouched`.
+
+### 16.2 SC-4's `GoalContextPacket` now reaches Layer 4, same-turn
+
+§13's pending item ("SC-4's real `GoalContextPacket` still never reaches Layer 4 — a
+pipeline-ordering question") turned out to have a cleaner resolution than persisting-and-
+replaying a stale decision across turns. `decide_goal_reference` (`accountability_modifier.py`)
+is pure and read-only — it was only ever called from *inside* `run_goal_pipeline`
+(`make_goal_writer`, post-turn) because that's where SC-1/SC-2/SC-3 happen to run, not because it
+needs to. `classify_progress_signal` (the only other input it depends on besides a read-only
+`get_relevant_goals` query) is equally pure — the *mutating* half of progress classification
+(`update_progress_score`, `goal_store.update_goal`) is a separate call the writer still owns.
+
+`api/state.py::make_goal_provider` now calls `get_relevant_goals` → `classify_progress_signal` →
+`decide_goal_reference` directly, pre-generation, with this turn's *live* `conversation_mode`/
+`emotional_state`/`relationship_stage` — not a persisted decision from last turn. This matters
+because "goals yield to the present moment" (§11 principle 3) is a same-turn invariant: a
+persist-and-replay approach would have referenced a goal using a stale gate decision computed
+under last turn's mode, wrong exactly on the turns where the mode changed (e.g. casual → crisis).
+
+`api/assembly.py::_goal_directive` was rewritten to consume the real `GoalContextPacket`
+(`response_instruction`) instead of a bare-titles list, and its duplicated `_GOAL_BLOCKED_MODES`/
+stage check was deleted — `decide_goal_reference` already enforces the same §6.3 hard rule
+internally, so duplicating it was exactly the drift-risk CLAUDE.md warns about (a rule fixed in
+one place silently unfixed in the other). The directive text is now real and
+progress-signal-differentiated (celebratory on completion, gentle on a distressed setback, a
+one-sentence topic connection when relevant) instead of one generic "reference it naturally"
+template — reaching the planner via `_goal_directive`'s existing call site, no new hook.
+
+**Test rewrite required**: the pre-existing tests passed `goal_provider=lambda uid, msg: ["Run a
+5K"]` — bare title strings, incompatible with `decide_goal_reference`'s real `RelevantGoal`/`Goal`
+inputs (its topic-connection case specifically needs a real `Goal.momentum_score`). Rewrote
+`tests/unit/api/test_assembly_turn.py::test_real_layer7_goal_directive_blocked_in_emotional_
+support_and_shown_in_goal_planning` and `tests/unit/api/test_goal_relationship_injection.py::
+test_goal_titles_injected_into_prompt` to seed a real persisted `Goal` through `PostgresGoalStore`
+and trigger a real completion-signal case, rather than a synthetic list.
+
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*

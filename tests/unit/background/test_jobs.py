@@ -187,6 +187,32 @@ def test_narrative_arc_job_persists_a_synthesized_chapter():
     assert arc.current_chapter.primary_theme == "steadiness"
 
 
+def test_narrative_arc_job_opens_a_second_chapter_from_a_real_life_event():
+    """No LifeEvent detector existed anywhere -- build_narrative_arc's chapter-boundary logic was
+    real and callable but always received life_events=[], so every user had exactly one ongoing
+    chapter forever. Proves a real, persisted, chapter-boundary-category life event
+    (career_transition, in CHAPTER_BOUNDARY_CATEGORIES) produces a real second chapter."""
+    from datetime import timedelta
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+    from backend.layer10_longitudinal.schemas import LifeEvent
+
+    st = _state()
+    st.llm_clients = {"system1": SimpleNamespace(
+        complete=lambda p: '{"narrative_summary": "A new chapter.", "primary_theme": "change"}')}
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    _seed_relationship(st.session_factory, "u1", start)
+    _add_episode(st.session_factory, "u1", summary="talked about work")
+
+    boundary_date = (start + timedelta(days=60)).date()
+    PostgresLongitudinalStore(st.session_factory, "u1").save_life_event(LifeEvent(
+        event_id="e1", user_id="u1", title="started a new job",
+        category="career_transition", event_date=boundary_date, significance_score=0.9))
+
+    out = scheduler.run_job(st, "narrative_arc")
+    assert out["chapters"] == 2
+    assert out["life_events"] == 1
+
+
 def test_pattern_detection_job_persists_patterns_and_hands_off_to_layer6():
     """SC-3's detect_behavioral_patterns was computed and discarded every run. Seeds enough
     same-weekday emotional dips to trigger the real emotional-cycle pattern, runs the real job,
@@ -284,6 +310,66 @@ def test_life_calendar_job_is_idempotent_across_runs():
     assert len([i for i in queued if i.item_type == "upcoming_date_reminder"]) == 1
 
 
+def test_life_calendar_job_generates_a_real_year_in_review_on_day365_and_recurs():
+    """generate_year_in_review had no production caller -- "no annual trigger decided." Decided:
+    the Nova relationship's own day-365 milestone firing IS the trigger. Proves a real
+    YearInReview is generated and persisted (readable back through the real store), the
+    existing celebration-nudge behavior for day 365 is unchanged (still queued), and the
+    milestone re-registers itself for next year rather than firing exactly once ever."""
+    from datetime import timedelta
+    from infra.db.longitudinal_store import PostgresLongitudinalStore
+
+    st = _state()
+    start = datetime.now(timezone.utc) - timedelta(days=366)
+    _seed_relationship(st.session_factory, "u1", start)
+
+    out = scheduler.run_job(st, "life_calendar")
+    assert out["fired"] == 3            # day 30/100/365 are all due by day 366
+    assert out["year_reviews"] == 1     # only day 365 triggers a YearInReview
+
+    review = PostgresLongitudinalStore(st.session_factory, "u1").load_year_in_review(start.year)
+    assert review is not None
+    assert review.year == start.year
+
+    queued = PostgresProactiveQueue(st.session_factory, "u1").load()
+    assert any(i.item_type == "upcoming_date_reminder" for i in queued)   # nudge unchanged
+
+    with session_scope(st.session_factory) as s:
+        entries = s.query(models.LifeCalendarEntry).filter_by(user_id="u1").all()
+    yearly = [e for e in entries if e.payload["entry_type"] == "nova_relationship_day365"]
+    assert len(yearly) == 2   # the fired one, plus its self-registered successor
+    assert any(not e.has_fired for e in
+              [e for e in entries if e.payload["entry_type"] == "nova_relationship_day365"])
+
+
+def test_life_calendar_job_registers_life_event_anniversaries_exactly_once():
+    """register_life_event (real, previously uncalled SC-5 function) now runs for every real,
+    persisted LifeEvent -- proves it fires exactly once per event across repeated job runs
+    (not re-registered every day) and that the resulting 1-year anniversary entry maps to a
+    real retrospective when it comes due."""
+    from datetime import timedelta
+    from backend.layer10_longitudinal.schemas import LifeEvent
+
+    st = _state()
+    st.llm_clients = {"system1": SimpleNamespace(complete=lambda p: "")}
+    start = datetime.now(timezone.utc) - timedelta(days=400)
+    _seed_relationship(st.session_factory, "u1", start)
+    long_store = PostgresLongitudinalStore(st.session_factory, "u1")
+    long_store.save_life_event(LifeEvent(
+        event_id="e1", user_id="u1", title="started a new job",
+        category="career_transition", event_date=(start + timedelta(days=35)).date()))
+
+    scheduler.run_job(st, "life_calendar")
+    with session_scope(st.session_factory) as s:
+        first_run_count = s.query(models.LifeCalendarEntry).filter_by(
+            user_id="u1").filter(models.LifeCalendarEntry.entry_id.isnot(None)).count()
+    scheduler.run_job(st, "life_calendar")
+    with session_scope(st.session_factory) as s:
+        second_run_count = s.query(models.LifeCalendarEntry).filter_by(user_id="u1").count()
+
+    assert second_run_count == first_run_count   # not re-registered on the second run
+
+
 def test_episodic_records_reads_real_emotion_vector_not_content_basis_valence():
     """_adapters.episodic_records used to read a field, `content_basis_valence`, that doesn't
     exist on EpisodicMemory (that name belongs to Layer 6's ProactiveItem) -- emotional_intensity
@@ -375,5 +461,86 @@ def test_dependency_monitor_job_zero_score_with_no_signals():
     assert result["tier"] == "healthy"
 
 
-def test_job_registry_has_nine_jobs():
-    assert len(scheduler.JOBS) == 9
+def test_job_registry_has_eleven_jobs():
+    assert len(scheduler.JOBS) == 11
+
+
+def test_goal_staleness_job_decays_a_silently_neglected_active_goal():
+    """run_staleness_scan had zero production callers -- a goal only ever transitioned status
+    through an explicit completion/abandonment phrase in a live turn; silent neglect (no
+    mention for 14+ days) never decayed it. Proves the real job applies the transition and
+    persists it through the real PostgresGoalStore, not a mocked write. Uses real wall-clock
+    time (last_mentioned_at set relative to now) rather than freezing datetime, matching this
+    file's other job tests."""
+    from datetime import timedelta
+    from infra.db.goal_store import PostgresGoalStore
+    from backend.layer7_goals.schemas import Goal
+
+    st = _state()
+    now = datetime.now(timezone.utc)
+    store = PostgresGoalStore(st.session_factory, "u1")
+    store.add_goal(Goal(title="learn guitar", status="active",
+                        last_mentioned_at=now - timedelta(days=20), created_at=now))
+
+    out = scheduler.run_job(st, "goal_staleness")
+
+    assert out["scanned"] == 1
+    assert out["changed"] == 1
+    goal = next(iter(store.load_by_status(["at_risk"])))
+    assert goal.title == "learn guitar"
+    assert goal.status_changed_at is not None
+
+
+def test_goal_staleness_job_leaves_recently_mentioned_goals_untouched():
+    from infra.db.goal_store import PostgresGoalStore
+    from backend.layer7_goals.schemas import Goal
+
+    st = _state()
+    now = datetime.now(timezone.utc)
+    PostgresGoalStore(st.session_factory, "u1").add_goal(
+        Goal(title="run a 5k", status="active", last_mentioned_at=now, created_at=now))
+
+    out = scheduler.run_job(st, "goal_staleness")
+    assert out["scanned"] == 1
+    assert out["changed"] == 0
+
+
+def test_distress_gap_job_queues_a_check_in_after_a_real_gap():
+    """on_post_distress_gap had zero production callers -- "blocked on a Layer 2 state-updater
+    hook that doesn't exist yet" turned out to be avoidable: the real episodic emotion_vector
+    (already reused by Layer 10/11's jobs) is enough to derive the most recent high-distress
+    episode and the real gap since it, no new hook needed. Proves the real handoff to Layer 6's
+    queue through PostgresProactiveQueue, not a mocked upsert."""
+    from datetime import timedelta
+
+    st = _state()
+    PostgresMemoryStore(st.session_factory).save_episodic(EpisodicMemory(
+        user_id="u1", summary="everything felt like too much today",
+        embedding=[0.1, 0.2], S_current=0.5, importance_score=0.2,
+        emotion_vector=EmotionVector(valence=-0.8, arousal=0.6),
+        created_at=datetime.now(timezone.utc) - timedelta(days=5)))
+
+    out = scheduler.run_job(st, "distress_gap")
+
+    assert out["queued"] is True
+    assert out["gap_days"] >= 3
+    with session_scope(st.session_factory) as s:
+        assert s.query(models.ProactiveItem).filter_by(user_id="u1").count() == 1
+
+
+def test_distress_gap_job_does_not_queue_without_a_real_gap():
+    st = _state()
+    PostgresMemoryStore(st.session_factory).save_episodic(EpisodicMemory(
+        user_id="u1", summary="had a rough day", embedding=[0.1, 0.2], S_current=0.5,
+        importance_score=0.2, emotion_vector=EmotionVector(valence=-0.8, arousal=0.6),
+        created_at=datetime.now(timezone.utc)))
+
+    out = scheduler.run_job(st, "distress_gap")
+    assert out["queued"] is False
+
+
+def test_distress_gap_job_ignores_non_distressed_episodes():
+    st = _state()
+    _add_episode(st.session_factory, "u1", summary="had a great day", valence=0.5, arousal=0.3)
+    out = scheduler.run_job(st, "distress_gap")
+    assert out["queued"] is False

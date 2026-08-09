@@ -11,13 +11,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from backend.layer9_output.format_adapter import _EMOJI_RE
 from backend.layer9_output.schemas import (
     FormatFeedbackEvent,
     LengthPreference,
     UserFormatProfile,
 )
+# Reuse Layer 4's real, already-tested casual-language regex rather than inventing a second
+# slang detector -- style_learning.py already classifies exactly this signal for its own
+# formality_preference EMA.
+from backend.layer4_persona.style_learning import _CASUAL as _SLANG_RE
 
 _ORDER = [LengthPreference.SHORT.value, LengthPreference.MEDIUM.value, LengthPreference.LONG.value]
+_ENGAGEMENT_EMA = 0.2   # gentle -- one message never swings emoji_usage_rate/avg length far
 
 
 def initialize_defaults(user_id: str) -> UserFormatProfile:
@@ -65,6 +71,7 @@ def update_format_profile(
     user_response_latency_ms: int,
     user_response_length: int,
     explicit_format_feedback: Optional[str] = None,
+    user_message_text: str = "",
 ) -> UserFormatProfile:
     """Fold engagement signals into the profile (architecture doc §6.6)."""
     # Signal 1: fast reply after a long response → user likely skimmed → prefer shorter.
@@ -82,6 +89,22 @@ def update_format_profile(
             feedback_text=explicit_format_feedback, inferred_preference=preference,
             timestamp=datetime.utcnow()))
         apply_explicit_override(profile, preference)
+
+    # Signal 4: the user's own emoji/slang/length habits -- these three fields were declared on
+    # the schema and consumed downstream by format_adapter.compute_format_spec's emoji-policy and
+    # allow_slang decisions, but nothing here ever computed them, so those decisions silently
+    # never engaged (emoji_usage_rate pinned at 0.0 -> always EmojiPolicy.NONE, uses_slang_
+    # themselves pinned at False -> allow_slang always False).
+    if user_response_length > 0:
+        profile.avg_user_message_length = (
+            (1.0 - _ENGAGEMENT_EMA) * profile.avg_user_message_length
+            + _ENGAGEMENT_EMA * user_response_length)
+    if user_message_text:
+        used_emoji = 1.0 if _EMOJI_RE.search(user_message_text) else 0.0
+        profile.emoji_usage_rate = (
+            (1.0 - _ENGAGEMENT_EMA) * profile.emoji_usage_rate + _ENGAGEMENT_EMA * used_emoji)
+        if _SLANG_RE.search(user_message_text):
+            profile.uses_slang_themselves = True
 
     profile.version += 1
     profile.updated_at = datetime.utcnow()
