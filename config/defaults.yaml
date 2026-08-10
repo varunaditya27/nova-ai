@@ -57,6 +57,10 @@ tts:                          # Layer-9 voice synthesis (Kokoro, OpenAI-compatib
   endpoint: ${KOKORO_URL:-http://kokoro:8880}
   default_voice: af_sky
 
+stt:                          # Layer-9 speech-to-text (faster-whisper, OpenAI-compatible)
+  endpoint: ${STT_URL:-http://stt:8880}
+  model: small
+
 scheduler:
   enabled: true             # start the in-process APScheduler in the API lifespan (set false to opt out)
   memory_consolidation_hours: 2
