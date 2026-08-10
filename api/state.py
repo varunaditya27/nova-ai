@@ -62,6 +62,7 @@ class AppState:
     default_user_id: str
     tool_manager: Any = None
     voice_backend: Any = None
+    stt_backend: Any = None
     stm_store: Any = None
 
 
@@ -87,6 +88,33 @@ def build_voice_backend(config: dict):
 
     return KokoroBackend(endpoint=endpoint, default_voice=tts.get("default_voice", "af_sky"),
                          request_fn=_request)
+
+
+def build_stt_backend(config: dict):
+    """faster-whisper STT backend (Layer-9) with a real httpx transport, or None if httpx is
+    unavailable. Adapts an httpx response to the `.ok/.status_code/.json()` shape the backend
+    expects; any connection error degrades to a non-ok TranscriptResult inside the backend."""
+    from types import SimpleNamespace
+    try:
+        import httpx
+    except Exception:
+        logger.warning("httpx unavailable; speech-to-text disabled")
+        return None
+    from backend.layer9_output.stt_backends.whisper_backend import WhisperBackend
+
+    stt = config.get("stt", {}) or {}
+    endpoint = stt.get("endpoint") or "http://localhost:8881"
+
+    def _request(method, url, files=None, data=None):
+        with httpx.Client(timeout=30.0) as client:
+            if method == "POST":
+                r = client.post(url, files=files, data=data)
+            else:
+                r = client.get(url)
+        return SimpleNamespace(ok=r.is_success, status_code=r.status_code,
+                               json=r.json)
+
+    return WhisperBackend(endpoint=endpoint, model=stt.get("model", "small"), request_fn=_request)
 
 
 def build_tool_manager(session_factory, user_id, intent_client=None):
@@ -1319,4 +1347,5 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         session_factory=session_factory, vector_store=vector_store,
         orchestrator=ConversationOrchestrator(steps),
         default_user_id=default_user_id, tool_manager=tool_manager,
-        voice_backend=build_voice_backend(config), stm_store=stm_store)
+        voice_backend=build_voice_backend(config), stt_backend=build_stt_backend(config),
+        stm_store=stm_store)
