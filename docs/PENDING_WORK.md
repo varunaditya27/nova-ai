@@ -72,6 +72,10 @@ gap was found and why it wasn't fixed inline.
   gate. Needs the deletion/burst client fields specifically (`docs/FRONTEND_TODO.md`), not just
   latency. No Layer 3 code change needed once the frontend half closes.
 - *(`alert_fn` was investigated and deliberately left unwired — not a gap, a closed decision.)*
+- **`EmpathyHypothesis.secondary_feeling`/`secondary_need` never set** — real feature work
+  (`secondary_need` has no spec'd derivation), not a wiring fix. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-10]** File-length cleanup (`schemas.py`, `packet_builder.py`,
+  `emotion_classifier.py` all split under the 200-line cap). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 4 — Persona, Personality & Response Generation
 

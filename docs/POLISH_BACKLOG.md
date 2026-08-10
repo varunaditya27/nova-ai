@@ -234,6 +234,17 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
   directly: with Layer 1's `implicit_intensity` pinned at 0.10, `composite_prior` cannot exceed
   ~0.39, below `integrate_prior`'s `> 0.6` gate. Reopens once Layer 1's implicit-signal gap
   (`ChatRequest` client-behavioral-data gap, above) closes — no Layer 3 code change needed then.
+- **File-length cleanup — `[done]` (2026-08-10).** `schemas.py` (443), `packet_builder.py`
+  (286), and `emotion_classifier.py` (237) all split under the 200-line cap by sub-component
+  (`schemas/` package; `packet_builder.py`/`instruction_builder.py`/`_safety_helpers.py`;
+  `emotion_classifier.py`/`emotion_heuristics.py`), no behavior change, full test suite green
+  before/after. All existing import paths kept working via re-exports.
+- **`EmpathyHypothesis.secondary_feeling`/`secondary_need` never set — found 2026-08-10.**
+  `generate_empathy_hypothesis` never populates either field, unlike every other field on the
+  same live, per-turn-constructed dataclass. `secondary_feeling` has a plausible cheap source
+  (SC-1's already-populated `secondary_labels`); `secondary_need` has no defined derivation in
+  the §7.2 spec beyond "if a second need is relevant" — real feature work, not a wiring fix, same
+  shape as `advice_frustration_count` above. Logged rather than built inline.
 
 ---
 

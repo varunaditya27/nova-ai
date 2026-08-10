@@ -1255,14 +1255,23 @@ wire into and out of it. **The code is the single source of truth**; this doc an
 
 | File | Sub-component | Spec |
 |---|---|---|
-| `schemas.py` | All Layer 3 dataclasses/enums + `EmotionIntentPacket` | §3.5, §4.3, §5, §6.2, §7.2, §9 |
-| `emotion_classifier.py` | SC-1 Primary Emotion Classifier | §3 |
+| `schemas/` | All Layer 3 dataclasses/enums + `EmotionIntentPacket` | §3.5, §4.3, §5, §6.2, §7.2, §9 |
+| `emotion_classifier.py` + `emotion_heuristics.py` | SC-1 Primary Emotion Classifier | §3 |
 | `background_state.py` | SC-2 Background Emotional State Tracker | §4 |
 | `intent_classifier.py` | SC-3 Intent Classifier | §5 |
 | `mismatch_detector.py` | SC-4 Stated-vs-Felt Mismatch Detector | §6 |
 | `empathy_hypothesis.py` | SC-5 Empathy Hypothesis Generator | §7 |
 | `mode_resolver.py` | SC-6 Conversation Mode Resolver | §8 |
-| `packet_builder.py` | Orchestrator → `EmotionIntentPacket` + §9.1 instruction construction + §12 fallbacks | §9, §12 |
+| `packet_builder.py` + `instruction_builder.py` + `_safety_helpers.py` | Orchestrator → `EmotionIntentPacket` + §9.1 instruction construction + §12 fallbacks | §9, §12 |
+
+**File-length cleanup (2026-08-10).** `schemas.py` (443 lines) split into a `schemas/` package
+by sub-component (`emotion.py`, `background_state.py`, `intent.py`, `mismatch.py`, `empathy.py`,
+`packet.py`); `packet_builder.py` (286 lines) split into orchestration (`packet_builder.py`),
+§9.1 plain-language translation (`instruction_builder.py`), and the §12 fail-safe/crisis-alert
+helpers (`_safety_helpers.py`); `emotion_classifier.py` (237 lines) split into LLM+prior
+integration (`emotion_classifier.py`) and the deterministic keyword pre-filter
+(`emotion_heuristics.py`). All under the 200-line cap; every existing import path kept working
+via re-exports. No behavior change — full test suite green before and after.
 
 The single public entry point is `packet_builder.build_emotion_intent_packet(...)` (re-exported from the package as `build_emotion_intent_packet`).
 
@@ -1396,6 +1405,13 @@ own has been found.
 - **`composite_prior`'s prior-adjustment branch** stays dormant, gated on Layer 1's
   implicit-signal frontend gap (§16.8 above).
 - **`psychological_model`** isn't read into the BES yet (§16.9 above).
+- **`EmpathyHypothesis.secondary_feeling`/`secondary_need`** (§7.2) are never set by
+  `generate_empathy_hypothesis` — always `None` live, unlike every other field on the same
+  dataclass. `secondary_feeling` has a plausible cheap source (`primary_emotion.secondary_labels`,
+  already populated by SC-1) but `secondary_need` has no defined derivation in the spec beyond
+  "if a second need is relevant" — found during the 2026-08-10 re-audit, logged rather than
+  built inline (same shape as `advice_frustration_count` above: real feature work, not a wiring
+  fix).
 
 ---
 
@@ -1425,6 +1441,12 @@ own has been found.
   (`tie_strength` pinned at 0.0 because nothing called Layer 4's real tie-strength update) was
   fixed in Layer 4. `advice_frustration_count` remains unforwarded — no counter exists anywhere in
   the codebase to source it from.
+- **2026-08-10 (simplification pass):** Split `schemas.py`, `packet_builder.py`, and
+  `emotion_classifier.py` under the 200-line file cap (see §16.1 for the full module map) — no
+  behavior change. Re-audit found `EmpathyHypothesis.secondary_feeling`/`secondary_need` never
+  set by `generate_empathy_hypothesis`, unlike every other field on the same live dataclass;
+  logged rather than built inline (real feature work — `secondary_need` has no spec'd derivation
+  to wire against).
 
 ---
 
