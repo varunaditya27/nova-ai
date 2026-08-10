@@ -46,8 +46,17 @@ Legend — **why deferred**: `DECISION` (product choice), `DESIGN` (needs a desi
 - **Size:** very large. **Blocks frontend?** No — the WhatsApp-simple chat is the v1 core.
 
 ## 5. Transport & delivery  — `ROADMAP`
-- **WebSocket** transport — SSE (`/chat/stream`) is live and sufficient; WS is the future bidirectional
-  upgrade (interrupts, live voice).
+- **WebSocket** transport — re-evaluated 2026-08-10 while scoping speech-to-text (see
+  `docs/superpowers/specs/2026-08-10-speech-to-text-design.md` §6). STT shipped as push-to-talk
+  (record client-side, upload once on release) specifically *because* that avoids needing a
+  persistent duplex connection — a plain HTTP upload is simpler and more robust. SSE (`/chat/stream`)
+  already covers response delivery; a poll covers tools-pending. Consolidating those onto WS would
+  be a transport refactor with no new user-facing capability — not attempted. WS is worth building
+  only if one of these becomes a real, concrete need: **live partial captions** (transcript text
+  appearing word-by-word while speaking, instead of push-to-talk-then-transcribe), or **mid-turn
+  cancel** (stopping a slow System-2 reply in flight — non-trivial on its own, since the orchestrator
+  call into Ollama would need a real cancellation token threaded through it, not just a closed
+  connection).
 - **Proactive push channel** — done (2026-08-09): `GET /proactive/stream` (SSE, bounded ~25min
   lifetime relying on `EventSource` auto-reconnect) + `useProactiveStream`/`app/proactive/page.tsx`
   consume it live, alongside the existing poll. True OS-level push notification (outside an open
