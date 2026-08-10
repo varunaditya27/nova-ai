@@ -120,6 +120,11 @@ Synthesize a text response to speech (Layer-9 SSML → Kokoro TTS). Returns raw 
 
 Response body: binary MP3. `curl -X POST /voice -d '{"text":"hello"}' --output out.mp3`
 
+### `POST /voice/transcribe` → `TranscribeOut`
+Multipart audio upload (`file`), transcribed by the local faster-whisper STT backend (fully
+offline). Returns `{transcript, confidence, language}`. `503` if the STT backend is unavailable or
+transcription fails — the client should fall back to letting the user type.
+
 ---
 
 ## Conversation log + annotations
@@ -484,13 +489,13 @@ Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
 
 ---
 
-## Endpoint index (43 paths)
+## Endpoint index (44 paths)
 
 | Method | Path | Layer |
 |---|---|---|
 | GET | `/health`, `/health/ready` | infra |
 | POST | `/chat`, `/chat/stream` | 1–13 |
-| POST | `/voice` | 9 |
+| POST | `/voice`, `/voice/transcribe` | 9 |
 | GET | `/people`, `/people/{id}` | 5 |
 | GET | `/messages`, `/messages/search` | log |
 | POST/DELETE | `/messages/{id}/bookmark`, `/messages/{id}/milestone` | log |
