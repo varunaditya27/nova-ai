@@ -17,6 +17,8 @@ import {
   type MessageOut,
   type MuseumOut,
   type OnboardingOut,
+  type PersonDetailOut,
+  type PersonOut,
   type ProactiveItem,
   type RelationshipOut,
   type SafetyEvent,
@@ -132,6 +134,14 @@ export async function deleteGoal(goalId: string): Promise<void> {
 
 export function getRelationship(): Promise<RelationshipOut> {
   return requestJson<RelationshipOut>("/relationship");
+}
+
+export function getPeople(): Promise<PersonOut[]> {
+  return requestJson<PersonOut[]>("/people");
+}
+
+export function getPerson(personId: string): Promise<PersonDetailOut> {
+  return requestJson<PersonDetailOut>(`/people/${encodeURIComponent(personId)}`);
 }
 
 export function getProactive(limit = 5): Promise<ProactiveItem[]> {

@@ -145,6 +145,43 @@ export type RelationshipOut = {
   unsolicited_advice_tolerance: number;
 };
 
+/** GET /people (Layer 5) — a person in Nova's social graph. */
+export type PersonOut = {
+  person_id: string;
+  display_name: string;
+  relationship_type: string;
+  relationship_valence: number;
+  valence_trend: number;
+  interaction_frequency: string;
+  is_support_source: boolean;
+  active_conflict: boolean;
+  mention_count: number;
+  last_mentioned: string | null;
+};
+
+export type SocialEvent = {
+  event_id: string;
+  event_type: string;
+  summary: string;
+  event_valence: number;
+  event_timestamp: string | null;
+  is_resolved: boolean;
+};
+
+export type SocialPattern = {
+  pattern_id: string;
+  pattern_type: string;
+  plain_language_description: string;
+  pattern_confidence: number;
+  is_active: boolean;
+};
+
+/** GET /people/{id} — one person's full record + timeline. */
+export type PersonDetailOut = PersonOut & {
+  recent_events: SocialEvent[];
+  active_patterns: SocialPattern[];
+};
+
 /** GET /proactive (Layer 6) — a thought Nova is holding. */
 export type ProactiveItem = {
   item_id: string;
