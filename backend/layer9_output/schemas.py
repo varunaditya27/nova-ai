@@ -196,6 +196,15 @@ class AudioResult:
     error: Optional[str] = None
 
 
+@dataclass
+class TranscriptResult:
+    transcript: str = ""
+    confidence: float = 0.0
+    language: Optional[str] = None
+    ok: bool = True
+    error: Optional[str] = None
+
+
 # ── Top-level output contract (§7) ────────────────────────────────────────────
 @dataclass
 class Layer9Output:
