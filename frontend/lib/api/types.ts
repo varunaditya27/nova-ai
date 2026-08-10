@@ -42,6 +42,7 @@ export type MessageOut = {
   role: "user" | "nova";
   content: string;
   created_at: string | null;
+  session_key: string;
   conversation_mode: ConversationMode | null;
   crisis_active: boolean;
   tool_invoked: boolean;
@@ -173,6 +174,7 @@ export type IntegrityOut = {
   status: "INTACT" | "TAMPER_DETECTED";
   audit_chain_ok: boolean;
   privacy_chain_ok: boolean;
+  safety_chain_ok: boolean;
 };
 
 /** DELETE /memory/{id} — a signed "forget". */

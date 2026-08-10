@@ -7,10 +7,12 @@ import { Meter } from "@/components/primitives/Meter";
 import { IntegrityBadge } from "@/components/vault/IntegrityBadge";
 import { EpisodicCard } from "@/components/vault/EpisodicCard";
 import { useMemoryAudit } from "@/lib/hooks/useVault";
+import { useReducedMotionSafe } from "@/lib/motion";
 
 /** The vault — episodic memories (forgettable) and the stable facts distilled from them. */
 export default function Memories() {
   const { data, isLoading } = useMemoryAudit();
+  const { reduced } = useReducedMotionSafe();
 
   // Land on a specific memory when arriving from ⌘K semantic search (/memories#mem-<id>).
   useEffect(() => {
@@ -19,17 +21,19 @@ export default function Memories() {
     const t = setTimeout(() => {
       const el = document.getElementById(hash);
       if (!el) return;
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.animate(
-        [
-          { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0.08)" },
-          { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0)" },
-        ],
-        { duration: 1600, easing: "ease-out" }
-      );
+      el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+      if (!reduced) {
+        el.animate(
+          [
+            { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--brass) 8%, transparent)" },
+            { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--brass) 0%, transparent)" },
+          ],
+          { duration: 1600, easing: "ease-out" }
+        );
+      }
     }, 300);
     return () => clearTimeout(t);
-  }, [data]);
+  }, [data, reduced]);
   return (
     <PageShell
       title="What Nova remembers"

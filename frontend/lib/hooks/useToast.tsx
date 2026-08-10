@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { springs, useReducedMotionSafe } from "@/lib/motion";
 
 type Toast = { id: number; title: string; detail?: string };
 
@@ -13,6 +14,7 @@ const ToastContext = createContext<{ toast: (title: string, detail?: string) => 
  * without interrupting the flow (a forget certificate, a job result). */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const { t: safeTransition } = useReducedMotionSafe();
 
   const toast = useCallback((title: string, detail?: string) => {
     const id = Date.now() + Math.random();
@@ -31,7 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               initial={{ opacity: 0, y: 12, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              transition={safeTransition(springs.wake)}
               className="pointer-events-auto max-w-xs rounded-md border border-hairline bg-raised px-4 py-3"
               style={{ boxShadow: "inset 0 1px 0 var(--wake)" }}
             >

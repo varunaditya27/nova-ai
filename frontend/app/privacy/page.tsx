@@ -39,6 +39,7 @@ export default function Privacy() {
             <>
               <Chain label="Memory audit chain" ok={integrity.audit_chain_ok} />
               <Chain label="Privacy deletion chain" ok={integrity.privacy_chain_ok} />
+              <Chain label="Safety record chain" ok={integrity.safety_chain_ok} />
             </>
           ) : (
             <div className="h-16 rounded-md bg-hairline/30" />

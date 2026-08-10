@@ -13,6 +13,12 @@ const JOBS: { name: string; label: string; description: string }[] = [
   { name: "proactive_check", label: "Proactive check", description: "Recompute and expire the outreach queue." },
   { name: "longitudinal_summary", label: "Longitudinal summary", description: "Generate this week's chapter." },
   { name: "pattern_detection", label: "Pattern detection", description: "Surface recurring patterns across the history." },
+  { name: "social_pattern_detection", label: "Social pattern detection", description: "Sweep the social graph for recurring relationship patterns." },
+  { name: "dependency_monitor", label: "Dependency monitor", description: "Check recent memories for signs of unhealthy reliance." },
+  { name: "narrative_arc", label: "Narrative arc", description: "Rebuild the current life chapter from persisted events." },
+  { name: "life_calendar", label: "Life calendar", description: "Register milestones, fire due entries, generate retrospectives." },
+  { name: "goal_staleness", label: "Goal staleness sweep", description: "Flag goals that have gone quiet without an update." },
+  { name: "distress_gap", label: "Post-distress gap check", description: "Notice a high-distress session followed by silence." },
 ];
 
 type Outcome = { ok: true; data: JobRunOut } | { ok: false; error: string };

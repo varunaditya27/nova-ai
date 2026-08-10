@@ -9,6 +9,7 @@ function msg(cursor: number, content: string): MessageOut {
     role: "user",
     content,
     created_at: null,
+    session_key: "s1",
     conversation_mode: null,
     crisis_active: false,
     tool_invoked: false,

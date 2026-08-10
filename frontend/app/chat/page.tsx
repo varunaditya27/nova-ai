@@ -11,6 +11,7 @@ import { Composer } from "@/components/chat/Composer";
 import { ChatSearch } from "@/components/chat/ChatSearch";
 import { PendingActions } from "@/components/chat/PendingActions";
 import { cn } from "@/lib/cn";
+import { useReducedMotionSafe } from "@/lib/motion";
 
 /**
  * The Conversation — the sacred space. One permanent thread loaded from history, new turns streamed
@@ -27,6 +28,7 @@ export default function Chat() {
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const { reduced } = useReducedMotionSafe();
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only preference read
@@ -74,14 +76,16 @@ export default function Chat() {
       for (let i = 0; i < 30; i++) {
         const el = document.getElementById(`msg-${messageId}`);
         if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          el.animate(
-            [
-              { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0.07)" },
-              { boxShadow: "inset 0 0 0 9999px rgba(154,123,79,0)" },
-            ],
-            { duration: 1400, easing: "ease-out" }
-          );
+          el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+          if (!reduced) {
+            el.animate(
+              [
+                { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--brass) 7%, transparent)" },
+                { boxShadow: "inset 0 0 0 9999px color-mix(in srgb, var(--brass) 0%, transparent)" },
+              ],
+              { duration: 1400, easing: "ease-out" }
+            );
+          }
           return;
         }
         if (!hasNextPage) return;
@@ -89,7 +93,7 @@ export default function Chat() {
         await new Promise((r) => setTimeout(r, 60)); // let the render commit
       }
     },
-    [hasNextPage, fetchNextPage]
+    [hasNextPage, fetchNextPage, reduced]
   );
 
   const empty =

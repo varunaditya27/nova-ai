@@ -193,6 +193,12 @@ export function getToolHistory(): Promise<ToolAction[]> {
   return requestJson<ToolAction[]>("/tools/history");
 }
 
+export function undoTool(actionId: string): Promise<{ undone: boolean }> {
+  return requestJson<{ undone: boolean }>(`/tools/undo/${encodeURIComponent(actionId)}`, {
+    method: "POST",
+  });
+}
+
 export function getSafetyEvents(limit = 20): Promise<SafetyEvent[]> {
   return requestJson<SafetyEvent[]>(`/safety/events?limit=${limit}`);
 }
