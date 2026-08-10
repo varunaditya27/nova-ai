@@ -7,10 +7,8 @@
 #   - kokoro_backend.py: Kokoro TTS (OpenAI-compatible, runs locally in Docker)
 #   - base_backend.py: Abstract interface
 #
-# Future backends (stubs):
-#   - google_tts_backend.py (Google Cloud TTS)
-#   - azure_tts_backend.py (Azure Speech Services)
-#   - elevenlabs_backend.py (ElevenLabs)
+# Not built (no files yet, just documented future options): Google Cloud TTS, Azure Speech
+# Services, ElevenLabs — swap in behind TTSBackend if a non-local voice provider is ever needed.
 #
 # Interface:
 #   - synthesize(ssml_text: str) -> AudioBytes

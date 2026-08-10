@@ -7,3 +7,4 @@
 #   - test_cold_start_graduation.py: User progresses from cold start to full features
 #   - test_memory_consolidation.py: Weekly consolidation runs correctly
 #   - test_sync_multidevice.py: Cross-device sync works
+#   - test_layer_consistency.py: Cross-layer schema/contract consistency guards

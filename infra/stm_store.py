@@ -7,9 +7,10 @@ A plain in-process dict keyed by session_id satisfies that spec exactly for this
 single-process, single-user deployment: it survives across requests within the process's
 lifetime and is correctly wiped — not corrupted, not silently stale — on restart.
 
-Distinct from ``infra/session_cache.py`` (a per-turn scratch buffer for intermediate layer
-outputs within a single request) and from Layer 2's persisted stores (episodic/semantic/etc.,
-which live in Postgres). This module holds exactly one thing: ``ShortTermMemoryBuffer`` objects.
+Distinct from the orchestrator's per-request ``TurnContext`` (intermediate layer outputs within a
+single ``/chat`` call, never a separate cache object) and from Layer 2's persisted stores
+(episodic/semantic/etc., which live in Postgres). This module holds exactly one thing:
+``ShortTermMemoryBuffer`` objects.
 """
 from __future__ import annotations
 
