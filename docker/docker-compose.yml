@@ -53,6 +53,13 @@ services:
     ports: ["127.0.0.1:8880:8880"]
     networks: [nova-network]
 
+  stt:
+    build:
+      context: ..
+      dockerfile: docker/stt.Dockerfile
+    ports: ["127.0.0.1:8881:8000"]
+    networks: [nova-network]
+
   backend:
     build:
       context: ..
