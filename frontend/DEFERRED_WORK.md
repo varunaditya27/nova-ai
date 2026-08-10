@@ -31,12 +31,12 @@ Legend — **why deferred**: `DECISION` (product choice), `DESIGN` (needs a desi
   message↔attachment linkage, and a Layer-1 multimodal path for understanding.
 - **Size:** large (its own chunk). **Blocks frontend?** No — the other lenses stand alone.
 
-## 3. People / social graph (`/people`)  — `DECISION`
-- **State:** Layer 5 maintains a social graph internally; **no API exposes it**.
-- **Why deferred:** explicitly out of scope for now.
-- **Needs:** a people/relationships read model + `GET /people`, `GET /people/{id}` (summary, timeline,
-  shared mentions), projecting the Layer-5 graph + UWM relationship nodes.
-- **Size:** medium. **Blocks frontend?** No.
+## 3. People / social graph (`/people`)  — done (2026-08-10)
+`GET /people` (list, sorted by mention count) and `GET /people/{id}` (detail + event timeline +
+active patterns) are live, reading straight from `PostgresSocialStore` — see
+`docs/superpowers/specs/2026-08-10-social-graph-api-design.md`. Frontend: `/people` list +
+`/people/[id]` detail, in the Dock's Lenses popover. Not built: editing/merging people, and
+person-to-person edges (the "Universe" view below still needs those).
 
 ## 4. Life Graph / "Universe" view  — `ROADMAP`
 - The gpt-chat-reference north-star (Principles 9–10): an explorable entity-relationship graph of the

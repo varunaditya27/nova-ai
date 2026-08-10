@@ -296,6 +296,9 @@ feature to build, in dependency order:
   fixed weekly interval (see below). Re-identifies patterns across runs by `(pattern_type,
   person_ids_involved)` so `has_been_surfaced` history survives and duplicates don't accumulate
   — a bug caught and fixed in review, see `docs/layer-5-architecture.md`'s Live Wiring Status section.
+- **[done, 2026-08-10]** Read API — `GET /people`/`GET /people/{id}` (`api/routes/people.py`),
+  reading directly from `PostgresSocialStore`. First real consumer of the persisted `SocialGraph`
+  outside the writer path. See `docs/superpowers/specs/2026-08-10-social-graph-api-design.md`.
 - **UWM social-context write-back was resolved differently than originally scoped.**
   `build_social_context_update` (the layer's own §9 `SocialContextUpdate`) is still unreachable, but the
   underlying goal — Layer 5 informing the UWM — is now live via a narrower path: Layer 5's
