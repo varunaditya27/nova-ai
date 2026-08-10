@@ -61,8 +61,13 @@ person-to-person edges (the "Universe" view below still needs those).
   lifetime relying on `EventSource` auto-reconnect) + `useProactiveStream`/`app/proactive/page.tsx`
   consume it live, alongside the existing poll. True OS-level push notification (outside an open
   tab) still needs web-push infra — that part remains deferred.
-- **Speech-to-text (voice input)** — `/voice` is TTS **output** only; there is no transcription of
-  spoken user input. Needs an STT model/endpoint.
+- **Speech-to-text (voice input)** — done (2026-08-10): push-to-talk dictation, fully offline via a
+  local faster-whisper Docker service (own `stt` container, matching Kokoro's pattern). Hold the mic
+  button in the composer, speak, release — `POST /voice/transcribe` returns the transcript into the
+  composer to review/edit before sending. See
+  `docs/superpowers/specs/2026-08-10-speech-to-text-design.md`. Not built: live partial captions
+  (see WebSocket reasoning above) and the separate Layer-1 voice-*attachment* path (blocked on the
+  not-yet-built attachments system, #2 above).
 
 ## 6. Onboarding & persona depth  — `ROADMAP`
 - **Layer-13 feature-pacing** — active elicitation is done (one earned question/session); *progressive

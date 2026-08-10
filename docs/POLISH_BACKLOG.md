@@ -515,6 +515,12 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   for real too (was silently always `"afternoon"`), and `format_spec_applied` survives onto
   `ctx`/`OrchestratedOutput` (no client consumer exists yet, so no new API field was added ahead
   of one). See `docs/layer-9-architecture.md`.
+- **[done, 2026-08-10]** Speech-to-text — `POST /voice/transcribe`, a new `STTBackend`/
+  `WhisperBackend` pair (`backend/layer9_output/stt_backends/`, mirrors the existing
+  `TTSBackend`/`KokoroBackend` shape) against a local faster-whisper Docker service. Push-to-talk
+  dictation into the composer, not the separate Layer-1 voice-*attachment* path (blocked on the
+  attachments system, which doesn't exist). See
+  `docs/superpowers/specs/2026-08-10-speech-to-text-design.md`.
 
 ---
 
