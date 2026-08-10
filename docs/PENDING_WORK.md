@@ -47,6 +47,15 @@ gap was found and why it wasn't fixed inline.
   per-turn UWM LLM extraction call in `api/state.py` (no new LLM round-trip), conservatively
   evidence-gated like every other key in that prompt. Stays on-device only, same as the rest of
   the UWM. See `docs/layer-2-architecture.md`.
+- **`LifeSituation`/`Stressor` have a few individually-unset fields** (`estimated_resolution`,
+  `related_episode_ids`, `duration_days`, `linked_situation_id`) — the classes themselves are
+  genuinely constructed every turn, just missing these specific values. Needs new LLM-extraction
+  JSON keys plus call-site plumbing (episode ids into the UWM merge step), bigger than a wiring
+  fix. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-10]** File-length cleanup (`schemas.py` → package, `api/routes/memory.py` →
+  split by layer ownership) and dead-schema pruning (`RelationshipEdge`/`SentimentPoint`/
+  `RecurringTheme` deleted — duplicated Layer 5's `SocialEdge` or had no producer/consumer at
+  all). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 3 — Emotion, Intent & Reasoning
 

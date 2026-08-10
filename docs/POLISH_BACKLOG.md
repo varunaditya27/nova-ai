@@ -72,7 +72,7 @@ Full detail: `docs/layer-1-architecture.md`.
 
 ---
 
-## Layer 2 — Cognition & Memory (audited 2026-08-04)
+## Layer 2 — Cognition & Memory (audited 2026-08-04; re-audited 2026-08-10)
 
 Same shape as Layer 1: every module has a real caller (production or its own tested public API),
 no unreachable code. The initial audit found five of the eight sub-components complete and tested
@@ -160,6 +160,29 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   gap.** Recall runs before Layer 3 classification (`docs/NOVA_AI_MASTER_ARCHITECTURE.md` §3 steps
   3 vs 5), so there's no mode signal available yet. Documented in §11.2's as-built note; nothing to
   fix here.
+- **File-length cleanup — `[done]` (2026-08-10).** `schemas.py` (598 lines) split into a
+  `schemas/` package by sub-component, no behavior change (full test suite green before/after);
+  `api/routes/memory.py` (298 lines) split by layer ownership into `memory.py` (Layer 2: audit,
+  integrity, search, get) and new `api/routes/privacy.py` + `privacy_adapters.py` (Layer 12:
+  delete, correct, audit/full, audit/query — see `docs/layer-12-architecture.md`). All existing
+  import paths and HTTP routes kept working unchanged.
+- **`RelationshipEdge`/`SentimentPoint`/`RecurringTheme` deleted from the UWM schema —
+  `[done]` (2026-08-10).** Re-audit found all three fully defined but never constructed by
+  `uwm_updater.py` and never read anywhere. `RelationshipEdge` duplicated Layer 5's
+  already-partially-live `SocialEdge` (tie_strength, shared_contexts, sentiment trend) — the user
+  confirmed this was genuine cross-layer duplication, not an unwired-but-intended field, so it
+  was deleted rather than wired (same reasoning as `communication_model`'s existing deliberate
+  exclusion, just resolved by deletion instead of by picking one owner). `RecurringTheme` had no
+  producer or consumer anywhere and no obvious owner elsewhere. **Cross-reference for Layer 5's
+  turn:** confirm `SocialEdge` remains the sole live relationship-edge concept — no action needed
+  on the Layer 5 side unless its own audit finds `SocialEdge` itself under-wired.
+- **`LifeSituation.estimated_resolution`/`related_episode_ids` and `Stressor.duration_days`/
+  `linked_situation_id` are unset by `uwm_updater.py`'s current extraction, unlike their sibling
+  fields on the same live, populated dataclasses.** Not deleted (these classes are genuinely
+  constructed every turn, just with a subset of fields) — wiring needs a bigger change than this
+  pass covers: new LLM-extraction JSON keys (resolution date, situation-linking) plus call-site
+  plumbing to pass episode ids into the UWM merge step. Logged for a future pass rather than
+  fixed inline.
 
 ---
 
@@ -295,6 +318,12 @@ feature to build, in dependency order:
   stays empty until Layer 5 itself grows a real edge-management function. No Alembic revision —
   same as `NarrativeChain` shipped earlier the same day (baseline migration's `create_all` is the
   only path this project currently exercises).
+  **Cross-reference (2026-08-10, Layer 2's re-audit):** Layer 2's UWM had a fully-parallel,
+  entirely dead `RelationshipEdge` type covering the same ground (`SocialEdge` is the more
+  developed of the two — has real fields for tie_strength/shared_contexts/sentiment trend) —
+  deleted from Layer 2 rather than left to duplicate whatever real edge-management function this
+  layer eventually grows. When wiring `SocialEdge` for real, there is no Layer 2 equivalent to
+  reconcile against anymore.
 - **[done, 2026-08-08, corrected 2026-08-09]** Orchestrator hook — a new
   `PipelineSteps.social_coaching(ctx, response)` hook runs post-generation, pre-guardrails, in
   both System 1 and System 2. Originally forwarded real inputs into `detect_coaching_opportunity`/
@@ -627,7 +656,8 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
 
 Same pattern as Layer 5/6/10: a fully-built, fully-tested (62 unit tests, all passing) module
 where only a fraction has a production caller. **Only SC-2 (Selective Deletion) is live** —
-`api/routes/memory.py`'s `DELETE /memory/{memory_id}` — verified end-to-end including
+`api/routes/privacy.py`'s `DELETE /memory/{memory_id}` (moved out of `memory.py` during the
+2026-08-10 Layer 2 file-length cleanup — see that layer's entry) — verified end-to-end including
 unrecallability through the `GET /memory/search` keyword fallback (new test:
 `tests/unit/api/test_routes_privacy.py::test_deleted_memory_unrecallable_via_keyword_search`).
 SC-1, SC-3, SC-4, and `privacy_agent.py` all have zero callers outside their own tests. Full

@@ -18,6 +18,7 @@ from api.routes.chat import router as chat_router
 from api.routes.goals import router as goals_router
 from api.routes.health import router as health_router
 from api.routes.memory import router as memory_router
+from api.routes.privacy import router as privacy_router
 from api.routes.onboarding import router as onboarding_router
 from api.routes.safety import router as safety_router
 from api.routes.sessions import router as sessions_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(goals_router)
     app.include_router(memory_router)
+    app.include_router(privacy_router)
     app.include_router(safety_router)
     app.include_router(onboarding_router)
     app.include_router(sessions_router)

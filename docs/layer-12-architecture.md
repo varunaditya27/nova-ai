@@ -1482,7 +1482,7 @@ with no database, network, or sync server. 62 unit tests: `test_encryption_manag
   this codebase is plain Postgres/SQLite, and the SQLCipher/Secure-Enclave design remains a
   deployment project.
 - **SC-2 Selective Deletion** — fully live, the one sub-component with a real production caller
-  end to end. `api/routes/memory.py`'s `DELETE /memory/{memory_id}` builds a
+  end to end. `api/routes/privacy.py`'s `DELETE /memory/{memory_id}` builds a
   `_EpisodicDeletionStore` duck-type adapter over `PostgresMemoryStore` and calls
   `create_deletion_request` → `dry_run_deletion` → `execute_deletion` for real, single-memory
   deletions — verified end-to-end (`tests/unit/api/test_routes_privacy.py`): the deleted memory
@@ -1500,7 +1500,7 @@ with no database, network, or sync server. 62 unit tests: `test_encryption_manag
   `"...will also:"` even when no cascade stores were wired, misleadingly reading as "nothing else
   affected" rather than "nothing else was checked" — fixed to state plainly whether cascade impact
   was computed at all. **Cascade reporting is now real** (not just the primary-store delete):
-  `api/routes/memory.py` wires `_SemanticDeletionStore` and `_LongitudinalDeletionStore` adapters
+  `api/routes/privacy.py` wires `_SemanticDeletionStore` and `_LongitudinalDeletionStore` adapters
   (same duck-type pattern as `_EpisodicDeletionStore`) into `dry_run_deletion`, after fixing two
   field-mismatch bugs found in the process — the semantic cascade loop read
   `fact.derived_from_episodes`/`fact.fact_id`/`fact.fact_text` (real fields:
@@ -1524,7 +1524,7 @@ with no database, network, or sync server. 62 unit tests: `test_encryption_manag
   accepted and skipped, not stubbed.
 - **SC-3 Memory Audit + Correction** — live. `GET /memory/audit/full`, `GET /memory/audit/query`,
   and `POST /memory/{id}/correct` wire `memory_audit.generate_audit_view`/`query` and
-  `correction_interface.apply_correction` for real (`api/routes/memory.py`); the older flat
+  `correction_interface.apply_correction` for real (`api/routes/privacy.py`); the older flat
   `GET /memory/audit` route remains a separate, simpler episodic/semantic list built directly in
   the route rather than Layer 12's richer 7-section view. Wiring the real routes surfaced the same
   class of field-mismatch bug as SC-2's cascade work: `_to_auditable_fact` read
