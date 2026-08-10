@@ -1,7 +1,7 @@
 """Provider-agnostic synchronous LLM interface.
 
-Layers call injected callables synchronously, so all clients are sync. Concrete providers (Groq,
-Ollama) wrap their official SDK and satisfy this ABC; the SDK stays quarantined behind it.
+Layers call injected callables synchronously, so all clients are sync. The concrete provider
+(Ollama) wraps its official SDK and satisfies this ABC; the SDK stays quarantined behind it.
 """
 from __future__ import annotations
 

@@ -1295,8 +1295,8 @@ The earlier (pre-implementation) scaffold placed `semantic_planner.py` (Agent 4a
 ### 16.7 Orchestrator wiring — live and correct today
 
 `backend/pipeline/conversation_orchestrator.py` reads two fields off `EmotionIntentPacket` to
-route traffic and veto for crisis: `route_system()` reads `conversation_mode` (System 2 —
-Groq/llama-3.3-70b, Agent 4a + Agent 4b — is selected whenever mode/content warrants it), and
+route traffic and veto for crisis: `route_system()` reads `conversation_mode` (System 2 — local
+"main" tier model, Agent 4a + Agent 4b — is selected whenever mode/content warrants it), and
 `_is_crisis()` reads `crisis_active`, ORed with Layer 11's independent SC-2 scan. Both are correct
 today, but each was shipped for a time reading the wrong attribute name off the packet
 (`.mode`/`.crisis_flag`, neither of which exists on the real schema) — a bug class worth

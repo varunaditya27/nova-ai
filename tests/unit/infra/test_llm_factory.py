@@ -1,26 +1,24 @@
 import pytest
-pytest.importorskip("groq")
 pytest.importorskip("ollama")
 
-from infra.llm import build_llm_client, build_llm_clients, GroqClient, OllamaClient
+from infra.llm import build_llm_client, build_llm_clients, OllamaClient
 
 CFG = {
     "llm": {
         "system1": {"provider": "ollama", "model": "qwen2.5:7b", "temperature": 0.5},
-        "system2": {"provider": "groq", "model": "llama-3.3-70b-versatile", "temperature": 0.7},
+        "system2": {"provider": "ollama", "model": "qwen2.5:7b", "temperature": 0.7},
         "embeddings": {"provider": "ollama", "model": "nomic-embed-text"},
         "providers": {
-            "groq": {"base_url": "https://api.groq.com/openai/v1", "api_key": "sk-x"},
             "ollama": {"base_url": "http://ollama:11434"},
         },
     }
 }
 
 
-def test_system2_builds_groq_client_with_model():
+def test_system2_builds_ollama_client_with_model():
     client = build_llm_client("system2", CFG)
-    assert isinstance(client, GroqClient)
-    assert client._model == "llama-3.3-70b-versatile"
+    assert isinstance(client, OllamaClient)
+    assert client._model == "qwen2.5:7b"
 
 
 def test_system1_builds_ollama_client():

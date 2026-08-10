@@ -146,13 +146,14 @@ After Layer 3 classifies the message, `route_system()` selects a path:
 |---|---|---|
 | Trigger | casual / simple turns | mode ∈ {crisis, emotional_support, goal_planning, life_review, social_coaching} **or** complexity = complex |
 | Latency target | < 2 s | < 30 s |
-| Production model | Ollama + qwen2.5:7b | Groq API + llama-3.3-70b-versatile |
+| Production model | Ollama, "main" tier (`NOVA_MAIN_MODEL`, default qwen2.5:7b) | same "main" tier model — depth differs by pipeline steps, not model size |
 | Generation | Persona + **Agent 4a** only | Persona + **Agent 4a + Agent 4b** |
 | Emotion Refiner (4b) | **skipped** | **runs** |
 
-Independent of routing, **Layer 3's emotion+intent classifier always runs on every message** using
-a fast small model (Phi-3 Mini / Gemma 2B target), shared across the emotion and intent outputs in
-a single call (<150 ms target).
+Independent of routing, **Layer 3's emotion+intent classifier always runs on every message**,
+shared across the emotion and intent outputs in a single call (<150 ms target). The architecture
+target is a dedicated fast small model (Phi-3 Mini / Gemma 2B); the wired implementation reuses
+the System 1 client instead — see `CLAUDE.md`.
 
 ---
 
@@ -324,7 +325,7 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 > Implementation note: the committed code is pure-stdlib and dependency-injected so the full suite
 > runs offline with no databases or model servers. Production swaps concrete backends (Postgres,
-> SQLCipher, ChromaDB, Ollama, Groq, Kokoro) in behind the same interfaces/key hierarchy. The
+> SQLCipher, ChromaDB, Ollama, Kokoro) in behind the same interfaces/key hierarchy. The
 > runtime substrate that provides those backends lives in `infra/` (config loader + role-based LLM
 > factory, ChromaDB vector store, Postgres/SQLAlchemy models) and is dockerised under `docker/`
 > — see `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
@@ -335,13 +336,12 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 | Component | Production target |
 |---|---|
-| API | FastAPI (`api/main.py`) — **live: 25 REST routes across all 13 layers + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`)**; sync `/chat` bridges to the async layers via a threadpool. WebSocket transport is a follow-up. **Full endpoint + schema reference: [`API_REFERENCE.md`](API_REFERENCE.md).** |
+| API | FastAPI (`api/main.py`) — **live: 40+ REST routes across all 13 layers + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`)**; sync `/chat` bridges to the async layers via a threadpool. WebSocket transport is a follow-up. **Full endpoint + schema reference: [`API_REFERENCE.md`](API_REFERENCE.md).** |
 | Relational store | PostgreSQL 16 + SQLAlchemy 2.x (`infra/db/`) |
 | Vector store | ChromaDB service (`infra/vector_store/`); Ollama `nomic-embed-text` embeddings |
-| Local LLM (System 1) | Ollama + qwen2.5:7b (also gemma2:2b for Layer-8 tool-intent params, nomic-embed-text) |
-| Cloud LLM (System 2) | Groq API + llama-3.3-70b-versatile |
-| LLM client layer | `infra/llm/` — official `groq`/`ollama` SDKs behind one `LLMClient` ABC, config-driven factory |
-| Layer 3 classifier | Phi-3 Mini / Gemma 2B (fast emotion+intent) |
+| LLM inference | Fully offline via Ollama, two config-driven tiers — **main** (`NOVA_MAIN_MODEL`, default qwen2.5:7b: System 1 + System 2 generation) and **mini** (`NOVA_MINI_MODEL`, default gemma2:2b: Layer-8 tool-intent params); embeddings via `nomic-embed-text`. No cloud provider. |
+| LLM client layer | `infra/llm/` — official `ollama` SDK behind one `LLMClient` ABC, config-driven factory |
+| Layer 3 classifier | Phi-3 Mini / Gemma 2B target (aspirational); wired implementation reuses the System 1 client |
 | Agent 4a / 4b targets | Phi-3 Medium 14B / Gemma 2 9B; Llama 3.1 8B / Gemma 2 9B Instruct (aspirational) |
 | TTS | Kokoro (Docker, port 8880, OpenAI-compatible) |
 | Background jobs | APScheduler (`background/scheduler.py`) — consolidation 2h, proactive 30m, patterns weekly, integrity daily, longitudinal Sunday |
@@ -363,7 +363,7 @@ configs parse and are correctly namespaced.
 
 - **Language/runtime:** Python 3.11. The **13 cognitive layers + pipeline** are standard library only
   (dataclasses + str-`Enum`; `hashlib`/`hmac`/`secrets` for crypto) — no pydantic/numpy/sqlalchemy/
-  cryptography. The **`infra/` substrate** is the sole home of third-party deps (`groq`, `ollama`,
+  cryptography. The **`infra/` substrate** is the sole home of third-party deps (`ollama`,
   `chromadb`, `sqlalchemy`, `psycopg`), isolated behind the `pyproject.toml` `infra` extra so the
   layer suite stays install-free and offline.
 - **Dependency injection everywhere:** LLMs, stores, embedders, signers, HTTP, RNG, and clocks are

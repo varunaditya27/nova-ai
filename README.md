@@ -307,6 +307,13 @@ Tool routing is conservative (keyword-gated) so ordinary conversation is never h
 > Crisis detection and safety overrides are **Layer 11 (Ethical Safety)** — not this layer.
 > An earlier revision mislabeled Layer 8 as "Crisis & Safeguarding"; that has been corrected.
 
+> **Current status:** the intent → confirm → execute → audit pipeline is real and fully tested.
+> The five plugins themselves run against local, in-memory backends by design — no SMTP/Gmail,
+> Calendar API, or web search provider is wired in. "Sending an email" or "searching the web"
+> today proves the architecture end-to-end but doesn't reach a real inbox, calendar, or the open
+> internet, and plugin state doesn't survive a server restart. This is a deliberate
+> proof-of-concept scope, not a bug — see `docs/POLISH_BACKLOG.md`.
+
 ---
 
 ## ✨ Layer 9 — Interaction Orchestration
@@ -370,15 +377,17 @@ A system this personal requires extreme privacy guarantees.
 
 Core infrastructure includes:
 
-* AES-256 encryption
-* SQLCipher databases
-* encrypted vector storage
-* selective deletion
-* audit trails
+* selective deletion (a genuine, unrecallable "forget," with a signed certificate)
+* tamper-evident audit trails (SHA-256 hash chains)
 * local-first processing
-* zero-knowledge sync architecture
+* zero-knowledge sync architecture (the server relays opaque ciphertext it never decrypts)
 
 Without trust, longitudinal AI cannot exist.
+
+> **Current status:** the four items above are real and live. AES-256/SQLCipher encryption-at-rest
+> is designed but not yet deployed — Postgres and SQLite hold plaintext today. This is genuine
+> deployment infrastructure (key management, container changes), tracked and deliberately deferred
+> rather than half-built — see `docs/POLISH_BACKLOG.md`.
 
 ---
 
@@ -414,10 +423,9 @@ graph TB
         M3["SQLCipher"]
     end
 
-    subgraph INFERENCE ["🧠 Inference"]
-        I1["Groq"]
-        I2["Ollama"]
-        I3["Gemma / Llama / Phi"]
+    subgraph INFERENCE ["🧠 Inference — fully offline via Ollama"]
+        I1["Main tier · 7-11B · generation"]
+        I2["Mini tier · 1-2B · classification & tool-intent"]
     end
 
     subgraph DELIVERY ["✨ Interaction"]
@@ -530,7 +538,8 @@ cd nova-ai
 
 ```bash
 cp docker/.env.example docker/.env
-# fill in GROQ_API_KEY (System 2) and any credentials you're overriding for local dev
+# Fully offline by default — no API key required. Override NOVA_MAIN_MODEL / NOVA_MINI_MODEL
+# if you want different local Ollama models than the defaults (qwen2.5:7b / gemma2:2b).
 ```
 
 ## Start Infrastructure

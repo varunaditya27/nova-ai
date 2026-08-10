@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Run the full Nova AI backend live on the local host (all-Ollama, no cloud).
+# Run the full Nova AI backend live on the local host. The platform runs fully offline against
+# Ollama by default (config/defaults.yaml) — no cloud provider, no API key.
 #
-# Points every backend at the loopback-published container ports and lets the config/local.yaml
-# overlay repoint System 2 to a local Ollama model (no GROQ_API_KEY needed). Applies migrations,
-# then serves the API. Requires: docker services up (postgres, chroma, ollama) and the models
-# pulled (qwen2.5:7b, nomic-embed-text).
+# Points every backend at the loopback-published container ports, applies migrations, then serves
+# the API. Requires: docker services up (postgres, chroma, ollama) and the models pulled
+# (qwen2.5:7b, gemma2:2b, nomic-embed-text — or your own via NOVA_MAIN_MODEL/NOVA_MINI_MODEL).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,5 +21,5 @@ PY="${PY:-.venv/bin/python}"
 echo "→ applying migrations (alembic upgrade head)"
 "$PY" -m alembic upgrade head
 
-echo "→ starting API on http://127.0.0.1:8000 (System 2 = local Ollama via config/local.yaml)"
+echo "→ starting API on http://127.0.0.1:8000 (fully offline, local Ollama)"
 exec "$PY" -m uvicorn api.main:app --host 127.0.0.1 --port 8000

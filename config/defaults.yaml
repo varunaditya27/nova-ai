@@ -17,15 +17,19 @@ api:
   # :3001 is Next's own automatic fallback when :3000 is already taken (dev-time only).
   cors_origins: ["http://localhost:3000"]
 
+# Fully offline: every role runs against local Ollama. Two model-size tiers, each a single env
+# knob so swapping the model everywhere that tier is used is a one-line change (or `docker/.env`):
+#   NOVA_MAIN_MODEL — generation (System 1 fast path + System 2 deep path). 7-11B class.
+#   NOVA_MINI_MODEL — fast structured tasks (Layer-8 tool-intent param extraction). 1-2B class.
 llm:
   system1:
     provider: ollama
-    model: qwen2.5:7b
+    model: ${NOVA_MAIN_MODEL:-qwen2.5:7b}
     temperature: 0.5
     max_tokens: 1024
   system2:
-    provider: groq
-    model: llama-3.3-70b-versatile
+    provider: ollama
+    model: ${NOVA_MAIN_MODEL:-qwen2.5:7b}
     temperature: 0.7
     max_tokens: 2048
   embeddings:
@@ -33,13 +37,10 @@ llm:
     model: nomic-embed-text
   intent:                       # Layer-8 tool intent: fast, lightweight model for param extraction
     provider: ollama
-    model: gemma2:2b
+    model: ${NOVA_MINI_MODEL:-gemma2:2b}
     temperature: 0.0            # deterministic structured JSON
     max_tokens: 256
   providers:
-    groq:
-      base_url: https://api.groq.com/openai/v1
-      api_key: ${GROQ_API_KEY}
     ollama:
       base_url: ${OLLAMA_BASE_URL:-http://ollama:11434}
 

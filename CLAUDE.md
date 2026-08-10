@@ -30,10 +30,9 @@ docker compose up -d
 # Run development API server
 uvicorn api.main:app --reload
 
-# Run the FULL pipeline live on local Ollama (no cloud / no GROQ_API_KEY needed)
+# Run the FULL pipeline live (fully offline, all Ollama — no cloud provider, no API key)
 #   prereqs: docker services up (incl. kokoro for /voice) + models pulled:
 #     `ollama pull qwen2.5:7b gemma2:2b nomic-embed-text`
-#   config/local.yaml repoints System 2 (Groq) -> local qwen2.5:7b; build_app_state auto-loads it.
 bash scripts/run_local.sh
 
 # Run all tests
@@ -47,21 +46,9 @@ pytest tests/path/to/test_file.py::test_function_name -v
 
 # Apply DB migrations (production/persistent Postgres; the test suite uses create_all)
 alembic upgrade head
-
-# Seed the database with sample data
-python scripts/seed_db.py
-
-# Run memory recall evaluation
-python scripts/eval_recall.py
-
-# Export audit trail
-python scripts/export_audit.py
-
-# Calibrate recall weights
-python scripts/calibrate_weights.py
 ```
 
-Configuration loads `config/defaults.yaml` first, then merges all thirteen `config/layerN.yaml` files, then `config/local.yaml` (`api/state.py::build_app_state`). Keys actually read by code — `llm.*`, `memory.*`, `onboarding.*`, `scheduler.*`, `system.timezone_offset_hours` (single-user deployment; see `backend/layer1_input/config.py`) — live under `defaults.yaml`. `config/layer1.yaml` is fully consumed (`Layer1Config.from_dict`, threaded through every `backend/layer1_input/` function as an optional `cfg` param — see `docs/layer-1-architecture.md`); `layer2.yaml`–`layer13.yaml` still merge in under their own `layerN:` key but aren't consumed yet (layer code still uses hardcoded constants) — wire each as its layer is revisited, not as one cross-cutting change. See `docs/POLISH_BACKLOG.md`.
+Configuration loads `config/defaults.yaml` first, then merges all thirteen `config/layerN.yaml` files, then an optional `config/local.yaml` overlay if one exists (`api/state.py::build_app_state`) — useful for local overrides that shouldn't live in defaults, though none ships by default since the platform is fully offline out of the box. Keys actually read by code — `llm.*`, `memory.*`, `onboarding.*`, `scheduler.*`, `system.timezone_offset_hours` (single-user deployment; see `backend/layer1_input/config.py`) — live under `defaults.yaml`. `config/layer1.yaml` is fully consumed (`Layer1Config.from_dict`, threaded through every `backend/layer1_input/` function as an optional `cfg` param — see `docs/layer-1-architecture.md`); `layer2.yaml`–`layer13.yaml` still merge in under their own `layerN:` key but aren't consumed yet (layer code still uses hardcoded constants) — wire each as its layer is revisited, not as one cross-cutting change. See `docs/POLISH_BACKLOG.md`.
 
 ## Architecture: The 13-Layer Cognitive Pipeline
 
@@ -71,10 +58,10 @@ The pipeline flows sequentially through layers on each conversation turn. `backe
 
 After Layer 3 classifies message complexity, traffic routes to one of two pipelines:
 
-- **System 1** (`backend/pipeline/system1_pipeline.py`): Fast path (<2s). Uses **Ollama + qwen2.5:7b** for casual/banter responses. Skips the Emotion Refiner (Agent 4b).
-- **System 2** (`backend/pipeline/system2_pipeline.py`): Full path (<30s). Uses **Groq API + llama-3.3-70b-versatile** for complex/emotional messages. Runs both Semantic Planner (Agent 4a) and Emotion Refiner (Agent 4b).
+- **System 1** (`backend/pipeline/system1_pipeline.py`): Fast path (<2s). Uses the local **"main" tier** model (`config.llm.system1`, default `qwen2.5:7b` via Ollama, override with `NOVA_MAIN_MODEL`) for casual/banter responses. Skips the Emotion Refiner (Agent 4b).
+- **System 2** (`backend/pipeline/system2_pipeline.py`): Full path (<30s). Uses the same **"main" tier** model (`config.llm.system2`) for complex/emotional messages — a different pipeline depth (Semantic Planner + Emotion Refiner both run), not a different model. Fully offline; no cloud provider.
 
-Note: Layer 3 uses a separate fast classification model (**Phi-3 Mini 3.8B or Gemma 2B**) purely for emotion + intent classification — this runs on every message regardless of System 1/2 routing.
+Note: Layer 3's emotion+intent classification (`api/assembly.py::_json_classifier`) and Layer 1's narrative-observation calls both reuse the **System 1 client**, not a separate model — the architecture docs' "Phi-3 Mini / Gemma 2B" classifier is an aspirational per-role target, not what's wired today. Layer-8 tool-intent param extraction is the one call site that does use a distinct **"mini" tier** model (`config.llm.intent`, default `gemma2:2b`, override with `NOVA_MINI_MODEL`).
 
 ### Layer Map
 
@@ -133,7 +120,7 @@ Layer 3 supports an immediate async `alert_fn` push to Layer 11 the moment `cris
 - **Agent 4a (Semantic Planner)**: Generates factually complete response content. Does NOT add emotional language — that is explicitly Agent 4b's job. Constrained by advice gate (`open`/`gated`/`closed`) from Layer 3.
 - **Agent 4b (Emotion Refiner)**: Takes the semantic draft and adjusts tone, warmth, validation sequencing, and phrasing without changing factual content. Skipped entirely when all 5 neutral conditions are true (no emotional stakes). Post-refinement factual validation uses embedding cosine similarity to check key claims were preserved.
 
-Architecture docs recommend Phi-3 Medium (14B) / Gemma 2 9B for Agent 4a, and Llama 3.1 8B / Gemma 2 9B Instruct for Agent 4b. The config/pipeline uses Groq API (llama-3.3-70b) for System 2 overall — the per-agent model assignments are aspirational targets in the architecture docs.
+Architecture docs recommend Phi-3 Medium (14B) / Gemma 2 9B for Agent 4a, and Llama 3.1 8B / Gemma 2 9B Instruct for Agent 4b. The actual pipeline uses the local "main" tier model (`config.llm.system2`, fully offline via Ollama) for System 2 overall — the per-agent model assignments are aspirational targets in the architecture docs.
 
 ### API Layer (`api/`)
 
@@ -288,14 +275,11 @@ full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 
 - **API**: FastAPI (`api/main.py`) — 40+ REST routes + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`); WebSocket transport is a documented follow-up. Full reference: `docs/API_REFERENCE.md`.
 - **Relational DB**: PostgreSQL (runs as its own container) — the structured/relational store for per-layer state via SQLAlchemy 2.x (`infra/db/`). Vectors live in ChromaDB, so no pgvector is used. The persistent schema is managed by **Alembic** (`alembic upgrade head`; baseline `migrations/versions/0001_baseline_schema.py` runs `create_all`); `init_db`/`create_all` remains the fast path for the offline SQLite test suite and ad-hoc bootstrap.
-- **On-device DB**: SQLite + SQLCipher (encrypted at rest) for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12
-- **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: `conftest.py` still mocks a vector store for offline unit tests; the production store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
-- **Local LLM inference**: Ollama serving qwen2.5:7b (System 1; also System 2 in local mode via `config/local.yaml`), **gemma2:2b** (Layer-8 tool-intent param extraction, `llm.intent`), nomic-embed-text (embeddings)
-- **Cloud LLM**: Groq API (llama-3.3-70b-versatile) for System 2
-- **Layer 3 classifier**: Phi-3 Mini / Gemma 2B (emotion+intent classification, fast path)
+- **On-device DB**: SQLite for user-sensitive data (UWM, audit trail, goals, personality, safety records) owned by Layer 12. SQLCipher encryption-at-rest is designed but not yet deployed — plaintext today, a genuine deployment-infra project (key management), deliberately deferred. See `docs/POLISH_BACKLOG.md`.
+- **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: the offline unit-test suite mocks a vector store; the real store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
+- **LLM inference**: fully offline via Ollama, two config-driven model tiers (`config/defaults.yaml`, override with `NOVA_MAIN_MODEL`/`NOVA_MINI_MODEL` or `docker/.env`) — **main** (`qwen2.5:7b` default, 7-11B class: System 1 + System 2 generation, and — via the System 1 client — Layer 3 classification and Layer 1 narrative observation) and **mini** (`gemma2:2b` default, 1-2B class: Layer-8 tool-intent param extraction, `llm.intent`). Embeddings: `nomic-embed-text`. No cloud provider.
 - **TTS**: Kokoro (custom Docker image on port 8880, OpenAI-compatible API)
-- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly), dependency monitor (weekly, Layer-11 SC-4), narrative arc synthesis (weekly, Layer-10 SC-1), life calendar (daily, Layer-10 SC-5). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS` (nine entries), run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}`.
-- **Session Cache**: `infra/session_cache.py` — ephemeral per-turn in-memory buffer holding intermediate layer outputs. Distinct from Layer 2's Short-Term Memory Buffer.
+- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection + social pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly), dependency monitor (weekly, Layer-11 SC-4), narrative arc synthesis (weekly, Layer-10 SC-1), life calendar (daily, Layer-10 SC-5), goal staleness sweep (weekly, Layer-7 SC-2), post-distress gap check (daily, Layer-6 SC-1). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS` (11 entries), run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}` (exposed on the `/admin` frontend page).
 
 ### Docker Services
 

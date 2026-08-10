@@ -1231,7 +1231,7 @@ validation (confirmed by `test_real_layer4_wiring_refine_emotion_reinserts_a_dro
 not a stub, and an embedding-based `similarity_fn` was tried and reverted (see §16 2026-08-09
 entries) for lack of evidence the default under-performs. With no callables supplied, the layer
 degrades exactly as §12 prescribes and still emits a valid, non-empty packet. The pipeline wires
-the real Groq/Ollama endpoints and embedding model at runtime.
+the real local Ollama endpoints and embedding model at runtime.
 
 `PsychologicalModel` fields the design text reads (`humor_receptivity`, `preferred_interaction_style`,
 `known_sensitivities`) don't exist on the implemented Layer 2 schema; the resolver derives the same

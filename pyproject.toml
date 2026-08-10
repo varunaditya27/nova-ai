@@ -12,7 +12,6 @@ dependencies = []            # base install is pure-stdlib; the 1120 offline tes
 [project.optional-dependencies]
 infra = [
     "pyyaml>=5.4",
-    "groq>=0.11",
     "ollama>=0.3",
     "chromadb>=0.5",
     "sqlalchemy>=2",

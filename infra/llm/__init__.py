@@ -1,23 +1,21 @@
 """LLM infrastructure — provider-agnostic clients + a config-driven factory.
 
 `build_llm_client(role, config)` reads `config['llm'][role]['provider']` and returns the matching
-concrete client wired with that role's model/params and the provider's connection settings. Swapping a
-role to a different provider is a one-line YAML change (see config/defaults.yaml).
+concrete client wired with that role's model/params and the provider's connection settings. Every
+role runs against local Ollama models; which model backs a role is a config/env knob
+(see config/defaults.yaml) — the platform runs fully offline.
 
-The concrete clients (Groq/Ollama) are imported lazily (PEP 562) so pure-stdlib submodules like
-``infra.llm.json_extract`` import on a bare interpreter without the provider SDKs installed.
+The concrete client is imported lazily (PEP 562) so pure-stdlib submodules like
+``infra.llm.json_extract`` import on a bare interpreter without the provider SDK installed.
 """
 from __future__ import annotations
 
 from infra.llm.base_client import LLMClient
 
-__all__ = ["LLMClient", "GroqClient", "OllamaClient", "build_llm_client", "build_llm_clients"]
+__all__ = ["LLMClient", "OllamaClient", "build_llm_client", "build_llm_clients"]
 
 
 def __getattr__(name: str):
-    if name == "GroqClient":
-        from infra.llm.groq_client import GroqClient
-        return GroqClient
     if name == "OllamaClient":
         from infra.llm.ollama_client import OllamaClient
         return OllamaClient
@@ -32,11 +30,6 @@ def build_llm_client(role: str, config: dict) -> "LLMClient":
     temperature = role_cfg.get("temperature")
     max_tokens = role_cfg.get("max_tokens")
 
-    if provider == "groq":
-        from infra.llm.groq_client import GroqClient
-        return GroqClient(model=model, api_key=conn.get("api_key", ""),
-                          base_url=conn.get("base_url"),
-                          temperature=temperature, max_tokens=max_tokens)
     if provider == "ollama":
         from infra.llm.ollama_client import OllamaClient
         return OllamaClient(model=model, base_url=conn["base_url"],
