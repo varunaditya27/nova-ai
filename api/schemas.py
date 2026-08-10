@@ -331,6 +331,42 @@ class RelationshipOut(BaseModel):
     unsolicited_advice_tolerance: float = 0.5
 
 
+# ── Social graph (Layer 5) ────────────────────────────────────────────────
+class PersonOut(BaseModel):
+    person_id: str
+    display_name: str
+    relationship_type: str
+    relationship_valence: float = 0.0
+    valence_trend: float = 0.0
+    interaction_frequency: str = "unknown"
+    is_support_source: bool = False
+    active_conflict: bool = False
+    mention_count: int = 0
+    last_mentioned: Optional[str] = None
+
+
+class SocialEventOut(BaseModel):
+    event_id: str
+    event_type: str
+    summary: str = ""
+    event_valence: float = 0.0
+    event_timestamp: Optional[str] = None
+    is_resolved: bool = False
+
+
+class SocialPatternOut(BaseModel):
+    pattern_id: str
+    pattern_type: str
+    plain_language_description: str = ""
+    pattern_confidence: float = 0.0
+    is_active: bool = True
+
+
+class PersonDetailOut(PersonOut):
+    recent_events: list[SocialEventOut] = []
+    active_patterns: list[SocialPatternOut] = []
+
+
 # ── Admin (job trigger) ──────────────────────────────────────────────────
 class JobRunOut(BaseModel):
     job: str
