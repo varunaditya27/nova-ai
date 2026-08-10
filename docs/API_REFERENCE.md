@@ -313,6 +313,37 @@ Per-user relationship state — stage progression **and** the learned communicat
 
 ---
 
+## People (Layer 5)
+
+Read-only view of Layer 5's persisted social graph — people Nova knows about, built exclusively
+from what the user has stated, never inferred.
+
+### `GET /people` → `PersonOut[]`
+Every person in the graph, sorted by `mention_count` descending.
+| field | type | notes |
+|---|---|---|
+| `person_id` | string | |
+| `display_name` | string | |
+| `relationship_type` | string | e.g. `close_friend`, `family_immediate`, `colleague` |
+| `relationship_valence` | float | -1.0…1.0 |
+| `valence_trend` | float | + improving, − worsening |
+| `interaction_frequency` | string | |
+| `is_support_source` | bool | |
+| `active_conflict` | bool | |
+| `mention_count` | int | |
+| `last_mentioned` | string\|null | ISO datetime |
+
+### `GET /people/{person_id}` → `PersonDetailOut`
+`PersonOut` fields plus:
+| field | type | notes |
+|---|---|---|
+| `recent_events` | `SocialEventOut[]` | that person's event timeline, newest first |
+| `active_patterns` | `SocialPatternOut[]` | active `SocialPattern`s involving them |
+
+`404` if the id doesn't exist.
+
+---
+
 ## Onboarding (Layer 13)
 
 ### `GET /onboarding` → `OnboardingOut`
@@ -453,13 +484,14 @@ Jobs: **`integrity_check`**, **`memory_consolidation`**, **`proactive_check`**,
 
 ---
 
-## Endpoint index (35 paths)
+## Endpoint index (43 paths)
 
 | Method | Path | Layer |
 |---|---|---|
 | GET | `/health`, `/health/ready` | infra |
 | POST | `/chat`, `/chat/stream` | 1–13 |
 | POST | `/voice` | 9 |
+| GET | `/people`, `/people/{id}` | 5 |
 | GET | `/messages`, `/messages/search` | log |
 | POST/DELETE | `/messages/{id}/bookmark`, `/messages/{id}/milestone` | log |
 | GET | `/bookmarks`, `/milestones` | log |
