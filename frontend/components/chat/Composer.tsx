@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Mic } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useDictation } from "@/lib/hooks/useDictation";
 
 /**
  * The one input. A quiet auto-growing field — Enter sends, Shift+Enter makes a new line. Disabled
@@ -29,6 +30,7 @@ export function Composer({
   }, [value]);
 
   const canSend = !disabled && value.trim().length > 0;
+  const dictation = useDictation((text) => onChange(value ? `${value} ${text}` : text));
 
   return (
     <div
@@ -49,6 +51,26 @@ export function Composer({
         placeholder="Say something to Nova…"
         className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-[15px] leading-relaxed text-ink outline-none placeholder:text-ink-faint"
       />
+      {dictation.supported && (
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseDown={dictation.start}
+          onMouseUp={dictation.stop}
+          onMouseLeave={dictation.stop}
+          onTouchStart={dictation.start}
+          onTouchEnd={dictation.stop}
+          aria-label="Hold to talk"
+          className={cn(
+            "mb-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors",
+            dictation.recording
+              ? "border-brass/40 bg-brass/10 text-brass"
+              : "border-hairline/50 text-ink-faint hover:text-ink-soft"
+          )}
+        >
+          <Mic size={15} className={dictation.transcribing ? "animate-pulse" : ""} />
+        </button>
+      )}
       <button
         onClick={() => canSend && onSend()}
         disabled={!canSend}
