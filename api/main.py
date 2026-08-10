@@ -30,6 +30,7 @@ from api.routes.relationship import router as relationship_router
 from api.routes.voice import router as voice_router
 from api.routes.messages import router as messages_router
 from api.routes.continuity import router as continuity_router
+from api.routes.people import router as people_router
 from api.state import build_app_state
 
 logging.basicConfig(level=logging.INFO)
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(voice_router)
     app.include_router(messages_router)
     app.include_router(continuity_router)
+    app.include_router(people_router)
     return app
 
 
