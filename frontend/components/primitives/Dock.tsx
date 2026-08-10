@@ -21,6 +21,7 @@ const LENSES: { href: string; label: string; enabled: boolean }[] = [
   { href: "/life", label: "Life", enabled: true },
   { href: "/goals", label: "Goals", enabled: true },
   { href: "/relationship", label: "Relationship", enabled: true },
+  { href: "/people", label: "People", enabled: true },
   { href: "/proactive", label: "Proactive", enabled: true },
   { href: "/tools", label: "Actions", enabled: true },
   { href: "/memories", label: "Memories", enabled: true },
