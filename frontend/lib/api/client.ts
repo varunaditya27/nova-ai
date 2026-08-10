@@ -27,6 +27,7 @@ import {
   type ToolAction,
   type ToolConfirmation,
   type ToolResult,
+  type TranscribeOut,
 } from "./types";
 
 const BASE = "/api";
@@ -256,4 +257,14 @@ export async function postVoice(
   );
   if (!res.ok) throw new ApiError(res.status, `voice unavailable (${res.status})`);
   return res.blob();
+}
+
+/** Upload a recorded utterance for transcription. Throws (any non-200, incl. 503) so the caller
+ * can fall back to letting the user type instead. */
+export async function transcribeVoice(blob: Blob): Promise<TranscribeOut> {
+  const form = new FormData();
+  form.append("file", blob, "clip.webm");
+  const res = await fetch(`${BASE}/voice/transcribe`, { method: "POST", body: form });
+  if (!res.ok) throw new ApiError(res.status, `transcription unavailable (${res.status})`);
+  return (await res.json()) as TranscribeOut;
 }

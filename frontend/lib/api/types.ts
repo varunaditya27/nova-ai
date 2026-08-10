@@ -277,6 +277,13 @@ export type OnboardingOut = { cold_start_active: boolean; session_index: number 
 /** GET /sessions. */
 export type SessionOut = { session_key: string; turn_count: number };
 
+/** POST /voice/transcribe — a dictated utterance transcribed locally. */
+export type TranscribeOut = {
+  transcript: string;
+  confidence: number;
+  language: string | null;
+};
+
 /** A thrown API error carrying the HTTP status and backend `detail`. */
 export class ApiError extends Error {
   constructor(
