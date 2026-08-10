@@ -107,6 +107,12 @@ class VoiceRequest(BaseModel):
     voice_id: str | None = None
 
 
+class TranscribeOut(BaseModel):
+    transcript: str
+    confidence: float = 0.0
+    language: Optional[str] = None
+
+
 # ── Tools (Layer 8) ──────────────────────────────────────────────────────
 class ToolConfirmationOut(BaseModel):
     request_id: str

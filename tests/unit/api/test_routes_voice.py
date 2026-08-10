@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from api.dependencies import get_state
 from api.routes.voice import router
-from backend.layer9_output.schemas import AudioResult
+from backend.layer9_output.schemas import AudioResult, TranscriptResult
 
 
 class _OkBackend:
@@ -47,3 +47,41 @@ def test_voice_503_when_synthesis_fails():
 
 def test_voice_rejects_empty_text():
     assert _client(_OkBackend()).post("/voice", json={"text": "  "}).status_code == 422
+
+
+class _OkSTT:
+    def transcribe(self, audio_bytes, mime_type="audio/webm"):
+        return TranscriptResult(transcript="hello nova", confidence=0.95, language="en", ok=True)
+
+
+class _FailSTT:
+    def transcribe(self, audio_bytes, mime_type="audio/webm"):
+        return TranscriptResult(ok=False, error="stt down")
+
+
+def _client_with_stt(stt_backend):
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_state] = lambda: SimpleNamespace(voice_backend=None, stt_backend=stt_backend)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_transcribe_returns_text():
+    r = _client_with_stt(_OkSTT()).post(
+        "/voice/transcribe", files={"file": ("clip.webm", b"FAKEAUDIO", "audio/webm")})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["transcript"] == "hello nova"
+    assert body["language"] == "en"
+
+
+def test_transcribe_503_when_backend_absent():
+    r = _client_with_stt(None).post(
+        "/voice/transcribe", files={"file": ("clip.webm", b"FAKEAUDIO", "audio/webm")})
+    assert r.status_code == 503
+
+
+def test_transcribe_503_when_transcription_fails():
+    r = _client_with_stt(_FailSTT()).post(
+        "/voice/transcribe", files={"file": ("clip.webm", b"FAKEAUDIO", "audio/webm")})
+    assert r.status_code == 503

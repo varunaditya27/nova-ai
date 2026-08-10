@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from api.dependencies import get_state
-from api.schemas import VoiceRequest
+from api.schemas import TranscribeOut, VoiceRequest
 from api.streaming import _MODE_TO_TYPING
 
 logger = logging.getLogger("nova.api")
@@ -38,3 +38,18 @@ def synthesize_voice(req: VoiceRequest, state=Depends(get_state)) -> Response:
         raise HTTPException(status_code=503, detail="voice synthesis failed")
     return Response(content=result.audio_bytes,
                     media_type=getattr(result, "content_type", "audio/mpeg"))
+
+
+@router.post("/voice/transcribe", response_model=TranscribeOut)
+def transcribe_voice(file: UploadFile = File(...), state=Depends(get_state)):
+    backend = getattr(state, "stt_backend", None)
+    if backend is None:
+        raise HTTPException(status_code=503, detail="speech-to-text unavailable")
+
+    audio_bytes = file.file.read()
+    result = backend.transcribe(audio_bytes, file.content_type or "audio/webm")
+    if not getattr(result, "ok", False):
+        logger.warning("transcription failed: %s", getattr(result, "error", "unknown"))
+        raise HTTPException(status_code=503, detail="transcription failed")
+    return TranscribeOut(transcript=result.transcript, confidence=result.confidence,
+                         language=result.language)
