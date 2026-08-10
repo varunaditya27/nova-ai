@@ -193,6 +193,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                     total_sessions=d["total_sessions"],
                     relationship_age_days=d["relationship_age_days"],
                     average_session_frequency_days=d["average_session_frequency_days"],
+                    longest_historical_gap_days=d["longest_historical_gap_days"],
                     typical_bands=d["typical_bands"],
                     last_session_end=d["last_session_end"],
                     timezone_offset_hours=timezone_offset_hours))

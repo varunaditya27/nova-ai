@@ -993,10 +993,41 @@ def test_temporal_profile_provider_derives_from_relationship_and_message_stores(
     # relationship_age_days / total_sessions, which would give a much smaller, wrong number
     # and silently defeat detect_temporal_anomaly's cadence check (see api/state.py comment).
     assert d["average_session_frequency_days"] == pytest.approx(4.0)
+    # Both consecutive gaps are 4 days, so the max equals the mean here — see the dedicated
+    # unequal-gaps test below for proof it's actually the max, not a second mean.
+    assert d["longest_historical_gap_days"] == pytest.approx(4.0)
     # Below the minimum-sample floor (3 banded messages < 10) — stays empty rather than reporting
     # a low-confidence histogram that would flag every unseen band as "atypical".
     assert d["typical_bands"] == {}
     assert d["message_length_median_chars"] is not None
+
+
+def test_temporal_profile_provider_longest_gap_is_max_not_mean():
+    from infra.db.relationship_store import PostgresRelationshipStore
+    from infra.db.message_store import PostgresMessageStore
+    from api.state import make_temporal_profile_provider
+
+    engine = make_engine("sqlite+pysqlite:///:memory:")
+    init_db(engine)
+    factory = make_session_factory(engine)
+
+    rel = PostgresRelationshipStore(factory, "local-user")
+    rel.record_turn("s1")
+    rel.record_turn("s2")
+    rel.record_turn("s3")
+
+    msgs = PostgresMessageStore(factory, "local-user")
+    msgs.append("user", "hi", session_key="s1",
+                created_at=datetime(2026, 1, 1, 20, 0, tzinfo=timezone.utc))
+    msgs.append("user", "back soon", session_key="s2",
+                created_at=datetime(2026, 1, 2, 20, 0, tzinfo=timezone.utc))   # +1 day
+    msgs.append("user", "long gap", session_key="s3",
+                created_at=datetime(2026, 1, 20, 20, 0, tzinfo=timezone.utc))  # +18 days
+
+    d = make_temporal_profile_provider(factory)("local-user")
+
+    assert d["average_session_frequency_days"] == pytest.approx(9.5)   # mean of 1 and 18
+    assert d["longest_historical_gap_days"] == pytest.approx(18.0)     # max, not mean
 
 
 def test_temporal_profile_provider_populates_bands_above_sample_floor():

@@ -30,6 +30,9 @@ gap was found and why it wasn't fixed inline.
 - **`config/layerN.yaml` unread for layers 2–13.** Only Layer 1 and (as of 2026-08-09) Layer 11's
   `escalation.default_region` read their own config file live. By design, wired one layer at a
   time as each is revisited — not a batch cross-cutting fix.
+- **[done, 2026-08-10]** Two dead `UserTemporalProfile` fields — `longest_historical_gap_days`
+  wired to a real producer + consumer, `typical_session_duration_minutes` deleted (no plausible
+  consumer). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 2 — Cognition & Memory
 

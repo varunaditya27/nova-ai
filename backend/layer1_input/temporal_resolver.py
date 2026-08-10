@@ -103,10 +103,16 @@ def detect_temporal_anomaly(
 
     notes: list[str] = []
 
-    # Condition 2 — gap far beyond the user's baseline cadence.
+    # Condition 2 — gap far beyond the user's baseline cadence. Suppressed when the gap still
+    # falls within this user's own historical range (§3.4) — a long-but-seen-before gap isn't
+    # a real anomaly for a user with naturally bursty engagement.
     if profile.average_session_frequency_days > 0:
         threshold_seconds = profile.average_session_frequency_days * 86400 * c.long_gap_multiplier
-        if gap_seconds > threshold_seconds:
+        within_own_history = (
+            profile.longest_historical_gap_days > 0
+            and gap_seconds <= profile.longest_historical_gap_days * 86400
+        )
+        if gap_seconds > threshold_seconds and not within_own_history:
             gap_days = round(gap_seconds / 86400, 1)
             baseline = round(profile.average_session_frequency_days, 1)
             notes.append(

@@ -14,87 +14,41 @@ the pipeline falls back to safe defaults rather than raising.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, Protocol
+from typing import Optional
 from uuid import UUID, uuid4
 
 from . import assembler, implicit_signals, multimodal_normalizer, prosody_extractor
 from . import temporal_resolver as tr
 from . import thread_tracker
 from .config import Layer1Config
-from .multimodal_normalizer import NormalizerBackends
-from .prosody_extractor import ProsodyBackend
 from .schemas import (
     AttachmentPayload,
-    AttachmentType,
     ClientMetadata,
     InputPerceptionPacket,
     ModalityContext,
     PrimaryModality,
     UserBehaviorBaseline,
-    UserTemporalProfile,
     VoiceCalibrationProfile,
+)
+from .state_stores import (
+    InMemoryProfileStore,
+    Layer1Backends,
+    ProfileStore,
+    _first_voice_attachment,
+    _safe_due_threads,
+    _safe_get_profile,
 )
 from .thread_tracker import InMemoryThreadStore, ThreadStore
 
-
-# ── Injectable per-user state stores ─────────────────────────────────────────
-class ProfileStore(Protocol):
-    def get(self, user_id: UUID) -> Optional[UserTemporalProfile]: ...
-
-
-class InMemoryProfileStore:
-    """Default in-process ProfileStore (tests / pre-DB). Missing user → cold start."""
-
-    def __init__(self, profiles: Optional[dict[UUID, UserTemporalProfile]] = None) -> None:
-        self._profiles = dict(profiles) if profiles else {}
-
-    def get(self, user_id: UUID) -> Optional[UserTemporalProfile]:
-        return self._profiles.get(user_id)
-
-
-@dataclass
-class Layer1Backends:
-    """Heavy model backends for SC-3 / SC-4. All optional — absent → graceful degradation."""
-
-    normalizer: NormalizerBackends = field(default_factory=NormalizerBackends)
-    prosody: Optional[ProsodyBackend] = None
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-def _safe_get_profile(
-    profile_store: ProfileStore, user_id: UUID, cfg: Optional[Layer1Config] = None
-) -> tuple[UserTemporalProfile, bool]:
-    """Return (profile, cold_start). Falls back to a fresh default if the read fails (§11)."""
-    try:
-        profile = profile_store.get(user_id)
-    except Exception:  # noqa: BLE001 — store failure must never break the pipeline
-        profile = None
-    if profile is None:
-        return UserTemporalProfile(user_id=user_id), True
-    return profile, profile.total_sessions < (cfg or Layer1Config()).anomaly_min_sessions
-
-
-def _safe_due_threads(
-    store: ThreadStore, now: datetime, cfg: Optional[Layer1Config] = None
-) -> tuple[list, int]:
-    """Return (surfaced_threads, overdue_count); empty on failure (§11)."""
-    try:
-        candidates = thread_tracker.due_candidates(store, now, cfg)
-        surfaced = thread_tracker.get_due_threads(store, now, cfg=cfg)
-    except Exception:  # noqa: BLE001
-        return [], 0
-    return surfaced, len(candidates) - len(surfaced)
-
-
-def _first_voice_attachment(
-    attachments: list[AttachmentPayload],
-) -> Optional[AttachmentPayload]:
-    for att in attachments:
-        if att.attachment_type == AttachmentType.VOICE:
-            return att
-    return None
+__all__ = [
+    "InMemoryProfileStore",
+    "InMemoryThreadStore",
+    "Layer1Backends",
+    "ProfileStore",
+    "ThreadStore",
+    "process_input_event",
+]
 
 
 # ── Service entry point ──────────────────────────────────────────────────────

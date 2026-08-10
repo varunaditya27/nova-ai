@@ -16,24 +16,42 @@ if nothing about the still-open item remains).
 
 ---
 
-## Layer 1 — Input Perception (audited 2026-08-04)
+## Layer 1 — Input Perception (audited 2026-08-04; re-audited 2026-08-10)
 
 Module (`backend/layer1_input/`) itself had no dead code or bloat — every symbol has a caller.
-The findings below are gaps between what the module can do and what the live pipeline actually
-feeds it. Full detail: `docs/layer-1-architecture.md`.
+Full detail: `docs/layer-1-architecture.md`.
 
-- **Narrative-thread creation.** Nothing anywhere constructs a `NarrativeThread` — `due_threads`
-  is always `[]` live, and `backend/layer6_proactivity/intake.py::on_thread_due` is an orphaned
-  consumer waiting for input that never arrives. Needs a detector (likely LLM-based) that spots
-  open loops in conversation ("I have a job interview Thursday", "I'll call my mom back") and a
-  persisted `ThreadStore`. This is a real feature to design, not a wiring fix.
-- **Implicit signals + multimodal/voice never fire live.** `ChatRequest` (`api/schemas.py`)
-  carries only `message` + `session_id` — no typing-start timestamp, deletion count, burst info,
-  or attachments. So SC-2 (implicit signal extractor) always scores a fixed low intensity, and
-  SC-3/SC-4 (multimodal normalizer, voice prosody) never fire — attachments are hardcoded to `[]`
-  in `api/assembly.py::perceive`. Fixing this needs a `ChatRequest` schema change (additive,
-  optional fields) plus frontend instrumentation to actually populate them — a coordinated
-  backend+frontend change, not backend-only.
+- **Narrative-thread creation — `[done]` (2026-08-09).** `thread_extractor.py` +
+  `PostgresThreadStore` now build and persist real `NarrativeThread`s from conversation content,
+  and `backend/layer6_proactivity/intake.py::on_thread_due` receives real candidates. See
+  `docs/layer-1-architecture.md` §15 "SC-1 — Narrative threads: fully live".
+- **Implicit signals — partially `[done]` (2026-08-09).** `response_latency_ms` is real end to
+  end via a new `Session.last_delivered_at` column; the rest of `ClientMetadata` (typing-start
+  timestamp, deletion count, burst info) and all attachments are threaded end-to-end as additive,
+  optional fields but have no producer yet — needs frontend instrumentation, scoped in
+  `docs/FRONTEND_TODO.md`. SC-3/SC-4 (multimodal normalizer, voice prosody) remain correctly
+  unwired — no backend model exists anywhere in the codebase; this is a genuine future infra
+  project (build LLaVA/Whisper/SpeechBrain backends), not a wiring gap.
+- **File-length cleanup — `[done]` (2026-08-10).** Split every Layer-1 source file over the
+  200-line cap into single-responsibility modules, no behavior change (full layer-1 + full repo
+  test suite verified green before/after): `schemas.py` (393) → `schemas/` package (enums,
+  temporal, modality, client, packet); `multimodal_normalizer.py` (275) → package (types,
+  deterministic, backend_normalizers, core); `assembler.py` (217) → `assembler.py` (packet
+  composition only) + new `conflict_resolution.py` (the three pure §7.2/§7.4 functions);
+  `service.py` (245) → `service.py` (orchestration only) + new `state_stores.py` (injectable
+  stores + safe-read helpers). All existing import paths (`from backend.layer1_input.schemas
+  import X`, `from backend.layer1_input import service as svc`, etc.) kept working via
+  `__init__.py` re-exports — no call site outside the package needed to change.
+- **Two dead `UserTemporalProfile` fields — `[done]` (2026-08-10).** Re-audit found
+  `typical_session_duration_minutes` and `longest_historical_gap_days` (architecture doc §3.4)
+  were the only two fields in an otherwise fully-wired SC-1 class with zero readers or writers
+  anywhere in the codebase. Resolved per the new CLAUDE.md rule (prefer wiring over deletion):
+  `longest_historical_gap_days` got a real producer (`api/state.py`, derived from the same
+  bounded session-start list as `average_session_frequency_days`) and a real consumer
+  (`detect_temporal_anomaly`'s condition-2 threshold now personalizes to a user's own historical
+  gap range). `typical_session_duration_minutes` had no plausible consumer — no session-duration
+  tracking exists anywhere in the live pipeline — so it was deleted from the schema and the §3.4
+  spec table rather than wired for its own sake.
 - **`config/layerN.yaml` files are unread — `[done]` for layer1 (2026-08-04, follow-up pass).**
   `backend/layer1_input/config.py::Layer1Config` now reads every `config['layer1']` key live,
   threaded through all 6 sub-component modules as an optional `cfg` param; see
