@@ -713,10 +713,12 @@ detail.
 ## Cross-cutting: every `api/routes/*.py` file checked against its layer (2026-08-09)
 
 A full pass over all 19 route files in `api/routes/`, verifying each calls the real layer
-entrypoint it claims to and forwards the fields CLAUDE.md documents. `auth.py` is a deliberate,
+entrypoint it claims to and forwards the fields CLAUDE.md documents. `auth.py` was a
 never-implemented stub (multi-user auth is explicitly out of scope for this single-user
-deployment) and isn't registered in `api/main.py` — not a gap. Everything else checked out
-correctly wired, with one real bug found and fixed:
+deployment) that wasn't registered in `api/main.py` — **removed outright, 2026-08-10** (a
+comment-only file describing routes that don't exist is dead code, not documentation; multi-user
+auth can be added fresh if the product ever needs it). Everything else checked out correctly
+wired, with one real bug found and fixed:
 
 - **`GET /home`'s `current_chapter` was faked from the wrong data source.** It read the latest
   *weekly summary*'s `dominant_theme`/`week_narrative` — but Layer 10 SC-1 has a real, purpose-
