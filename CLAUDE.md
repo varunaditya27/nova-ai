@@ -21,6 +21,7 @@ Nova AI is a **13-layer cognitive architecture** for long-term human-AI companio
 - **Every wiring/bug fix needs a test through the real orchestrator or route**, not mocked pipeline steps. Every field-name and dropped-parameter bug found across Layers 4–12 was invisible to mocked-step tests and only surfaced against real object shapes.
 - **Closing a backlog item:** mark its bullet `[done]` in `docs/POLISH_BACKLOG.md` with the commit/PR, update the relevant `docs/layer-N-architecture.md` "Live Wiring Status" section, and update CLAUDE.md's one-line layer summary if it no longer holds.
 - **Never add a `Co-Authored-By: Claude` (or similar AI attribution) trailer to commits in this repo.** The user has said this repeatedly — write commit messages with no AI co-author line, full stop.
+- **Don't commit every small step.** Group related work (a task's worth, a logical unit) into one commit instead of committing after each individual file edit or micro-step of an implementation plan. Commit at natural checkpoints — a completed feature slice, a passing test suite — not on every green checkmark.
 
 ## Commands
 
