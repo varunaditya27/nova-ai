@@ -1,22 +1,10 @@
 # Layer 8 Tool Plugins
 #
-# Each plugin implements the ToolPlugin interface and integrates with an external service.
-# Plugins are swappable—the same interface, different backends.
+# Each plugin implements the ToolPlugin interface (execute, undo, capabilities). The
+# intent -> resolve -> confirm -> execute -> audit pipeline around them is real and fully tested.
 #
-# Implemented plugins:
-#   - calendar_plugin.py: Google Calendar / Apple Calendar / Outlook integration
-#   - email_plugin.py: Draft and send emails (careful: high confirmation tier)
-#   - web_search_plugin.py: Search, filter, extract, synthesize
-#   - notes_plugin.py: Capture to Notion / Obsidian / markdown files
-#   - reminders_plugin.py: Create and retrieve reminders
-#
-# Not implemented (stubs in backend/_stubs/):
-#   - sms_plugin.py
-#   - payments_plugin.py
-#   - habit_tracker_plugin.py
-#
-# All plugins adhere to:
-#   - execute(parameters) -> ToolResult
-#   - undo() -> bool (if reversible)
-#   - capabilities() -> list[str]
-#   - validate_parameters(parameters) -> ValidationResult
+# Current status: all five plugins (calendar_plugin.py, email_plugin.py, web_search_plugin.py,
+# notes_plugin.py, reminders_plugin.py) run against local, in-memory backends by design — no
+# external service (Google Calendar, SMTP, a real search API, ...) is wired in, and plugin state
+# doesn't survive a restart. This proves the architecture end-to-end as a deliberate
+# proof-of-concept scope, not a bug. See docs/POLISH_BACKLOG.md before wiring a real backend in.

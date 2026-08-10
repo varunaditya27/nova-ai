@@ -456,6 +456,16 @@ Full detail: `docs/layer-8-architecture.md`'s "Live wiring status" note.
   Consistent with the codebase's current single-process/single-user deployment assumption
   (`api/routes/tools.py` already documents the "process singleton" design). Worth revisiting only
   if the deployment model changes (multi-worker, frequent restarts).
+- **[done, 2026-08-10] Product decision: the five plugins stay demo/proof-of-concept.** Revisited
+  during end-to-end status review — all five (`calendar_plugin.py`, `email_plugin.py`,
+  `web_search_plugin.py`, `notes_plugin.py`, `reminders_plugin.py`) run against bare in-memory
+  Python dicts with zero external integration (no SMTP/Gmail, no Calendar API, no real search
+  provider) and zero Postgres persistence — state is lost on every restart. This was already true
+  and always intentional ("local/offline backends, no third-party creds," `api/state.py`), but the
+  README previously read as though these were live integrations. Explicit decision: keep the
+  architecture as a proof-of-concept, don't build real backends now; README's Layer 8 section and
+  `backend/layer8_tools/plugins/__init__.py` now say so plainly instead of overclaiming. Revisit
+  only if/when a real deployment actually needs Nova to touch a real inbox/calendar/the internet.
 
 **Re-confirmed, 2026-08-09**: no code under `backend/layer8_tools/` or `api/routes/tools.py`
 changed since the audit (`git log --since=2026-08-04` on those paths is empty), no other layer's
