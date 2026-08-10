@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { transcribeVoice } from "@/lib/api/client";
 
 /** Push-to-talk dictation: hold to record, release to transcribe. Progressive enhancement —
  * `supported` is false (and start/stop are no-ops) when the browser lacks MediaRecorder or the
  * user denies mic permission, so callers can hide the control entirely rather than show a broken
- * one. */
+ * one. Starts false and flips in an effect (never computed inline during render) so the
+ * server-rendered HTML and the first client render always agree — computing it inline caused a
+ * real hydration mismatch (server has no `window`, client does). */
 export function useDictation(onTranscript: (text: string) => void) {
+  const [supported, setSupported] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,10 +18,12 @@ export function useDictation(onTranscript: (text: string) => void) {
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const supported =
-    typeof window !== "undefined" &&
-    "mediaDevices" in navigator &&
-    typeof MediaRecorder !== "undefined";
+  // Feature detection can only run client-side; this is the standard isomorphic pattern (start
+  // false, flip after mount) so SSR and the first client render always agree.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSupported("mediaDevices" in navigator && typeof MediaRecorder !== "undefined");
+  }, []);
 
   const start = useCallback(async () => {
     if (!supported || recording) return;
