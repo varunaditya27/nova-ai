@@ -20,6 +20,7 @@ Nova AI is a **13-layer cognitive architecture** for long-term human-AI companio
 - **Wire to the real module, don't reimplement it.** When closing a backlog item, call the existing tested function/class rather than rewriting its logic in the adapter. This audit pass initially flagged three apparent divergent-reimplementation pairs; all three are now resolved — one (sync) turned out to be a correct client/server split, not a duplication, on closer investigation (docs/layer-12-architecture.md); the other two (elicitation surfacing, graduation paths) were genuinely reconciled by wiring the real module in (docs/layer-13-architecture.md). If the real module's shape doesn't fit the call site, that's a sign to fix the call site's contract, not to fork the logic.
 - **Every wiring/bug fix needs a test through the real orchestrator or route**, not mocked pipeline steps. Every field-name and dropped-parameter bug found across Layers 4–12 was invisible to mocked-step tests and only surfaced against real object shapes.
 - **Closing a backlog item:** mark its bullet `[done]` in `docs/POLISH_BACKLOG.md` with the commit/PR, update the relevant `docs/layer-N-architecture.md` "Live Wiring Status" section, and update CLAUDE.md's one-line layer summary if it no longer holds.
+- **Never add a `Co-Authored-By: Claude` (or similar AI attribution) trailer to commits in this repo.** The user has said this repeatedly — write commit messages with no AI co-author line, full stop.
 
 ## Commands
 
