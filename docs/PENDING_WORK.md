@@ -259,6 +259,12 @@ Re-verified 2026-08-09:
 - **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` stays unwired** — no feature in Nova
   is gated or introduced via this mechanism, and none was built just to give it a caller. Revisit
   only if a real feature needing staged introduction gets built.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package) and dead-field
+  cleanup (deleted `ElicitationItem.inferred_value`, `ColdStartBehaviorConfig.
+  relationship_stage_advance_gate`/`_cold_start`). See `docs/POLISH_BACKLOG.md`.
+- **Only 3 of 8 `INITIAL_ELICITATION_ITEMS` targets have a matching `InitialState` field** — a
+  real design question (add the missing fields, or repoint the targets), not fixed inline. See
+  `docs/layer-13-architecture.md`.
 
 ---
 

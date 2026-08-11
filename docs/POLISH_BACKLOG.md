@@ -934,6 +934,19 @@ has a production caller (via a lighter reimplementation in `api/elicitation.py`,
   the real activation already happens elsewhere, keyed off the same `cold_start_active` flag.
   **Re-verified, 2026-08-09**: still no real feature needing staged introduction exists anywhere
   in this codebase; no code changed.
+- **[done, 2026-08-12]** Polish pass (final layer): split the 297-line `schemas.py` into a
+  `schemas/` package (6 files by responsibility), all re-exported so existing import paths are
+  unchanged. Deleted, after properly analyzing wiring cost for each rather than a quick call:
+  `ElicitationItem.inferred_value` and `ColdStartBehaviorConfig.relationship_stage_advance_gate`/
+  `_cold_start`. See `docs/layer-13-architecture.md`.
+- **Only 3 of 8 `INITIAL_ELICITATION_ITEMS` targets have a matching `InitialState` field** —
+  `[logged]` (2026-08-12), not fixed inline. `user_handle`/`life_phase`/`primary_reason` map
+  directly; `verbosity_preference`/`emotional_expression_style` live nested inside
+  `CommunicationStyleProfile` under different names; `close_relationships`/`primary_goal_area`/
+  `core_values_sketch` have no backing field anywhere in `InitialState`. Surfaced while
+  investigating whether `ElicitationItem.inferred_value` could be cheaply wired — it can't, this
+  is a real design question (add the missing fields, or repoint the targets) affecting 5 of the
+  8 elicitation items, not a routine prune. See `docs/layer-13-architecture.md`.
 
 ---
 
