@@ -190,6 +190,9 @@ Nothing pending. Re-confirmed clean 2026-08-09. **[done, 2026-08-11]** File-leng
   source anywhere upstream (`turn_type`/`urgency_level` don't exist yet in Layers 3-4; `voice_mode`
   needs the Layer 1 multimodal gap, which stays correctly unwired — no backend exists). See
   `docs/layer-9-architecture.md`.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `interaction_orchestrator.py`→+`delivery.py`) and dead-field removal (`MicroInteractionType`,
+  `FormatSpec.allow_horizontal_rules`/`emoji_position`) — see `docs/POLISH_BACKLOG.md`.
 
 ## Layer 10 — Longitudinal Life Layer
 

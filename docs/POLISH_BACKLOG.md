@@ -667,6 +667,19 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   dictation into the composer, not the separate Layer-1 voice-*attachment* path (blocked on the
   attachments system, which doesn't exist). See
   `docs/superpowers/specs/2026-08-10-speech-to-text-design.md`.
+- **[done, 2026-08-12]** Polish pass: split the 227-line `schemas.py` into a `schemas/` package
+  and the 220-line `interaction_orchestrator.py` into `interaction_orchestrator.py` (event
+  assembly) + `delivery.py` (the `deliver` engine entry point), both under the 200-line cap and
+  both preserving every existing import path via `__init__.py` re-exports. Deleted
+  `MicroInteractionType` (zero callers — the six-type taxonomy it duplicated is already fully
+  implemented via `MicroInteractionPlan`'s named fields) and, confirmed with the user,
+  `FormatSpec.allow_horizontal_rules`/`emoji_position` (no producer in `compute_format_spec`, no
+  consumer in `enforce_format_spec` — genuinely dead, not a wiring gap). All other `FormatSpec`
+  fields not consumed by `enforce_format_spec` (`register`, `use_contractions`, `allow_fragments`,
+  `allow_slang`, `max_list_items`, `allow_headers`, `code_format`, `language_label_required`) ARE
+  computed by `compute_format_spec` and are the pre-generation directive half of the contract —
+  this is the same already-logged gap as `format_spec_applied` having no client consumer yet, not
+  new dead code. See `docs/layer-9-architecture.md`.
 
 ---
 

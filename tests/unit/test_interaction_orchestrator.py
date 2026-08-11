@@ -1,5 +1,6 @@
 """Tests for SC-1 Interaction Orchestrator + Layer 9 engine (architecture doc §3.5, §7, §8)."""
 
+from backend.layer9_output import delivery
 from backend.layer9_output import interaction_orchestrator as io
 from backend.layer9_output.schemas import (
     AudioResult,
@@ -81,7 +82,7 @@ def test_closing_signal_replaces_response():
 
 # ── Engine integration (§7, §8) ──────────────────────────────────────────────
 def _deliver(text="I think that could really work out well.", **kw):
-    return io.deliver(text, conversation_mode=kw.pop("mode", "casual_chat"),
+    return delivery.deliver(text, conversation_mode=kw.pop("mode", "casual_chat"),
                       user_format_profile=UserFormatProfile(user_id="u1"), rng=_Rng(), **kw)
 
 
