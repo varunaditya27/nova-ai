@@ -243,6 +243,14 @@ inject; not a gap to close without a model.
   `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`.
 - No "personality vector" store exists anywhere in this codebase — that cascade check stays
   permanently unreported by construction, not a bug to fix.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `selective_deletion.py`→+`deletion_scope.py`+`deletion_cascade.py`) and dead-field cleanup
+  (wired `DeletionScope.date_range`; deleted `CascadeImpactReport.chapters_affected`/
+  `.chapter_merge_required` and 4 doc-only-never-implemented `DeletionScope` fields). See
+  `docs/POLISH_BACKLOG.md`.
+- **`execute_deletion` only mutates `memory_store` regardless of `deletion_type`** — correct today
+  only because the one live caller always issues SINGLE_MEMORY requests; a real caller for the
+  other four deletion types needs multi-store dispatch. See `docs/layer-12-architecture.md`.
 
 ## Layer 13 — Onboarding & Cold Start
 

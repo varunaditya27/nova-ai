@@ -867,6 +867,28 @@ operation in this single-user local deployment needs consent-gating today.
 `selective_deletion.redact_cascade` strips deleted-episode references from affected semantic
 facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`.
 
+**[done, 2026-08-12]** Polish pass: split the 251-line `schemas.py` into a `schemas/` package
+(6 files by responsibility) and the 251-line `selective_deletion.py` into `deletion_scope.py`
+(request building/scope resolution) + `deletion_cascade.py` (dry-run cascade + redaction), with
+`selective_deletion.py` itself now just certificate generation + execution — all under the cap,
+all re-exported. Confirmed with the user and wired: `DeletionScope.date_range` now really narrows
+`resolve_scope`'s TOPIC_BASED branch by `created_at` (new regression test:
+`test_topic_scope_further_narrowed_by_date_range`). Deleted, confirmed with the user:
+`CascadeImpactReport.chapters_affected`/`.chapter_merge_required` (a 4th chapter/narrative-arc
+cascade store was never added as an injectable `dry_run_deletion` param — only semantic/
+personality/longitudinal are wired — so this would be new scope, not a prune). Also removed 4
+doc-only fields never implemented in code at all (`DeletionScope.semantic_category`/
+`.identity_category`/`.weekly_summary_ids`/`.retrospective_ids`) — doc/code had diverged, not a
+wiring gap. See `docs/layer-12-architecture.md`.
+- **`execute_deletion` only ever mutates `memory_store`, regardless of `deletion_type`** —
+  `[logged]` (2026-08-12), not fixed inline. `resolve_scope`'s SEMANTIC_WIPE/IDENTITY_MEMORY/
+  LONGITUDINAL_DATA branches return IDs from entirely different stores (semantic facts, identity
+  entries, chapters) but `execute_deletion` always calls `memory_store.get(mid)`/`.delete(mid)` —
+  correct today only because the one live caller (`DELETE /memory/{id}`) only ever issues
+  SINGLE_MEMORY requests. A real caller for the other four deletion types would need
+  `execute_deletion` to dispatch to the right store per type, a genuine design gap (multi-store
+  execution), not a routine fix. See `docs/layer-12-architecture.md`.
+
 ---
 
 ## Layer 13 — Onboarding & Cold Start (audited 2026-08-04)

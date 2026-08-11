@@ -385,20 +385,24 @@ class DeletionScope:
 
     # For SEMANTIC_WIPE
     semantic_fact_ids: Optional[list[UUID]]
-    semantic_category: Optional[str]        # e.g., "career_history"
 
     # For IDENTITY_MEMORY
     identity_entry_ids: Optional[list[UUID]]
-    identity_category: Optional[str]        # e.g., "values.religion"
 
     # For LONGITUDINAL_DATA
     chapter_ids: Optional[list[UUID]]
-    weekly_summary_ids: Optional[list[UUID]]
-    retrospective_ids: Optional[list[UUID]]
 
     # For FULL_WIPE
     full_wipe_confirmed: bool = False
+```
 
+**As-built (§14 2026-08-12):** `date_range` is real and wired (narrows `resolve_scope`'s
+TOPIC_BASED branch by `created_at`). `semantic_category`, `identity_category`,
+`weekly_summary_ids`, and `retrospective_ids` were removed — none of the four were ever
+implemented in code at all (doc/code had simply diverged, not a wiring gap); reintroduce any of
+them if a real caller needs that narrowing.
+
+```python
 class DeletionRequest:
     request_id: UUID
     user_id: str
@@ -427,10 +431,14 @@ class CascadeImpactReport:
     personality_vector_will_change: bool
     personality_params_affected: list[str]                   # e.g., ["verbosity", "empathy_level"]
     longitudinal_references_to_update: list[tuple[UUID, str]] # (summary_id, description)
-    chapters_affected: list[tuple[UUID, str]]               # (chapter_id, chapter_title)
-    chapter_merge_required: bool
     summary_human_readable: str                             # presented to user before confirmation
 ```
+
+**As-built (§14 2026-08-12):** `chapters_affected`/`chapter_merge_required` were removed from the
+real `CascadeImpactReport` — `dry_run_deletion` only wires 3 cascade store types today (semantic,
+personality, longitudinal-summary); a 4th chapter/narrative-arc cascade store was never added as an
+injectable param, so this pseudocode's chapter-merge algorithm below was never connected to a real
+caller. Reintroduce both together if a real chapter-cascade store is added.
 
 ### 4.3 Deletion Execution Algorithm
 
@@ -1599,6 +1607,18 @@ encryption-at-rest; decide whether any UI needs it beyond the now-live routes).
   `decay_sweep` to honor `auto_expiry_date`. Made cascade *mutation* real (redact-in-place, not
   hard-delete) via `selective_deletion.redact_cascade`. Decided to leave `ConsentManager` unwired
   — no real single-user operation needs consent-gating today.
+- **2026-08-12:** Polish pass. Split `schemas.py` (251L) into a `schemas/` package and
+  `selective_deletion.py` (251L) into `deletion_scope.py` + `deletion_cascade.py` +
+  `selective_deletion.py` (now certificate + execution only), all re-exported. Wired
+  `DeletionScope.date_range` into `resolve_scope`'s TOPIC_BASED branch (confirmed with the user —
+  cheap, completes an already-half-built filter). Deleted
+  `CascadeImpactReport.chapters_affected`/`.chapter_merge_required` (would need a 4th cascade
+  store type never added as a `dry_run_deletion` param) and 4 doc-only `DeletionScope` fields
+  never implemented in code at all (`semantic_category`, `identity_category`,
+  `weekly_summary_ids`, `retrospective_ids`). Logged, not fixed: `execute_deletion` only ever
+  mutates `memory_store` regardless of `deletion_type` — correct today only because the one live
+  caller always issues SINGLE_MEMORY requests; a real caller for the other four types would need
+  multi-store dispatch, a design gap not a routine fix.
 
 ---
 
