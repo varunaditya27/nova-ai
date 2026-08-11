@@ -734,6 +734,16 @@ deriving records from the same per-episode `emotion_vector` data already read el
   regardless of `item_type`, so pattern/retrospective/milestone/year-in-review items are covered
   by the same fix, not just goal check-ins. What's still missing is a *push* channel (no
   transport exists) — the gate now decides correctly, but delivery is still poll-only.
+- **[done, 2026-08-12]** Polish pass: split the 378-line `schemas.py` into a `schemas/` package
+  (7 files by responsibility) and the 223-line `retrospective.py` into `retrospective.py` +
+  `retrospective_tables.py` + `retrospective_helpers.py`, all under the 200-line cap and all
+  preserving every existing import path via re-exports. Deleted, confirmed with the user:
+  `CalendarEntry.recurrence_rule` (the real recurrence mechanism never reads a stored cadence
+  string — it just computes a fresh date and re-registers) and `YearInReview.abbreviated` (the
+  doc's time-budget fallback was never built; no timeout logic exists anywhere near
+  `generate_year_in_review`, a weekly background job with no latency pressure). Fixed two stale
+  "LifeEvent is owned by Layer 7" comments left over from before the real extractor shipped
+  2026-08-09. See `docs/layer-10-architecture.md`.
 
 ---
 

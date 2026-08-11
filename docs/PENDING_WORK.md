@@ -207,6 +207,9 @@ Nothing pending. Re-confirmed clean 2026-08-09. **[done, 2026-08-11]** File-leng
 - **[done, 2026-08-09]** Layer 6 SC-3 now gates every proactive queue item generically (not just
   goal check-ins), so pattern/retrospective/milestone/year-in-review items are covered too. Still
   no push channel — delivery is poll-only. See `docs/layer-6-architecture.md`.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `retrospective.py`→+`retrospective_tables.py`+`retrospective_helpers.py`) and dead-field removal
+  (`CalendarEntry.recurrence_rule`, `YearInReview.abbreviated`) — see `docs/POLISH_BACKLOG.md`.
 
 ## Layer 11 — Safety & Crisis Architecture
 
