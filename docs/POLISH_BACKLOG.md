@@ -311,6 +311,36 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
   session that just ended). `explicit_trust_signals_count`/`repair_occurred` have no real detector
   anywhere yet and stay at their falsy defaults — honest degradation, not a fabricated signal. This
   directly unblocked Layer 3's `relationship_depth` gap above. See `docs/layer-4-architecture.md`.
+- **File-length cleanup — `[done]` (2026-08-11).** Every file over the 200-line cap split by
+  responsibility, no behavior change (full test suite green before/after, modulo 5 pre-existing
+  date-sensitive failures unrelated to this layer, see below): `schemas.py` (454) → `schemas/`
+  package; `packet_builder.py` (296) → orchestration + `persona_packet_builder.py`;
+  `tone_calibrator.py` (273) → calibration + `tone_tables.py`; `persona_resolver.py` (269) →
+  resolution + `identity_anchors.py`; `emotion_refiner.py` (253) → refiner + `factual_validation.py`;
+  `semantic_planner.py` (221) → planner + `advice_gate.py`; `drift_detector.py` (207) → detection +
+  `drift_phrases.py`. Also deleted `calibrate_voice`'s unused `communication_model` parameter
+  (never used inside the function, never passed by any caller — wiring it would reintroduce the
+  same EMA-clobbering trap documented above), the never-referenced `DRIFT_CRITICAL_FALLBACK`
+  constant, and an unused `import math`. See `docs/layer-4-architecture.md` §15.1.
+- **Re-audit found `communication_model` also never reaches `resolve_persona_state` live —
+  `[logged]` (2026-08-11).** SC-1's humor/directness/technical-depth branches are effectively
+  constant in production for the same reason `tone_calibrator`/`relationship_manager` deliberately
+  skip it (above) — not previously called out for `persona_resolver` specifically. Needs a real
+  adapter from `RelationshipState`'s EMA params, not a naive UWM `communication_model` passthrough.
+  See `docs/layer-4-architecture.md` §15.5.
+- **`DynamicPersonaProperty`/`dynamic_properties` (§3.3) has zero live producer — `[logged]`
+  (2026-08-11).** Only ever constructed in tests; `resolve_persona_state`'s `dynamic_properties`
+  param is never supplied live, so every per-property calibration lookup always takes its
+  non-dynamic default. Needs a real persistence + learning mechanism — genuine feature work.
+  See `docs/layer-4-architecture.md` §15.5.
+- **Six dead fields on otherwise-live classes — `[logged]` (2026-08-11), not deleted.**
+  `VoiceParameters.register_note`/`use_markdown`/`filler_expression_allowed`/
+  `certainty_phrase_allowed` and `RelationshipState.personal_topic_exposure`/`reciprocity_score`
+  are never set by the live `tone_calibrator`/`relationship_manager` beyond their dataclass
+  default, unlike every sibling field in the same classes. Each is a plausible real signal a
+  future refinement could compute — left in place (not deleted, unlike Layer 2's confirmed-dead
+  `RelationshipEdge`/`RecurringTheme`) pending a real design for the missing signal source. See
+  `docs/layer-4-architecture.md` §15.5.
 
 ---
 
@@ -386,6 +416,19 @@ feature to build, in dependency order:
     have real end-to-end tests too, seeding an actual persisted `SocialPattern` of each matching
     type through the real orchestrator. No code changes needed — the functions already worked.
     See `docs/layer-5-architecture.md`.
+- **Four `test_real_layer5_wiring_*` coaching tests + one Layer 6 proactive-job test started
+  failing on 2026-08-11, found incidentally during the Layer 4 file-split pass (unrelated code —
+  full suite was green through the Layer 3 commit on 2026-08-10, red the next day with no Layer
+  4/5/6 code touched in between).** `test_real_layer5_wiring_coaching_observation_reaches_
+  delivered_response`/`..._strength_acknowledgment_...`/`..._support_network_nudge_...`/`..._
+  gate_3_recency_...` (all in `tests/unit/api/test_assembly_turn.py`) now get a plain
+  `"Sounds good - tell me more."` reply instead of the injected coaching observation — something
+  in `coaching_detector.py`'s three-gate model (`gate_3_recency` and friends default `now =
+  datetime.utcnow()`) is timing-sensitive to the real wall-clock date and none of these tests
+  pin `now=`. `tests/unit/background/test_jobs.py::test_proactive_check_job_generates_a_real_
+  message_for_a_gate_passing_item` flipped the same way. Not investigated further or fixed here —
+  out of Layer 4's scope; needs a real look during Layer 5's (coaching gates) and Layer 6's
+  (proactive job) audit turns, likely by pinning `now=` explicitly in the affected tests/fixtures.
 
 ---
 

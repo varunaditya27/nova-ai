@@ -99,6 +99,16 @@ gap was found and why it wasn't fixed inline.
   because `build_persona` always passes `communication_model=None` (Layer 2's UWM narrow-slice
   never extracts one). Whoever wires that extraction needs to fix this overwrite first, or it will
   silently discard `style_learning.py`'s learned values.
+- **`communication_model` also never reaches `resolve_persona_state` live** — SC-1's
+  humor/directness/technical-depth branches are effectively constant in production. Same shape as
+  the `compute_relationship_state` trap above; needs a real EMA-params adapter. See
+  `docs/POLISH_BACKLOG.md`.
+- **`DynamicPersonaProperty`/`dynamic_properties` (§3.3) has zero live producer** — genuine
+  feature work (persistence + learning mechanism), not a wiring fix. See `docs/POLISH_BACKLOG.md`.
+- **Six dead fields on otherwise-live VoiceParameters/RelationshipState classes** — each a
+  plausible real signal, left in place pending a real design. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — every file over the 200-line cap split by
+  responsibility. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 5 — Social Intelligence & Coaching
 
@@ -114,6 +124,8 @@ gap was found and why it wasn't fixed inline.
 - **[done, 2026-08-09]** Three coaching delivery types (`INLINE`/`STRENGTH_ACKNOWLEDGMENT`/
   `SUPPORT_NETWORK_NUDGE`) now have real end-to-end tests. No code changes needed. See
   `docs/layer-5-architecture.md`.
+- **Four coaching wiring tests started failing 2026-08-11 (date-sensitive, not a code change) —
+  needs a real look during this layer's next audit.** See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 6 — Proactive Engagement Engine
 
@@ -130,6 +142,8 @@ gap was found and why it wasn't fixed inline.
   `api/proactive_delivery.py`, `background/proactive_check_job.py`, `POST /proactive/{id}/
   delivered`, `make_proactive_response_writer`. A live-only `build_persona` AttributeError was
   found and fixed in the same pass. See `docs/layer-6-architecture.md`.
+- **One proactive-job test started failing 2026-08-11 (date-sensitive, not a code change) — needs
+  a real look during this layer's next audit.** See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 7 — Goals & Accountability Engine
 
