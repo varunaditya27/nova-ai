@@ -124,8 +124,17 @@ gap was found and why it wasn't fixed inline.
 - **[done, 2026-08-09]** Three coaching delivery types (`INLINE`/`STRENGTH_ACKNOWLEDGMENT`/
   `SUPPORT_NETWORK_NUDGE`) now have real end-to-end tests. No code changes needed. See
   `docs/layer-5-architecture.md`.
-- **Four coaching wiring tests started failing 2026-08-11 (date-sensitive, not a code change) —
-  needs a real look during this layer's next audit.** See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** Four coaching-wiring tests flaked intermittently; investigation found and
+  fixed a real gap (`api/assembly.py::social_coaching` wasn't threading `ctx.now` into Layer 5's
+  packet builder, unlike every other timing-sensitive hook) — the earlier "date rollover" theory
+  was wrong and has been retracted. See `docs/POLISH_BACKLOG.md`.
+- **Several fields on otherwise-live classes never touched by their real producer**
+  (`SocialNode.narrative_stability`/`support_quality`, `SocialEvent.resolution_timestamp`/
+  `resolution_summary`/`related_event_ids`, six of `SocialContextUpdate`'s ten fields,
+  `SocialIntelligencePacket.events_pending_confirmation`/`processing_latency_ms`) — each a
+  plausible future signal, left in place. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — every file over the 200-line cap split by
+  responsibility. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 6 — Proactive Engagement Engine
 
@@ -142,8 +151,9 @@ gap was found and why it wasn't fixed inline.
   `api/proactive_delivery.py`, `background/proactive_check_job.py`, `POST /proactive/{id}/
   delivered`, `make_proactive_response_writer`. A live-only `build_persona` AttributeError was
   found and fixed in the same pass. See `docs/layer-6-architecture.md`.
-- **One proactive-job test started failing 2026-08-11 (date-sensitive, not a code change) — needs
-  a real look during this layer's next audit.** See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** One proactive-job test flaked alongside the Layer 5 coaching tests; same
+  investigation (see Layer 5 above) — passed cleanly on every re-run after the `ctx.now` fix, no
+  Layer-6-specific cause found. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 7 — Goals & Accountability Engine
 

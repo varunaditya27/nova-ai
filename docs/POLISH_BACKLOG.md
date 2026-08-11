@@ -312,8 +312,9 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
   anywhere yet and stay at their falsy defaults — honest degradation, not a fabricated signal. This
   directly unblocked Layer 3's `relationship_depth` gap above. See `docs/layer-4-architecture.md`.
 - **File-length cleanup — `[done]` (2026-08-11).** Every file over the 200-line cap split by
-  responsibility, no behavior change (full test suite green before/after, modulo 5 pre-existing
-  date-sensitive failures unrelated to this layer, see below): `schemas.py` (454) → `schemas/`
+  responsibility, no behavior change (full test suite green before/after, modulo 5 intermittently
+  failing tests investigated and resolved during Layer 5's pass — see that layer's entry, the
+  "date rollover" characterization below turned out to be wrong): `schemas.py` (454) → `schemas/`
   package; `packet_builder.py` (296) → orchestration + `persona_packet_builder.py`;
   `tone_calibrator.py` (273) → calibration + `tone_tables.py`; `persona_resolver.py` (269) →
   resolution + `identity_anchors.py`; `emotion_refiner.py` (253) → refiner + `factual_validation.py`;
@@ -344,7 +345,7 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
 
 ---
 
-## Layer 5 — Social Intelligence & Coaching (audited 2026-08-04)
+## Layer 5 — Social Intelligence & Coaching (audited 2026-08-04; re-audited 2026-08-11)
 
 The cleanest audit so far: `backend/layer5_relationship/` has zero bugs found and all 63 tests
 pass. Nothing was fixed inline this phase because there is nothing small to fix — the entire
@@ -416,19 +417,37 @@ feature to build, in dependency order:
     have real end-to-end tests too, seeding an actual persisted `SocialPattern` of each matching
     type through the real orchestrator. No code changes needed — the functions already worked.
     See `docs/layer-5-architecture.md`.
-- **Four `test_real_layer5_wiring_*` coaching tests + one Layer 6 proactive-job test started
-  failing on 2026-08-11, found incidentally during the Layer 4 file-split pass (unrelated code —
-  full suite was green through the Layer 3 commit on 2026-08-10, red the next day with no Layer
-  4/5/6 code touched in between).** `test_real_layer5_wiring_coaching_observation_reaches_
-  delivered_response`/`..._strength_acknowledgment_...`/`..._support_network_nudge_...`/`..._
-  gate_3_recency_...` (all in `tests/unit/api/test_assembly_turn.py`) now get a plain
-  `"Sounds good - tell me more."` reply instead of the injected coaching observation — something
-  in `coaching_detector.py`'s three-gate model (`gate_3_recency` and friends default `now =
-  datetime.utcnow()`) is timing-sensitive to the real wall-clock date and none of these tests
-  pin `now=`. `tests/unit/background/test_jobs.py::test_proactive_check_job_generates_a_real_
-  message_for_a_gate_passing_item` flipped the same way. Not investigated further or fixed here —
-  out of Layer 4's scope; needs a real look during Layer 5's (coaching gates) and Layer 6's
-  (proactive job) audit turns, likely by pinning `now=` explicitly in the affected tests/fixtures.
+- **`[done]` (2026-08-11) — Five coaching/proactive tests flaked intermittently; found a real
+  gap while investigating, not a date-rollover bug.** Layer 4's pass observed four
+  `test_real_layer5_wiring_*` coaching tests (`tests/unit/api/test_assembly_turn.py`) and one
+  Layer 6 proactive-job test (`tests/unit/background/test_jobs.py::
+  test_proactive_check_job_generates_a_real_message_for_a_gate_passing_item`) fail together and
+  hypothesized a "2026-08-11 date rollover" cause. Layer 5's follow-up investigation could not
+  reproduce the failure on demand — isolated runs, the whole file, and the full suite all passed
+  cleanly — so that hypothesis is retracted; the actual trigger was never pinned down (most likely
+  wall-clock timing jitter across independent `datetime.now()`/`datetime.utcnow()` calls within a
+  single turn, not a hard boundary). What the investigation *did* find and fix: `api/assembly.py::
+  social_coaching` was the one hook that never threaded the turn's pinned `ctx.now` into its
+  downstream call (`build_social_intelligence_packet(..., now=ctx.now)` was missing the `now=`
+  entirely) — unlike every other timing-sensitive hook in this file, it silently fell back to a
+  fresh `datetime.utcnow()` read inside `coaching_detector.py`'s gates, reading real wall-clock
+  time a beat after the rest of the turn's `ctx.now`. Fixed by passing `now=ctx.now` through. Full
+  suite verified green after the fix; the five tests are being watched, not re-flagged, since the
+  underlying nondeterminism (if any remains) could not be isolated further.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (393) → `schemas/` package;
+  `coaching_detector.py` (297) → gates/orchestrator + `coaching_opportunities.py`;
+  `event_tracker.py` (267) → extraction logic + `event_rules.py`; `pattern_recognizer.py` (228) →
+  pattern-scope detection + `pattern_math.py`. No behavior change; all existing import paths kept
+  working via re-exports. See `docs/layer-5-architecture.md` §14.1.
+- **Several fields on otherwise-live classes never touched by their real producer —
+  `[logged]` (2026-08-11), not deleted.** `SocialNode.narrative_stability`/`support_quality`
+  (`create_node` accepts `**kwargs` for either, nothing supplies them);
+  `SocialEvent.resolution_timestamp`/`resolution_summary`/`related_event_ids` (`is_resolved` is
+  genuinely set, but not the accompanying detail); six of `SocialContextUpdate`'s ten fields
+  (`build_social_context_update` only computes four); `SocialIntelligencePacket.
+  events_pending_confirmation`/`processing_latency_ms`. Each is a plausible future signal, left in
+  place rather than deleted (same precedent as Layers 1/2/4). See `docs/layer-5-architecture.md`
+  §14.6.
 
 ---
 

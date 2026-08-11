@@ -1090,15 +1090,36 @@ of truth; §1–13 are the design intent.
 | Spec sub-component | Module | Key entry point |
 |---|---|---|
 | SC-1 Social Graph Manager | `social_graph.py` | `resolve_entity`, `infer_relationship_from_context`, `create_node`, `update_node_valence`, `decay_confidence`, `is_tentative_match` |
-| SC-2 Interpersonal Event Tracker | `event_tracker.py` | `detect_events_rule_based`, `extract_events`, `EVENT_DETECTION_RULES`, `_NEUTRAL_SUMMARY` |
-| SC-3 Social Pattern Recognizer | `pattern_recognizer.py` | `detect_patterns`, `cluster_by_semantic_similarity`, `compute_mention_counts_by_window`, `is_declining_trend` |
-| SC-4 Coaching Opportunity Detector | `coaching_detector.py` | `detect_coaching_opportunity`, `gate_1_availability`, `gate_2_timing`, `gate_3_recency` |
+| SC-2 Interpersonal Event Tracker | `event_tracker.py` + `event_rules.py` | `detect_events_rule_based`, `extract_events`, `EVENT_DETECTION_RULES`, `NEUTRAL_SUMMARY` |
+| SC-3 Social Pattern Recognizer | `pattern_recognizer.py` + `pattern_math.py` | `detect_patterns`, `cluster_by_semantic_similarity`, `compute_mention_counts_by_window`, `is_declining_trend` |
+| SC-4 Coaching Opportunity Detector | `coaching_detector.py` + `coaching_opportunities.py` | `detect_coaching_opportunity`, `gate_1_availability`, `gate_2_timing`, `gate_3_recency` |
 | SC-5 Social Coaching Response Modifier | `coaching_modifier.py` | `inject_observation`, `select_transition` |
 | SocialIntelligencePacket orchestration | `packet_builder.py` | `build_social_intelligence_packet`, `build_social_context_update` |
 | Persistence | `infra/db/models/social.py`, `infra/db/social_serde.py`, `infra/db/social_store.py` | `PostgresSocialStore` |
 | Live adapters | `api/state.py`, `api/assembly.py` | `make_social_writer`, `social_coaching`, `make_proactive_coaching_writer` |
 | Background job | `background/social_pattern_job.py` | registered as `"social_pattern_detection"` |
-| All dataclasses / enums | `schemas.py` | — |
+| All dataclasses / enums | `schemas/` | — |
+
+**File-length cleanup (2026-08-11).** Every module over the 200-line cap split by
+responsibility, no behavior change: `schemas.py` (393) → `schemas/` package (`enums.py`,
+`graph.py`, `events.py`, `patterns.py`, `coaching.py`); `coaching_detector.py` (297) → gates +
+orchestrator, with opportunity construction moved to `coaching_opportunities.py`;
+`event_tracker.py` (267) → extraction logic, with the rule/summary/valence tables moved to
+`event_rules.py`; `pattern_recognizer.py` (228) → the three pattern-scope sections, with the
+clustering/trend math moved to `pattern_math.py`. All existing import paths kept working via
+re-exports.
+
+**Real bug found and fixed (2026-08-11): `social_coaching()` never threaded the turn's pinned
+`ctx.now` into Layer 5.** `api/assembly.py::social_coaching` calls
+`build_social_intelligence_packet(...)` without a `now=` argument — the one hook in this file
+that didn't forward `ctx.now`, unlike every other timing-sensitive hook (Layer 3's `classify()`,
+Layer 10's jobs, etc.). This meant `coaching_detector.py`'s three gates and
+`build_social_context_update` silently read a fresh `datetime.utcnow()` a beat after the rest of
+the turn's `ctx.now`, instead of the turn-consistent timestamp every other computation uses.
+Found while investigating an intermittent failure in five coaching/proactive tests (Layer 4's
+pass had mis-hypothesized a "2026-08-11 date rollover" cause — retracted; the failure could not
+be reliably reproduced even before this fix, so this is a real correctness/consistency fix, not a
+confirmed root-cause fix). `api/assembly.py::social_coaching` now passes `now=ctx.now`.
 
 ### 14.2 Type reuse, dependency injection, and test coverage
 
@@ -1237,6 +1258,29 @@ through the real orchestrator. `tests/unit/test_event_tracker.py::test_rule_base
 and `test_social_pattern_job_does_not_duplicate_the_same_pattern_across_runs` cover the two fixed
 bugs directly.
 
+### 14.6 Newly found gaps (2026-08-11 re-audit)
+
+Several fields on otherwise-live, per-turn-constructed classes are never set by their real
+producer, unlike their sibling fields. Left in place (not deleted) — each is a plausible signal
+a future refinement could compute, following the precedent set in Layers 1/2/4 of not deleting
+fields on classes that are genuinely, actively constructed:
+
+- **`SocialNode.narrative_stability`/`support_quality`** — `create_node` accepts `**kwargs` so
+  either could be passed in, but no caller currently supplies either.
+- **`SocialEvent.resolution_timestamp`/`resolution_summary`/`related_event_ids`** — `is_resolved`
+  is genuinely set (rule-based `CONFLICT_RESOLUTION` events, or the LLM extraction pass), but the
+  accompanying detail of *when*/*how* it resolved is never recorded.
+- **Six of `SocialContextUpdate`'s ten fields** — `build_social_context_update` only computes
+  `active_conflicts`, `patterns_newly_detected`, `support_network_size`,
+  `support_network_health`; `nodes_added`/`nodes_updated`/`nodes_gone_stale`/
+  `recent_positive_events`/`patterns_resolved`/`social_engagement_trend` are never touched.
+- **`SocialIntelligencePacket.events_pending_confirmation`/`processing_latency_ms`** — never set
+  by `build_social_intelligence_packet`.
+
+`SocialEdge`'s always-empty fields (`shared_contexts`, `co_mentions`, `tie_strength_trend`) are
+*not* new findings — already covered by the documented "no `SocialEdge` creation exists" gap
+above (§14.4 SC-1).
+
 ---
 
 *This document specifies Layer 5 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps in the original design — the Social Graph Manager schema, entity resolution mechanism, event taxonomy and detection, pattern recognition algorithm, coaching opportunity gating, response injection mechanics, UWM social context update contract, and ethical constraints for third-party data — are fully resolved. Section 14 records the as-built implementation and current live-wiring state. No behavior of Layer 5 requires assumptions or inferences from other documents.*
@@ -1269,3 +1313,15 @@ bugs directly.
 - **2026-08-09:** Fixed rule-based event summaries to be genuinely neutral (`_NEUTRAL_SUMMARY`
   templates) — they had been near-verbatim raw user text since before the layer had any caller,
   violating §10 Constraint 3.
+- **2026-08-11 (simplification pass):** Split every file over the 200-line cap into
+  single-responsibility modules (see §14.1) — no behavior change. Investigated Layer 4's
+  "2026-08-11 date rollover" hypothesis for five intermittently failing coaching/proactive tests;
+  could not reproduce the failure on demand (isolated runs, whole-file runs, and full-suite runs
+  all passed cleanly), so that hypothesis is retracted. The investigation did find and fix a real
+  gap: `api/assembly.py::social_coaching` was the one hook in that file that never threaded the
+  turn's pinned `ctx.now` into its downstream call, silently reading a fresh `datetime.utcnow()`
+  instead — fixed by passing `now=ctx.now`. Re-audit logged (not fixed) several fields on
+  otherwise-live classes never touched by their real producer (§14.6): `SocialNode.
+  narrative_stability`/`support_quality`, `SocialEvent.resolution_timestamp`/`resolution_summary`/
+  `related_event_ids`, six of `SocialContextUpdate`'s ten fields, and two `SocialIntelligencePacket`
+  audit fields.
