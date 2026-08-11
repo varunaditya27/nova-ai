@@ -154,6 +154,11 @@ gap was found and why it wasn't fixed inline.
 - **[done, 2026-08-11]** One proactive-job test flaked alongside the Layer 5 coaching tests; same
   investigation (see Layer 5 above) — passed cleanly on every re-run after the `ctx.now` fix, no
   Layer-6-specific cause found. See `docs/POLISH_BACKLOG.md`.
+- **`ProactiveDeliveryPayload.delivery_channel_priority`/`expiry_after_send` computed but never
+  consumed** — the multi-channel delivery concept was superseded by the SSE-stream transport this
+  layer actually ships. Pending a decision on trimming the schema. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — `schemas.py` (the only file over the cap) split
+  into a `schemas/` package. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 7 — Goals & Accountability Engine
 

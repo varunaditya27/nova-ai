@@ -451,7 +451,7 @@ feature to build, in dependency order:
 
 ---
 
-## Layer 6 — Proactive Engagement Engine (audited 2026-08-04)
+## Layer 6 — Proactive Engagement Engine (audited 2026-08-04; re-audited 2026-08-11)
 
 Another clean module audit — `backend/layer6_proactivity/` has zero bugs found, 76/76 tests pass,
 and matches its architecture doc precisely. Unlike Layer 5, Layer 6 is *partially* live: SC-1's
@@ -514,6 +514,14 @@ the day-boundary computation lives entirely with whatever caller builds that con
 `timing_gate.py` itself. Not fixable here: SC-3 has zero production callers (see above), so there
 is no live call site to check yet. Whoever wires SC-3 needs to make sure "today" is computed with
 the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1-architecture.md`) — a raw-UTC day boundary would let the cap reset at the wrong local hour.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (343, the only file in this layer
+  over the cap) split into a `schemas/` package by sub-component. No behavior change; all existing
+  import paths kept working via re-exports. See `docs/layer-6-architecture.md` §14.
+- **`ProactiveDeliveryPayload.delivery_channel_priority`/`expiry_after_send` computed but never
+  consumed — `[logged]` (2026-08-11), not trimmed.** The multi-channel delivery concept these
+  fields model was superseded by the simpler SSE-stream transport this layer actually ships
+  (`generate_message_for_item` only reads `.message_text` off the payload). Pending a decision on
+  shrinking the schema to match. See `docs/layer-6-architecture.md`.
 
 ---
 

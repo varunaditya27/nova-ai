@@ -1099,7 +1099,23 @@ were found in the module itself across the whole polish pass.
 | Intake contracts (§9) | `intake.py` | `on_thread_due`, `on_post_distress_gap`, `on_deferred_coaching`, `on_goal_milestone_approaching`, `on_behavioral_pattern`, `on_retrospective_ready`, `on_calendar_entry_due` |
 | Orchestrator (§8) | `engine.py` | `run_proactive_cycle` → `ProactiveEngineOutput` |
 | Delivery (route-shared) | `api/proactive_delivery.py` | `build_timing_context`, `gate_passes`, `build_proactive_context`, `generate_message_for_item` |
-| All dataclasses / enums | `schemas.py` | — |
+| All dataclasses / enums | `schemas/` | — |
+
+**File-length cleanup (2026-08-11).** `schemas.py` (343 lines) split into a `schemas/` package by
+sub-component (`enums.py`, `item.py`, `classifier.py`, `gate.py`, `generator.py`, `tracker.py`),
+all under the 200-line cap, no behavior change. Every other module in this layer was already
+under the cap. All existing import paths kept working via re-exports.
+
+**Newly found gap (2026-08-11 re-audit).** `ProactiveDeliveryPayload`'s `delivery_channel`/
+`delivery_channel_priority`/`expiry_after_send` are computed into a real, live-constructed object
+(`message_generator.generate_proactive_message`, called from `api/proactive_delivery.py::
+generate_message_for_item`), but the caller only ever extracts `payload.message_text` and
+discards the rest — the multi-channel (push/in-app/WhatsApp) routing concept the schema was
+designed for is superseded by the simpler SSE-stream delivery mechanism described below, which
+needs no channel prioritization. Not a bug (the SSE transport is a deliberate, documented,
+simpler design than the original multi-channel spec) and not touched this pass — logged since the
+fields are real dead weight on an otherwise-live object, pending a decision on whether to trim
+`ProactiveDeliveryPayload` down to what SSE delivery actually uses.
 
 **Type reuse and dependency direction.** Layer 6 imports rather than redefines upstream types:
 `NarrativeThread` from Layer 1 (§9.1 intake) and `CoachingOpportunity` from Layer 5 (§9.3 intake).
@@ -1282,3 +1298,10 @@ inferences from other documents.*
   proactive UI built, including fixing a pre-existing frontend bug (`content_basis` rendered
   directly as a message) — why: the user chose to build the full delivery channel now rather than
   defer the frontend half to a later phase.
+- **2026-08-11 (simplification pass):** Split `schemas.py` (343 lines, the only file in this
+  layer over the 200-line cap) into a `schemas/` package by sub-component — no behavior change.
+  Re-audit found `ProactiveDeliveryPayload.delivery_channel_priority`/`expiry_after_send` are
+  computed on a real, live-constructed object but never consumed — the caller only reads
+  `.message_text` — because the multi-channel delivery concept those fields model was superseded
+  by the simpler SSE-stream transport this layer actually ships. Logged, not trimmed, pending a
+  decision on shrinking the payload schema to match what's actually used.
