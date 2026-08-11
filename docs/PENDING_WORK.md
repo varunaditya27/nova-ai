@@ -213,8 +213,18 @@ Nothing pending. Re-confirmed clean 2026-08-09. **[done, 2026-08-11]** File-leng
 
 ## Layer 11 — Safety & Crisis Architecture
 
-Nothing pending. The semantic classifier layer stays correctly unwired — no fine-tuned model
-exists anywhere to inject; not a gap to close without a model.
+The semantic classifier layer stays correctly unwired — no fine-tuned model exists anywhere to
+inject; not a gap to close without a model.
+
+- **[done, 2026-08-12]** Dead-field cleanup (`CrisisModeConstraints.no_memory_retrieval`,
+  `CrisisModeState.follow_up_date`) and doc/code reconciliation (`current_protocol_step`,
+  `sycophancy_guard_relaxation_expiry_sessions` removed from the doc's schema pseudocode — never
+  implemented). See `docs/POLISH_BACKLOG.md`.
+- **`CrisisModeConstraints`'s fields beyond `max_response_length_words` have no consumer** —
+  every construction site uses all-default values, and crisis-mode enforcement instead runs
+  through each layer's own independent `crisis_mode_active` check. Needs a design call (redundant
+  struct vs. genuinely missing central enforcement), not a routine prune. See
+  `docs/layer-11-architecture.md`.
 
 ## Layer 12 — Privacy & Data Infrastructure
 

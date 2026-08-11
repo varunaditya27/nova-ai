@@ -771,6 +771,27 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
 - **[done, 2026-08-09]** `region` now reads from the real, already-merged
   `config['layer11']['escalation']['default_region']` instead of `build_pipeline_steps`'s
   hardcoded `"india"` default standing in silently forever. See `docs/layer-11-architecture.md`.
+- **[done, 2026-08-12]** Polish pass: no file over the 200-line cap (already the case). Deleted,
+  confirmed with the user: `CrisisModeConstraints.no_memory_retrieval` (default only, never read;
+  wiring it means a real behavior change to Layer 2 recall during crisis turns with no call site
+  asking for it) and `CrisisModeState.follow_up_date` (never set anywhere; its boolean sibling
+  `follow_up_scheduled` is set for Tier 1 crises but also has no consumer — see the logged gap
+  below, a date on an already-unconsumed flag would compound, not fill it). Also removed two
+  doc-only fields that were never implemented at all (`CrisisModeState.current_protocol_step`,
+  `CrisisModeConstraints.sycophancy_guard_relaxation_expiry_sessions`) from §5.2's schema block —
+  doc/code had simply diverged, not a wiring gap.
+- **`CrisisModeConstraints`'s fields are directives, not enforced** — `[logged]` (2026-08-12), not
+  fixed inline (real design work, not routine pruning). Every construction site uses all-default
+  values (`CrisisModeConstraints()`), and only `max_response_length_words` is actually read
+  (`safe_mode_enforcer.py`). `response_format`/`no_task_references`/`no_proactive_content`/
+  `anthropomorphism_target`/`sycophancy_guard_relaxed`/`resource_provision_required` are computed
+  but nothing consults them — crisis mode's real enforcement instead runs through each layer's own
+  independent `crisis_mode_active` boolean check (Layer 9's `format_adapter.py` pure-prose/no-emoji
+  branch, Layer 6's proactive suppression, etc.), so the struct may be entirely redundant with
+  logic that already exists per-layer rather than a genuine gap — needs a design call, not a prune,
+  before touching it. Same shape as Layer 9's `FormatSpec` fields with no pre-generation consumer.
+  `CrisisModeState.follow_up_scheduled` is set (Tier 1 only) but nothing reads it either — no
+  follow-up delivery mechanism exists. See `docs/layer-11-architecture.md`.
 
 ---
 

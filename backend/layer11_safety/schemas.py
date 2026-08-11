@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
@@ -108,7 +108,6 @@ class CrisisModeConstraints:
     response_format: str = "prose_only"
     max_response_length_words: int = 120
     no_task_references: bool = True
-    no_memory_retrieval: bool = False
     no_proactive_content: bool = True
     anthropomorphism_target: float = 0.65
     sycophancy_guard_relaxed: bool = True
@@ -134,7 +133,6 @@ class CrisisModeState:
     session_flagged_as_crisis: bool = False
     post_crisis_monitoring_sessions: int = 0
     follow_up_scheduled: bool = False
-    follow_up_date: Optional[date] = None
     constraints: Optional[CrisisModeConstraints] = None
 
 
