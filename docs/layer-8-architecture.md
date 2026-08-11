@@ -359,3 +359,20 @@ security issue, just a UX rough edge). This is consistent with the codebase's cu
 single-process, single-user deployment model (`api/routes/tools.py`'s own docstring already calls
 out the "process singleton" assumption) rather than an oversight, so it isn't blocking — but it's
 worth knowing if this ever moves to multi-worker or gets a real restart cadence.
+
+### Live wiring status (simplification pass, 2026-08-11)
+
+**File-length cleanup.** `tool_manager.py` (286 lines, the only file in this layer over the cap)
+split by responsibility, no behavior change: `intent_routing.py` (keyword routing + intent
+coercion), `pending_confirmation.py` (the `Pending` record + fingerprint hash), and
+`direct_execution.py` (`execute_tool`'s fail-closed direct path + token consumption) were
+extracted, leaving `ToolManager` itself at 185 lines. All existing import paths kept working via
+re-exports — `from backend.layer8_tools.tool_manager import _Pending` (used directly by
+`tests/unit/api/test_routes_tools.py`) and `api/routes/tools.py`'s `getattr(tm, "_pending", {})`
+both still resolve unchanged. Every other module in this layer was already under the cap.
+
+**Minor gap found on re-audit.** `ParameterGap.prompt_hint` is never set — `detect_parameter_gaps`
+constructs every `ParameterGap` with only `parameter_name`/`description`. Every sibling field is
+genuinely used (`required` is always its default `True`, correctly, since gaps are only raised for
+required parameters). Left in place rather than deleted — a plausible richer clarification-prompt
+signal for later, on an otherwise fully-wired class in the cleanest-audited layer of this pass.

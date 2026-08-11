@@ -613,6 +613,14 @@ changed since the audit (`git log --since=2026-08-04` on those paths is empty), 
 work this pass touched them, and the full suite (including all Layer 8 tests) is still green. No
 further action needed.
 
+- **File-length cleanup — `[done]` (2026-08-11).** `tool_manager.py` (286, the only file in this
+  layer over the cap) split into `intent_routing.py`, `pending_confirmation.py`, and
+  `direct_execution.py`, leaving `ToolManager` at 185 lines. No behavior change; all existing
+  import paths (including the `_Pending` name a test imports directly) kept working via
+  re-exports. See `docs/layer-8-architecture.md`.
+- **`ParameterGap.prompt_hint` never set — `[logged]` (2026-08-11), not deleted.** Every sibling
+  field on the class is genuinely used. Minor, left in place. See `docs/layer-8-architecture.md`.
+
 ---
 
 ## Layer 9 — Output Delivery & Interaction Orchestration (audited 2026-08-04)

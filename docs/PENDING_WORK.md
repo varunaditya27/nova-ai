@@ -175,7 +175,9 @@ gap was found and why it wasn't fixed inline.
 
 ## Layer 8 — Tool Use & Actions
 
-Nothing pending. Re-confirmed clean 2026-08-09.
+Nothing pending. Re-confirmed clean 2026-08-09. **[done, 2026-08-11]** File-length cleanup
+(`tool_manager.py` split) and a minor unset-field note (`ParameterGap.prompt_hint`) — see
+`docs/POLISH_BACKLOG.md`.
 
 ## Layer 9 — Output Delivery & Interaction Orchestration
 

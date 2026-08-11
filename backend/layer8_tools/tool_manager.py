@@ -25,72 +25,28 @@ Security model (§5.1):
 
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import dataclass
 from typing import Callable, Optional
 
 from backend.layer8_tools import confirmation_gate, parameter_resolver
 from backend.layer8_tools.action_recorder import ActionRecorder
+from backend.layer8_tools.direct_execution import execute_tool_direct
+from backend.layer8_tools.intent_routing import (
+    coerce_intent,
+    extract_search_query,
+    keyword_intent,
+    keyword_route,
+)
+from backend.layer8_tools.pending_confirmation import Pending as _Pending
+from backend.layer8_tools.pending_confirmation import fingerprint as _fingerprint
 from backend.layer8_tools.plugins.base_plugin import ToolPlugin
 from backend.layer8_tools.schemas import (
-    ActionType,
     ToolIntent,
     ToolOutcome,
     ToolResult,
     ToolUseOutput,
 )
 
-# Keyword → (tool, operation) fallback when no intent_fn is supplied.
-_KEYWORD_RULES = [
-    (("search", "look up", "google", "find online"), "web_search", "search"),
-    (("remind me", "reminder", "remind"), "reminders", "create_reminder"),
-    (("send email", "email", "send a mail"), "email", "draft"),
-    (("schedule", "calendar", "add event", "meeting", "appointment"), "calendar", "create_event"),
-    (("take a note", "make a note", "jot down", "write down", "note that"), "notes", "create_note"),
-]
-
-
-def keyword_route(message: str) -> Optional[tuple[str, str]]:
-    """Conservative (tool, operation) routing from keywords — the low-false-positive gate shared by
-    the deterministic fallback and the LLM param-extractor (which only enriches, never re-routes)."""
-    low = (message or "").lower()
-    for keywords, tool, operation in _KEYWORD_RULES:
-        if any(kw in low for kw in keywords):
-            return tool, operation
-    return None
-
-
-def extract_search_query(message: str) -> str:
-    """Deterministic web-search query extraction (strip the lead-in marker)."""
-    low = (message or "").lower()
-    for marker in ("search for ", "look up ", "search "):
-        if marker in low:
-            return message[low.index(marker) + len(marker):].strip()
-    return (message or "").strip()
-
-
-@dataclass
-class _Pending:
-    """A confirmation awaiting the user, bound to one exact action + user."""
-    fingerprint: str
-    tool_name: str
-    operation: str
-    parameters: dict
-    action_type: str
-    user_id: Optional[str]
-    session_id: Optional[str]
-    tier: str = "soft"          # carried so a pending-list view reports the real gate…
-    reversible: bool = True     # …and whether the awaiting action can be undone (HARD/irreversible)
-
-
-def _fingerprint(tool_name: str, operation: str, parameters: dict, user_id) -> str:
-    """Stable hash binding a confirmation token to a specific action and user (§5.1)."""
-    payload = json.dumps(
-        {"tool": tool_name, "operation": operation,
-         "parameters": parameters or {}, "user_id": user_id},
-        sort_keys=True, default=str)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+__all__ = ["ToolManager", "extract_search_query", "keyword_route"]
 
 
 class ToolManager:
@@ -114,29 +70,8 @@ class ToolManager:
     # ── Intent detection ──────────────────────────────────────────────────────
     def detect_intent(self, message: str) -> Optional[ToolIntent]:
         if self._intent_fn is not None:
-            return self._coerce_intent(self._intent_fn(message))
-        return self._keyword_intent(message or "")
-
-    @staticmethod
-    def _coerce_intent(raw) -> Optional[ToolIntent]:
-        if raw is None or isinstance(raw, ToolIntent):
-            return raw
-        if isinstance(raw, dict) and raw.get("tool_name"):
-            return ToolIntent(
-                tool_name=raw["tool_name"], operation=raw.get("operation", ""),
-                action_type=raw.get("action_type", ActionType.READ.value),
-                parameters=raw.get("parameters", {}), confidence=raw.get("confidence", 0.0),
-                raw_text=raw.get("raw_text", ""))
-        return None
-
-    def _keyword_intent(self, message: str) -> Optional[ToolIntent]:
-        route = keyword_route(message)
-        if route is None:
-            return None
-        tool, operation = route
-        params = {"query": extract_search_query(message)} if tool == "web_search" else {}
-        return ToolIntent(tool_name=tool, operation=operation, parameters=params,
-                          confidence=0.5, raw_text=message)
+            return coerce_intent(self._intent_fn(message))
+        return keyword_intent(message or "")
 
     # ── Full per-message orchestration ────────────────────────────────────────
     def process(
@@ -217,46 +152,10 @@ class ToolManager:
         user_id: Optional[str] = None, session_id: Optional[str] = None,
         action_type: Optional[str] = None, confirmation_id: Optional[str] = None,
     ) -> ToolResult:
-        plugin = self.get_plugin(tool_name)
-        if plugin is None or not plugin.supports(operation):
-            return ToolResult(tool_name, operation, ToolOutcome.FAILURE.value,
-                              error_message=f"no plugin for {tool_name}.{operation}")
-        cap = plugin.capability_for(operation)
-
-        # Authorization first: a gated op needs a valid, matching, unconsumed token.
-        if confirmation_gate.requires_user_confirmation(self._tier_for(cap)):
-            if not self._consume_token(confirmation_id, tool_name, operation, parameters, user_id):
-                result = ToolResult(tool_name, operation, ToolOutcome.FAILURE.value,
-                                    error_message="confirmation required for this action")
-                self.recorder.record_from_result(
-                    result, action_type=cap.action_type, parameters=parameters,
-                    user_id=user_id, user_session_id=session_id)
-                return result
-
-        validation = plugin.validate_parameters(operation, parameters)
-        if not validation.valid:
-            result = ToolResult(tool_name, operation, ToolOutcome.FAILURE.value,
-                                error_message="; ".join(validation.errors))
-            self.recorder.record_from_result(
-                result, action_type=cap.action_type, parameters=parameters,
-                user_id=user_id, user_session_id=session_id)
-            return result
-
-        result, _ = self._execute_and_record(
-            plugin, operation, parameters, action_type or cap.action_type, user_id, session_id)
-        return result
-
-    def _consume_token(self, confirmation_id, tool_name, operation, parameters, user_id) -> bool:
-        """Validate + single-use-consume a confirmation token bound to this exact action."""
-        if not confirmation_id:
-            return False
-        pending = self._pending.get(confirmation_id)
-        if pending is None:
-            return False
-        if pending.fingerprint != _fingerprint(tool_name, operation, parameters, user_id):
-            return False                                       # bound to a different action/user
-        del self._pending[confirmation_id]                     # consume (anti-replay)
-        return True
+        return execute_tool_direct(
+            self, tool_name, operation, parameters,
+            user_id=user_id, session_id=session_id,
+            action_type=action_type, confirmation_id=confirmation_id)
 
     def _execute_and_record(self, plugin, operation, parameters, action_type, user_id, session_id):
         try:
