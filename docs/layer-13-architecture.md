@@ -109,7 +109,6 @@ class ElicitationItem:
     status: Literal["waiting", "surfaced", "answered", "inferred", "expired"]
     surfaced_at_session: Optional[int]  # session number when question was asked
     answered_at_session: Optional[int]
-    inferred_value: Optional[str]       # value populated by passive inference
 
 class ElicitationQueue:
     user_id: str
@@ -150,6 +149,21 @@ class ElicitationQueue:
             return item
         return None
 ```
+
+**As-built (§13 2026-08-12):** `ElicitationItem.inferred_value` was removed — nothing ever sets
+`status="inferred"` or fills a value that way; the real passive-inference pathway
+(`PassiveElicitationEngine` → `ColdStartContextBuilder.process_message` →
+`InitialState.apply_update`) writes straight into `InitialState`'s own fields instead, bypassing
+the queue's per-item tracking entirely. This surfaced a deeper, still-open gap while
+investigating: only 3 of the 8 `INITIAL_ELICITATION_ITEMS` (`user_handle`, `life_phase`,
+`primary_reason`) have a `inference_target` that maps to a real `InitialState` field at all;
+the other 5 (`verbosity_preference`, `close_relationships`, `primary_goal_area`,
+`emotional_expression_style`, `core_values_sketch`) target concepts `InitialState` doesn't have —
+`verbosity_preference`/`emotional_expression_style` live nested inside
+`CommunicationStyleProfile` under different access paths, and `close_relationships`/
+`primary_goal_area`/`core_values_sketch` have no backing field anywhere. A real fix means
+deciding, for each of the 5, whether to add the missing field or repoint the target — logged in
+`docs/POLISH_BACKLOG.md`, not fixed inline (a genuine design question, not a prune).
 
 ### 4.3 Initial Elicitation Queue — Population at Initialization
 
@@ -681,12 +695,6 @@ class ColdStartBehaviorConfig:
     # Weekly summary cycle begins on first day of use.
     # Chapter detection, turning point identification only activate after graduation.
 
-    # Relationship stage advancement
-    relationship_stage_advance_gate: float = 0.50
-    # Normal threshold for stage advancement. During cold start, gate is higher:
-    relationship_stage_advance_gate_cold_start: float = 0.75
-    # Prevents premature relationship stage escalation based on insufficient data.
-
     # Elicitation rate
     max_elicitation_per_session: int = 1
     elicitation_embargo_on_emotional_intensity: float = 0.60
@@ -696,6 +704,14 @@ class ColdStartBehaviorConfig:
     # Safety and crisis detection are fully operational from message 0.
     # No cold start exemption or gate applies to Layer 11 under any condition.
 ```
+
+**As-built (§13 2026-08-12):** `relationship_stage_advance_gate`/`_cold_start` were removed —
+neither was ever read anywhere, including inside `cold_start_engine.py` itself (contrast
+`personality_drift_gate_multiplier`, which the same class exposes and `context_constructor.py`
+genuinely reads). Layer 4's real relationship-stage advancement (`relationship_manager.py`'s
+`update_tie_strength` + message/session thresholds) has no cold-start-aware injection point today
+— wiring this pair would mean adding one to Layer 4's stage computation from Layer 13, a
+cross-layer feature, not a field-level fix.
 
 ### 5.2 The First Message
 
@@ -1592,7 +1608,9 @@ What the user experiences across the cold start period:
 The implementation is **pure Python stdlib** (dataclasses + str-`Enum`, `re`, `datetime`, `uuid`)
 — no third-party dependencies, no LLM calls in any extractor or policy (matching the <20ms / <60ms
 performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1573
-passing). Module map: schemas (§4.2/§5.1/§6.2) in `schemas.py`; SC-1 passive (§4.5) in
+passing). Module map: schemas (§4.2/§5.1/§6.2) split by responsibility into `schemas/`
+(`elicitation.py`, `passive_signals.py`, `cold_start_state.py`, `graduation.py`,
+`feature_pacing.py`, `coordinator.py`); SC-1 passive (§4.5) in
 `passive_elicitation.py` (`PassiveElicitationEngine.extract()` + 8 `_extract_*` methods); SC-1
 active (§4.3-§4.4) in `active_elicitation_queue.py` (`INITIAL_ELICITATION_ITEMS`,
 `ElicitationQueue.next_surfaceable_item()`, `ElicitationSurfacingPolicy.can_surface()`); SC-2 (§5)
@@ -1751,3 +1769,11 @@ correctness of the underlying code.
   missing its type parameter) before it hit a real Postgres round-trip — the same bug class found
   in Layers 7/9/10 this session. Confirmed `FeaturePacingController` stays correctly unwired: no
   feature in Nova needs pacing/gating yet, so there is nothing to wire it to.
+- **2026-08-12:** Polish pass (final layer of the 13-layer audit). Split `schemas.py` (297L) into
+  a `schemas/` package by responsibility (6 files). Deleted, confirmed with the user after
+  properly analyzing wiring cost for each: `ElicitationItem.inferred_value` (the real passive-
+  inference pathway writes straight into `InitialState`, bypassing per-item tracking entirely —
+  wiring this properly surfaced a deeper gap, logged separately: only 3 of 8 elicitation targets
+  have a matching `InitialState` field at all) and `ColdStartBehaviorConfig.
+  relationship_stage_advance_gate`/`_cold_start` (Layer 4's real stage-advancement logic has no
+  cold-start injection point — wiring would be a cross-layer feature, not a field fix).

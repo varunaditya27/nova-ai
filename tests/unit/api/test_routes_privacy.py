@@ -16,6 +16,7 @@ from infra.db.privacy_audit import PostgresPrivacyAudit
 from backend.layer2_memory.schemas import EpisodicMemory
 from api.dependencies import get_state
 from api.routes.memory import router as memory_router
+from api.routes.privacy import router as privacy_router
 
 
 def _client():
@@ -26,6 +27,7 @@ def _client():
     state = SimpleNamespace(session_factory=factory, default_user_id="local-user", config={})
     app = FastAPI()
     app.include_router(memory_router)
+    app.include_router(privacy_router)
     app.dependency_overrides[get_state] = lambda: state
     return TestClient(app, raise_server_exceptions=False), factory
 

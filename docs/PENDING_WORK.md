@@ -30,6 +30,9 @@ gap was found and why it wasn't fixed inline.
 - **`config/layerN.yaml` unread for layers 2–13.** Only Layer 1 and (as of 2026-08-09) Layer 11's
   `escalation.default_region` read their own config file live. By design, wired one layer at a
   time as each is revisited — not a batch cross-cutting fix.
+- **[done, 2026-08-10]** Two dead `UserTemporalProfile` fields — `longest_historical_gap_days`
+  wired to a real producer + consumer, `typical_session_duration_minutes` deleted (no plausible
+  consumer). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 2 — Cognition & Memory
 
@@ -44,6 +47,15 @@ gap was found and why it wasn't fixed inline.
   per-turn UWM LLM extraction call in `api/state.py` (no new LLM round-trip), conservatively
   evidence-gated like every other key in that prompt. Stays on-device only, same as the rest of
   the UWM. See `docs/layer-2-architecture.md`.
+- **`LifeSituation`/`Stressor` have a few individually-unset fields** (`estimated_resolution`,
+  `related_episode_ids`, `duration_days`, `linked_situation_id`) — the classes themselves are
+  genuinely constructed every turn, just missing these specific values. Needs new LLM-extraction
+  JSON keys plus call-site plumbing (episode ids into the UWM merge step), bigger than a wiring
+  fix. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-10]** File-length cleanup (`schemas.py` → package, `api/routes/memory.py` →
+  split by layer ownership) and dead-schema pruning (`RelationshipEdge`/`SentimentPoint`/
+  `RecurringTheme` deleted — duplicated Layer 5's `SocialEdge` or had no producer/consumer at
+  all). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 3 — Emotion, Intent & Reasoning
 
@@ -60,6 +72,10 @@ gap was found and why it wasn't fixed inline.
   gate. Needs the deletion/burst client fields specifically (`docs/FRONTEND_TODO.md`), not just
   latency. No Layer 3 code change needed once the frontend half closes.
 - *(`alert_fn` was investigated and deliberately left unwired — not a gap, a closed decision.)*
+- **`EmpathyHypothesis.secondary_feeling`/`secondary_need` never set** — real feature work
+  (`secondary_need` has no spec'd derivation), not a wiring fix. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-10]** File-length cleanup (`schemas.py`, `packet_builder.py`,
+  `emotion_classifier.py` all split under the 200-line cap). See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 4 — Persona, Personality & Response Generation
 
@@ -83,6 +99,16 @@ gap was found and why it wasn't fixed inline.
   because `build_persona` always passes `communication_model=None` (Layer 2's UWM narrow-slice
   never extracts one). Whoever wires that extraction needs to fix this overwrite first, or it will
   silently discard `style_learning.py`'s learned values.
+- **`communication_model` also never reaches `resolve_persona_state` live** — SC-1's
+  humor/directness/technical-depth branches are effectively constant in production. Same shape as
+  the `compute_relationship_state` trap above; needs a real EMA-params adapter. See
+  `docs/POLISH_BACKLOG.md`.
+- **`DynamicPersonaProperty`/`dynamic_properties` (§3.3) has zero live producer** — genuine
+  feature work (persistence + learning mechanism), not a wiring fix. See `docs/POLISH_BACKLOG.md`.
+- **Six dead fields on otherwise-live VoiceParameters/RelationshipState classes** — each a
+  plausible real signal, left in place pending a real design. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — every file over the 200-line cap split by
+  responsibility. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 5 — Social Intelligence & Coaching
 
@@ -98,6 +124,17 @@ gap was found and why it wasn't fixed inline.
 - **[done, 2026-08-09]** Three coaching delivery types (`INLINE`/`STRENGTH_ACKNOWLEDGMENT`/
   `SUPPORT_NETWORK_NUDGE`) now have real end-to-end tests. No code changes needed. See
   `docs/layer-5-architecture.md`.
+- **[done, 2026-08-11]** Four coaching-wiring tests flaked intermittently; investigation found and
+  fixed a real gap (`api/assembly.py::social_coaching` wasn't threading `ctx.now` into Layer 5's
+  packet builder, unlike every other timing-sensitive hook) — the earlier "date rollover" theory
+  was wrong and has been retracted. See `docs/POLISH_BACKLOG.md`.
+- **Several fields on otherwise-live classes never touched by their real producer**
+  (`SocialNode.narrative_stability`/`support_quality`, `SocialEvent.resolution_timestamp`/
+  `resolution_summary`/`related_event_ids`, six of `SocialContextUpdate`'s ten fields,
+  `SocialIntelligencePacket.events_pending_confirmation`/`processing_latency_ms`) — each a
+  plausible future signal, left in place. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — every file over the 200-line cap split by
+  responsibility. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 6 — Proactive Engagement Engine
 
@@ -114,6 +151,14 @@ gap was found and why it wasn't fixed inline.
   `api/proactive_delivery.py`, `background/proactive_check_job.py`, `POST /proactive/{id}/
   delivered`, `make_proactive_response_writer`. A live-only `build_persona` AttributeError was
   found and fixed in the same pass. See `docs/layer-6-architecture.md`.
+- **[done, 2026-08-11]** One proactive-job test flaked alongside the Layer 5 coaching tests; same
+  investigation (see Layer 5 above) — passed cleanly on every re-run after the `ctx.now` fix, no
+  Layer-6-specific cause found. See `docs/POLISH_BACKLOG.md`.
+- **`ProactiveDeliveryPayload.delivery_channel_priority`/`expiry_after_send` computed but never
+  consumed** — the multi-channel delivery concept was superseded by the SSE-stream transport this
+  layer actually ships. Pending a decision on trimming the schema. See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — `schemas.py` (the only file over the cap) split
+  into a `schemas/` package. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 7 — Goals & Accountability Engine
 
@@ -122,10 +167,17 @@ gap was found and why it wasn't fixed inline.
   all. See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** `progress_monitor.run_staleness_scan` now has a real weekly caller,
   `background/goal_staleness_job.py`. See `docs/layer-7-architecture.md`.
+- **Habit check-in tracking is a genuine missing sub-feature** — `Habit` objects are created but
+  never checked in anywhere; no habit check-in surface exists. Real feature work if prioritized.
+  See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — `schemas.py` (the only file over the cap) split
+  into a `schemas/` package. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 8 — Tool Use & Actions
 
-Nothing pending. Re-confirmed clean 2026-08-09.
+Nothing pending. Re-confirmed clean 2026-08-09. **[done, 2026-08-11]** File-length cleanup
+(`tool_manager.py` split) and a minor unset-field note (`ParameterGap.prompt_hint`) — see
+`docs/POLISH_BACKLOG.md`.
 
 ## Layer 9 — Output Delivery & Interaction Orchestration
 
@@ -138,6 +190,9 @@ Nothing pending. Re-confirmed clean 2026-08-09.
   source anywhere upstream (`turn_type`/`urgency_level` don't exist yet in Layers 3-4; `voice_mode`
   needs the Layer 1 multimodal gap, which stays correctly unwired — no backend exists). See
   `docs/layer-9-architecture.md`.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `interaction_orchestrator.py`→+`delivery.py`) and dead-field removal (`MicroInteractionType`,
+  `FormatSpec.allow_horizontal_rules`/`emoji_position`) — see `docs/POLISH_BACKLOG.md`.
 
 ## Layer 10 — Longitudinal Life Layer
 
@@ -152,11 +207,24 @@ Nothing pending. Re-confirmed clean 2026-08-09.
 - **[done, 2026-08-09]** Layer 6 SC-3 now gates every proactive queue item generically (not just
   goal check-ins), so pattern/retrospective/milestone/year-in-review items are covered too. Still
   no push channel — delivery is poll-only. See `docs/layer-6-architecture.md`.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `retrospective.py`→+`retrospective_tables.py`+`retrospective_helpers.py`) and dead-field removal
+  (`CalendarEntry.recurrence_rule`, `YearInReview.abbreviated`) — see `docs/POLISH_BACKLOG.md`.
 
 ## Layer 11 — Safety & Crisis Architecture
 
-Nothing pending. The semantic classifier layer stays correctly unwired — no fine-tuned model
-exists anywhere to inject; not a gap to close without a model.
+The semantic classifier layer stays correctly unwired — no fine-tuned model exists anywhere to
+inject; not a gap to close without a model.
+
+- **[done, 2026-08-12]** Dead-field cleanup (`CrisisModeConstraints.no_memory_retrieval`,
+  `CrisisModeState.follow_up_date`) and doc/code reconciliation (`current_protocol_step`,
+  `sycophancy_guard_relaxation_expiry_sessions` removed from the doc's schema pseudocode — never
+  implemented). See `docs/POLISH_BACKLOG.md`.
+- **`CrisisModeConstraints`'s fields beyond `max_response_length_words` have no consumer** —
+  every construction site uses all-default values, and crisis-mode enforcement instead runs
+  through each layer's own independent `crisis_mode_active` check. Needs a design call (redundant
+  struct vs. genuinely missing central enforcement), not a routine prune. See
+  `docs/layer-11-architecture.md`.
 
 ## Layer 12 — Privacy & Data Infrastructure
 
@@ -175,6 +243,14 @@ exists anywhere to inject; not a gap to close without a model.
   `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`.
 - No "personality vector" store exists anywhere in this codebase — that cascade check stays
   permanently unreported by construction, not a bug to fix.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package,
+  `selective_deletion.py`→+`deletion_scope.py`+`deletion_cascade.py`) and dead-field cleanup
+  (wired `DeletionScope.date_range`; deleted `CascadeImpactReport.chapters_affected`/
+  `.chapter_merge_required` and 4 doc-only-never-implemented `DeletionScope` fields). See
+  `docs/POLISH_BACKLOG.md`.
+- **`execute_deletion` only mutates `memory_store` regardless of `deletion_type`** — correct today
+  only because the one live caller always issues SINGLE_MEMORY requests; a real caller for the
+  other four deletion types needs multi-store dispatch. See `docs/layer-12-architecture.md`.
 
 ## Layer 13 — Onboarding & Cold Start
 
@@ -183,6 +259,12 @@ Re-verified 2026-08-09:
 - **`FeaturePacingController`/`FEATURE_INTRODUCTION_REGISTRY` stays unwired** — no feature in Nova
   is gated or introduced via this mechanism, and none was built just to give it a caller. Revisit
   only if a real feature needing staged introduction gets built.
+- **[done, 2026-08-12]** File-length cleanup (`schemas.py`→`schemas/` package) and dead-field
+  cleanup (deleted `ElicitationItem.inferred_value`, `ColdStartBehaviorConfig.
+  relationship_stage_advance_gate`/`_cold_start`). See `docs/POLISH_BACKLOG.md`.
+- **Only 3 of 8 `INITIAL_ELICITATION_ITEMS` targets have a matching `InitialState` field** — a
+  real design question (add the missing fields, or repoint the targets), not fixed inline. See
+  `docs/layer-13-architecture.md`.
 
 ---
 

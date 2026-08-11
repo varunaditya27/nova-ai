@@ -28,8 +28,9 @@ Design commitments (architecture doc §13):
 Reconciliation (as-built): the scaffold used scheduler-style names (NarrativeChapter, LifeDimension,
 TurningPoint, RetrospectiveRecord); the implementation follows the authoritative doc's schema
 (LifeChapter, NarrativeArc, ProgressSnapshot, RetrospectivePacket, etc.). A `life_calendar` module
-(SC-5) and an `engine` (context-packet assembly) were added; `LifeEvent` is owned and detected by
-Layer 7, so the scaffold's `life_event_tracker` test stub was out of scope and removed.
+(SC-5) and an `engine` (context-packet assembly) were added; `LifeEvent` detection lives in
+`life_event_extractor.py` (no other layer owns it — see `docs/layer-10-architecture.md`'s Live
+Wiring Status for the history of that finding).
 """
 
 from backend.layer10_longitudinal import (

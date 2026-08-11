@@ -111,6 +111,7 @@ def test_perceive_uses_profile_provider_instead_of_cold_start():
             "total_sessions": 12,
             "relationship_age_days": 40,
             "average_session_frequency_days": 3.3,
+            "longest_historical_gap_days": 5.0,
             "typical_bands": {"evening": 0.8, "morning": 0.2},
             "last_session_end": last_end,
             "message_length_median_chars": 55,
@@ -140,6 +141,7 @@ def test_perceive_wired_profile_activates_anomaly_detection():
             "total_sessions": 12,
             "relationship_age_days": 30,
             "average_session_frequency_days": 1.0,   # this user messages roughly daily
+            "longest_historical_gap_days": 2.0,      # never gone this long before — still anomalous
             "typical_bands": {"evening": 1.0},        # never seen a morning message
             "last_session_end": datetime(2026, 1, 1, 20, 0, tzinfo=timezone.utc),
             "message_length_median_chars": 40,

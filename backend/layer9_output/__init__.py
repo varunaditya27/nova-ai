@@ -8,9 +8,11 @@ Four sub-components:
 
     SC-1  interaction_orchestrator.py  — Interaction Orchestrator: assembles the typed-event
           (stream_typing_overlay,        sequence (thinking pause → pre-response signals → typing
-           thinking_pause,               stream with mid-stream self-edit → send); also the Layer 9
-           self_edit_simulator,          engine entry point (`deliver` → Layer9Output)
+           thinking_pause,               stream with mid-stream self-edit → send)
+           self_edit_simulator,
            length_calibrator)
+          delivery.py                  — the Layer 9 engine entry point (`deliver` → Layer9Output),
+                                          running SC-4 → SC-2 → SC-1 → SC-3 in sequence
     SC-2  micro_interaction_engine.py  — Micro-Interaction Engine: the six-type taxonomy
     SC-3  voice_synthesizer.py         — Voice & SSML Synthesizer (+ tts_backends/: Kokoro)
     SC-4  format_adapter.py            — Format Adapter (+ user_format_profile.py learning)
@@ -44,8 +46,10 @@ from backend.layer9_output import (
     user_format_profile,
     voice_synthesizer,
 )
+from backend.layer9_output import delivery
+from backend.layer9_output.delivery import deliver
 from backend.layer9_output.format_adapter import compute_format_spec, enforce_format_spec
-from backend.layer9_output.interaction_orchestrator import deliver, orchestrate_output
+from backend.layer9_output.interaction_orchestrator import orchestrate_output
 from backend.layer9_output.length_calibrator import compute_length_target
 from backend.layer9_output.micro_interaction_engine import plan_micro_interactions
 from backend.layer9_output.self_edit_simulator import plan_self_edit
@@ -70,7 +74,6 @@ from backend.layer9_output.schemas import (
     Layer9Output,
     LengthPreference,
     MicroInteractionPlan,
-    MicroInteractionType,
     OrchestratedOutput,
     ProsodyParams,
     Register,
@@ -84,7 +87,7 @@ from backend.layer9_output.schemas import (
 
 __all__ = [
     # modules
-    "format_adapter", "interaction_orchestrator", "length_calibrator",
+    "delivery", "format_adapter", "interaction_orchestrator", "length_calibrator",
     "micro_interaction_engine", "schemas", "self_edit_simulator", "stream_typing_overlay",
     "thinking_pause", "user_format_profile", "voice_synthesizer",
     # entry points
@@ -101,7 +104,7 @@ __all__ = [
     "generate_ssml", "synthesize", "TTSBackend", "KokoroBackend",
     # schemas
     "AudioResult", "CodeFormat", "EmojiPolicy", "FormatSpec", "Layer9Output", "LengthPreference",
-    "MicroInteractionPlan", "MicroInteractionType", "OrchestratedOutput", "ProsodyParams",
+    "MicroInteractionPlan", "OrchestratedOutput", "ProsodyParams",
     "Register", "SSMLDocument", "SelfEditPlan", "Structure", "TypingEvent", "TypingEventType",
     "UserFormatProfile",
 ]

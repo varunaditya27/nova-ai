@@ -16,24 +16,42 @@ if nothing about the still-open item remains).
 
 ---
 
-## Layer 1 — Input Perception (audited 2026-08-04)
+## Layer 1 — Input Perception (audited 2026-08-04; re-audited 2026-08-10)
 
 Module (`backend/layer1_input/`) itself had no dead code or bloat — every symbol has a caller.
-The findings below are gaps between what the module can do and what the live pipeline actually
-feeds it. Full detail: `docs/layer-1-architecture.md`.
+Full detail: `docs/layer-1-architecture.md`.
 
-- **Narrative-thread creation.** Nothing anywhere constructs a `NarrativeThread` — `due_threads`
-  is always `[]` live, and `backend/layer6_proactivity/intake.py::on_thread_due` is an orphaned
-  consumer waiting for input that never arrives. Needs a detector (likely LLM-based) that spots
-  open loops in conversation ("I have a job interview Thursday", "I'll call my mom back") and a
-  persisted `ThreadStore`. This is a real feature to design, not a wiring fix.
-- **Implicit signals + multimodal/voice never fire live.** `ChatRequest` (`api/schemas.py`)
-  carries only `message` + `session_id` — no typing-start timestamp, deletion count, burst info,
-  or attachments. So SC-2 (implicit signal extractor) always scores a fixed low intensity, and
-  SC-3/SC-4 (multimodal normalizer, voice prosody) never fire — attachments are hardcoded to `[]`
-  in `api/assembly.py::perceive`. Fixing this needs a `ChatRequest` schema change (additive,
-  optional fields) plus frontend instrumentation to actually populate them — a coordinated
-  backend+frontend change, not backend-only.
+- **Narrative-thread creation — `[done]` (2026-08-09).** `thread_extractor.py` +
+  `PostgresThreadStore` now build and persist real `NarrativeThread`s from conversation content,
+  and `backend/layer6_proactivity/intake.py::on_thread_due` receives real candidates. See
+  `docs/layer-1-architecture.md` §15 "SC-1 — Narrative threads: fully live".
+- **Implicit signals — partially `[done]` (2026-08-09).** `response_latency_ms` is real end to
+  end via a new `Session.last_delivered_at` column; the rest of `ClientMetadata` (typing-start
+  timestamp, deletion count, burst info) and all attachments are threaded end-to-end as additive,
+  optional fields but have no producer yet — needs frontend instrumentation, scoped in
+  `docs/FRONTEND_TODO.md`. SC-3/SC-4 (multimodal normalizer, voice prosody) remain correctly
+  unwired — no backend model exists anywhere in the codebase; this is a genuine future infra
+  project (build LLaVA/Whisper/SpeechBrain backends), not a wiring gap.
+- **File-length cleanup — `[done]` (2026-08-10).** Split every Layer-1 source file over the
+  200-line cap into single-responsibility modules, no behavior change (full layer-1 + full repo
+  test suite verified green before/after): `schemas.py` (393) → `schemas/` package (enums,
+  temporal, modality, client, packet); `multimodal_normalizer.py` (275) → package (types,
+  deterministic, backend_normalizers, core); `assembler.py` (217) → `assembler.py` (packet
+  composition only) + new `conflict_resolution.py` (the three pure §7.2/§7.4 functions);
+  `service.py` (245) → `service.py` (orchestration only) + new `state_stores.py` (injectable
+  stores + safe-read helpers). All existing import paths (`from backend.layer1_input.schemas
+  import X`, `from backend.layer1_input import service as svc`, etc.) kept working via
+  `__init__.py` re-exports — no call site outside the package needed to change.
+- **Two dead `UserTemporalProfile` fields — `[done]` (2026-08-10).** Re-audit found
+  `typical_session_duration_minutes` and `longest_historical_gap_days` (architecture doc §3.4)
+  were the only two fields in an otherwise fully-wired SC-1 class with zero readers or writers
+  anywhere in the codebase. Resolved per the new CLAUDE.md rule (prefer wiring over deletion):
+  `longest_historical_gap_days` got a real producer (`api/state.py`, derived from the same
+  bounded session-start list as `average_session_frequency_days`) and a real consumer
+  (`detect_temporal_anomaly`'s condition-2 threshold now personalizes to a user's own historical
+  gap range). `typical_session_duration_minutes` had no plausible consumer — no session-duration
+  tracking exists anywhere in the live pipeline — so it was deleted from the schema and the §3.4
+  spec table rather than wired for its own sake.
 - **`config/layerN.yaml` files are unread — `[done]` for layer1 (2026-08-04, follow-up pass).**
   `backend/layer1_input/config.py::Layer1Config` now reads every `config['layer1']` key live,
   threaded through all 6 sub-component modules as an optional `cfg` param; see
@@ -54,7 +72,7 @@ feeds it. Full detail: `docs/layer-1-architecture.md`.
 
 ---
 
-## Layer 2 — Cognition & Memory (audited 2026-08-04)
+## Layer 2 — Cognition & Memory (audited 2026-08-04; re-audited 2026-08-10)
 
 Same shape as Layer 1: every module has a real caller (production or its own tested public API),
 no unreachable code. The initial audit found five of the eight sub-components complete and tested
@@ -142,6 +160,29 @@ scope — see each bullet's `[done]` note for exactly what's still deferred). Fu
   gap.** Recall runs before Layer 3 classification (`docs/NOVA_AI_MASTER_ARCHITECTURE.md` §3 steps
   3 vs 5), so there's no mode signal available yet. Documented in §11.2's as-built note; nothing to
   fix here.
+- **File-length cleanup — `[done]` (2026-08-10).** `schemas.py` (598 lines) split into a
+  `schemas/` package by sub-component, no behavior change (full test suite green before/after);
+  `api/routes/memory.py` (298 lines) split by layer ownership into `memory.py` (Layer 2: audit,
+  integrity, search, get) and new `api/routes/privacy.py` + `privacy_adapters.py` (Layer 12:
+  delete, correct, audit/full, audit/query — see `docs/layer-12-architecture.md`). All existing
+  import paths and HTTP routes kept working unchanged.
+- **`RelationshipEdge`/`SentimentPoint`/`RecurringTheme` deleted from the UWM schema —
+  `[done]` (2026-08-10).** Re-audit found all three fully defined but never constructed by
+  `uwm_updater.py` and never read anywhere. `RelationshipEdge` duplicated Layer 5's
+  already-partially-live `SocialEdge` (tie_strength, shared_contexts, sentiment trend) — the user
+  confirmed this was genuine cross-layer duplication, not an unwired-but-intended field, so it
+  was deleted rather than wired (same reasoning as `communication_model`'s existing deliberate
+  exclusion, just resolved by deletion instead of by picking one owner). `RecurringTheme` had no
+  producer or consumer anywhere and no obvious owner elsewhere. **Cross-reference for Layer 5's
+  turn:** confirm `SocialEdge` remains the sole live relationship-edge concept — no action needed
+  on the Layer 5 side unless its own audit finds `SocialEdge` itself under-wired.
+- **`LifeSituation.estimated_resolution`/`related_episode_ids` and `Stressor.duration_days`/
+  `linked_situation_id` are unset by `uwm_updater.py`'s current extraction, unlike their sibling
+  fields on the same live, populated dataclasses.** Not deleted (these classes are genuinely
+  constructed every turn, just with a subset of fields) — wiring needs a bigger change than this
+  pass covers: new LLM-extraction JSON keys (resolution date, situation-linking) plus call-site
+  plumbing to pass episode ids into the UWM merge step. Logged for a future pass rather than
+  fixed inline.
 
 ---
 
@@ -193,6 +234,17 @@ unwired" scaffolding than Layers 1-2; most of what's left is smaller connection 
   directly: with Layer 1's `implicit_intensity` pinned at 0.10, `composite_prior` cannot exceed
   ~0.39, below `integrate_prior`'s `> 0.6` gate. Reopens once Layer 1's implicit-signal gap
   (`ChatRequest` client-behavioral-data gap, above) closes — no Layer 3 code change needed then.
+- **File-length cleanup — `[done]` (2026-08-10).** `schemas.py` (443), `packet_builder.py`
+  (286), and `emotion_classifier.py` (237) all split under the 200-line cap by sub-component
+  (`schemas/` package; `packet_builder.py`/`instruction_builder.py`/`_safety_helpers.py`;
+  `emotion_classifier.py`/`emotion_heuristics.py`), no behavior change, full test suite green
+  before/after. All existing import paths kept working via re-exports.
+- **`EmpathyHypothesis.secondary_feeling`/`secondary_need` never set — found 2026-08-10.**
+  `generate_empathy_hypothesis` never populates either field, unlike every other field on the
+  same live, per-turn-constructed dataclass. `secondary_feeling` has a plausible cheap source
+  (SC-1's already-populated `secondary_labels`); `secondary_need` has no defined derivation in
+  the §7.2 spec beyond "if a second need is relevant" — real feature work, not a wiring fix, same
+  shape as `advice_frustration_count` above. Logged rather than built inline.
 
 ---
 
@@ -259,10 +311,41 @@ circadian band, a raw-score-leak field-name bug in `_format_memories`) — see
   session that just ended). `explicit_trust_signals_count`/`repair_occurred` have no real detector
   anywhere yet and stay at their falsy defaults — honest degradation, not a fabricated signal. This
   directly unblocked Layer 3's `relationship_depth` gap above. See `docs/layer-4-architecture.md`.
+- **File-length cleanup — `[done]` (2026-08-11).** Every file over the 200-line cap split by
+  responsibility, no behavior change (full test suite green before/after, modulo 5 intermittently
+  failing tests investigated and resolved during Layer 5's pass — see that layer's entry, the
+  "date rollover" characterization below turned out to be wrong): `schemas.py` (454) → `schemas/`
+  package; `packet_builder.py` (296) → orchestration + `persona_packet_builder.py`;
+  `tone_calibrator.py` (273) → calibration + `tone_tables.py`; `persona_resolver.py` (269) →
+  resolution + `identity_anchors.py`; `emotion_refiner.py` (253) → refiner + `factual_validation.py`;
+  `semantic_planner.py` (221) → planner + `advice_gate.py`; `drift_detector.py` (207) → detection +
+  `drift_phrases.py`. Also deleted `calibrate_voice`'s unused `communication_model` parameter
+  (never used inside the function, never passed by any caller — wiring it would reintroduce the
+  same EMA-clobbering trap documented above), the never-referenced `DRIFT_CRITICAL_FALLBACK`
+  constant, and an unused `import math`. See `docs/layer-4-architecture.md` §15.1.
+- **Re-audit found `communication_model` also never reaches `resolve_persona_state` live —
+  `[logged]` (2026-08-11).** SC-1's humor/directness/technical-depth branches are effectively
+  constant in production for the same reason `tone_calibrator`/`relationship_manager` deliberately
+  skip it (above) — not previously called out for `persona_resolver` specifically. Needs a real
+  adapter from `RelationshipState`'s EMA params, not a naive UWM `communication_model` passthrough.
+  See `docs/layer-4-architecture.md` §15.5.
+- **`DynamicPersonaProperty`/`dynamic_properties` (§3.3) has zero live producer — `[logged]`
+  (2026-08-11).** Only ever constructed in tests; `resolve_persona_state`'s `dynamic_properties`
+  param is never supplied live, so every per-property calibration lookup always takes its
+  non-dynamic default. Needs a real persistence + learning mechanism — genuine feature work.
+  See `docs/layer-4-architecture.md` §15.5.
+- **Six dead fields on otherwise-live classes — `[logged]` (2026-08-11), not deleted.**
+  `VoiceParameters.register_note`/`use_markdown`/`filler_expression_allowed`/
+  `certainty_phrase_allowed` and `RelationshipState.personal_topic_exposure`/`reciprocity_score`
+  are never set by the live `tone_calibrator`/`relationship_manager` beyond their dataclass
+  default, unlike every sibling field in the same classes. Each is a plausible real signal a
+  future refinement could compute — left in place (not deleted, unlike Layer 2's confirmed-dead
+  `RelationshipEdge`/`RecurringTheme`) pending a real design for the missing signal source. See
+  `docs/layer-4-architecture.md` §15.5.
 
 ---
 
-## Layer 5 — Social Intelligence & Coaching (audited 2026-08-04)
+## Layer 5 — Social Intelligence & Coaching (audited 2026-08-04; re-audited 2026-08-11)
 
 The cleanest audit so far: `backend/layer5_relationship/` has zero bugs found and all 63 tests
 pass. Nothing was fixed inline this phase because there is nothing small to fix — the entire
@@ -277,6 +360,12 @@ feature to build, in dependency order:
   stays empty until Layer 5 itself grows a real edge-management function. No Alembic revision —
   same as `NarrativeChain` shipped earlier the same day (baseline migration's `create_all` is the
   only path this project currently exercises).
+  **Cross-reference (2026-08-10, Layer 2's re-audit):** Layer 2's UWM had a fully-parallel,
+  entirely dead `RelationshipEdge` type covering the same ground (`SocialEdge` is the more
+  developed of the two — has real fields for tie_strength/shared_contexts/sentiment trend) —
+  deleted from Layer 2 rather than left to duplicate whatever real edge-management function this
+  layer eventually grows. When wiring `SocialEdge` for real, there is no Layer 2 equivalent to
+  reconcile against anymore.
 - **[done, 2026-08-08, corrected 2026-08-09]** Orchestrator hook — a new
   `PipelineSteps.social_coaching(ctx, response)` hook runs post-generation, pre-guardrails, in
   both System 1 and System 2. Originally forwarded real inputs into `detect_coaching_opportunity`/
@@ -328,10 +417,41 @@ feature to build, in dependency order:
     have real end-to-end tests too, seeding an actual persisted `SocialPattern` of each matching
     type through the real orchestrator. No code changes needed — the functions already worked.
     See `docs/layer-5-architecture.md`.
+- **`[done]` (2026-08-11) — Five coaching/proactive tests flaked intermittently; found a real
+  gap while investigating, not a date-rollover bug.** Layer 4's pass observed four
+  `test_real_layer5_wiring_*` coaching tests (`tests/unit/api/test_assembly_turn.py`) and one
+  Layer 6 proactive-job test (`tests/unit/background/test_jobs.py::
+  test_proactive_check_job_generates_a_real_message_for_a_gate_passing_item`) fail together and
+  hypothesized a "2026-08-11 date rollover" cause. Layer 5's follow-up investigation could not
+  reproduce the failure on demand — isolated runs, the whole file, and the full suite all passed
+  cleanly — so that hypothesis is retracted; the actual trigger was never pinned down (most likely
+  wall-clock timing jitter across independent `datetime.now()`/`datetime.utcnow()` calls within a
+  single turn, not a hard boundary). What the investigation *did* find and fix: `api/assembly.py::
+  social_coaching` was the one hook that never threaded the turn's pinned `ctx.now` into its
+  downstream call (`build_social_intelligence_packet(..., now=ctx.now)` was missing the `now=`
+  entirely) — unlike every other timing-sensitive hook in this file, it silently fell back to a
+  fresh `datetime.utcnow()` read inside `coaching_detector.py`'s gates, reading real wall-clock
+  time a beat after the rest of the turn's `ctx.now`. Fixed by passing `now=ctx.now` through. Full
+  suite verified green after the fix; the five tests are being watched, not re-flagged, since the
+  underlying nondeterminism (if any remains) could not be isolated further.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (393) → `schemas/` package;
+  `coaching_detector.py` (297) → gates/orchestrator + `coaching_opportunities.py`;
+  `event_tracker.py` (267) → extraction logic + `event_rules.py`; `pattern_recognizer.py` (228) →
+  pattern-scope detection + `pattern_math.py`. No behavior change; all existing import paths kept
+  working via re-exports. See `docs/layer-5-architecture.md` §14.1.
+- **Several fields on otherwise-live classes never touched by their real producer —
+  `[logged]` (2026-08-11), not deleted.** `SocialNode.narrative_stability`/`support_quality`
+  (`create_node` accepts `**kwargs` for either, nothing supplies them);
+  `SocialEvent.resolution_timestamp`/`resolution_summary`/`related_event_ids` (`is_resolved` is
+  genuinely set, but not the accompanying detail); six of `SocialContextUpdate`'s ten fields
+  (`build_social_context_update` only computes four); `SocialIntelligencePacket.
+  events_pending_confirmation`/`processing_latency_ms`. Each is a plausible future signal, left in
+  place rather than deleted (same precedent as Layers 1/2/4). See `docs/layer-5-architecture.md`
+  §14.6.
 
 ---
 
-## Layer 6 — Proactive Engagement Engine (audited 2026-08-04)
+## Layer 6 — Proactive Engagement Engine (audited 2026-08-04; re-audited 2026-08-11)
 
 Another clean module audit — `backend/layer6_proactivity/` has zero bugs found, 76/76 tests pass,
 and matches its architecture doc precisely. Unlike Layer 5, Layer 6 is *partially* live: SC-1's
@@ -394,10 +514,18 @@ the day-boundary computation lives entirely with whatever caller builds that con
 `timing_gate.py` itself. Not fixable here: SC-3 has zero production callers (see above), so there
 is no live call site to check yet. Whoever wires SC-3 needs to make sure "today" is computed with
 the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1-architecture.md`) — a raw-UTC day boundary would let the cap reset at the wrong local hour.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (343, the only file in this layer
+  over the cap) split into a `schemas/` package by sub-component. No behavior change; all existing
+  import paths kept working via re-exports. See `docs/layer-6-architecture.md` §14.
+- **`ProactiveDeliveryPayload.delivery_channel_priority`/`expiry_after_send` computed but never
+  consumed — `[logged]` (2026-08-11), not trimmed.** The multi-channel delivery concept these
+  fields model was superseded by the simpler SSE-stream transport this layer actually ships
+  (`generate_message_for_item` only reads `.message_text` off the payload). Pending a decision on
+  shrinking the schema to match. See `docs/layer-6-architecture.md`.
 
 ---
 
-## Layer 7 — Goals & Accountability Engine (audited 2026-08-04)
+## Layer 7 — Goals & Accountability Engine (audited 2026-08-04; re-audited 2026-08-11)
 
 The best-wired layer audited so far: `run_goal_pipeline` (SC-1/2/3/4) runs for real every turn.
 Module itself is clean — 58/58 tests, matches spec. One real bug fixed, two structural gaps
@@ -441,6 +569,16 @@ logged. Full detail: `docs/layer-7-architecture.md`.
   time when the user simply stops mentioning it) now has a real caller:
   `background/goal_staleness_job.py` (weekly), applying each `GoalStateChange` back through the
   real `PostgresGoalStore`. See `docs/layer-7-architecture.md`.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (342, the only file in this layer
+  over the cap) split into a `schemas/` package by sub-component. No behavior change; all existing
+  import paths kept working via re-exports. See `docs/layer-7-architecture.md` §17.
+- **Habit check-in tracking is a genuine missing sub-feature — `[logged]` (2026-08-11).**
+  `Habit` objects are genuinely created by SC-5 decomposition, but nothing anywhere checks them
+  in or updates `current_streak`/`best_streak`/`total_check_ins`/`last_checked_in` — there is no
+  habit check-in surface at all (route, job, or turn-level detector). Real feature work if ever
+  prioritized. Also logged: three more `Layer7Output` audit fields never populated (same shape as
+  the already-documented `milestones_decomposed`) and six unset `Goal` fields on an otherwise
+  fully-live class. See `docs/layer-7-architecture.md` §17.
 
 ---
 
@@ -474,6 +612,14 @@ Full detail: `docs/layer-8-architecture.md`'s "Live wiring status" note.
 changed since the audit (`git log --since=2026-08-04` on those paths is empty), no other layer's
 work this pass touched them, and the full suite (including all Layer 8 tests) is still green. No
 further action needed.
+
+- **File-length cleanup — `[done]` (2026-08-11).** `tool_manager.py` (286, the only file in this
+  layer over the cap) split into `intent_routing.py`, `pending_confirmation.py`, and
+  `direct_execution.py`, leaving `ToolManager` at 185 lines. No behavior change; all existing
+  import paths (including the `_Pending` name a test imports directly) kept working via
+  re-exports. See `docs/layer-8-architecture.md`.
+- **`ParameterGap.prompt_hint` never set — `[logged]` (2026-08-11), not deleted.** Every sibling
+  field on the class is genuinely used. Minor, left in place. See `docs/layer-8-architecture.md`.
 
 ---
 
@@ -521,6 +667,19 @@ Module itself is clean (99/99 tests). Two real bugs fixed this phase — see
   dictation into the composer, not the separate Layer-1 voice-*attachment* path (blocked on the
   attachments system, which doesn't exist). See
   `docs/superpowers/specs/2026-08-10-speech-to-text-design.md`.
+- **[done, 2026-08-12]** Polish pass: split the 227-line `schemas.py` into a `schemas/` package
+  and the 220-line `interaction_orchestrator.py` into `interaction_orchestrator.py` (event
+  assembly) + `delivery.py` (the `deliver` engine entry point), both under the 200-line cap and
+  both preserving every existing import path via `__init__.py` re-exports. Deleted
+  `MicroInteractionType` (zero callers — the six-type taxonomy it duplicated is already fully
+  implemented via `MicroInteractionPlan`'s named fields) and, confirmed with the user,
+  `FormatSpec.allow_horizontal_rules`/`emoji_position` (no producer in `compute_format_spec`, no
+  consumer in `enforce_format_spec` — genuinely dead, not a wiring gap). All other `FormatSpec`
+  fields not consumed by `enforce_format_spec` (`register`, `use_contractions`, `allow_fragments`,
+  `allow_slang`, `max_list_items`, `allow_headers`, `code_format`, `language_label_required`) ARE
+  computed by `compute_format_spec` and are the pre-generation directive half of the contract —
+  this is the same already-logged gap as `format_spec_applied` having no client consumer yet, not
+  new dead code. See `docs/layer-9-architecture.md`.
 
 ---
 
@@ -575,6 +734,16 @@ deriving records from the same per-episode `emotion_vector` data already read el
   regardless of `item_type`, so pattern/retrospective/milestone/year-in-review items are covered
   by the same fix, not just goal check-ins. What's still missing is a *push* channel (no
   transport exists) — the gate now decides correctly, but delivery is still poll-only.
+- **[done, 2026-08-12]** Polish pass: split the 378-line `schemas.py` into a `schemas/` package
+  (7 files by responsibility) and the 223-line `retrospective.py` into `retrospective.py` +
+  `retrospective_tables.py` + `retrospective_helpers.py`, all under the 200-line cap and all
+  preserving every existing import path via re-exports. Deleted, confirmed with the user:
+  `CalendarEntry.recurrence_rule` (the real recurrence mechanism never reads a stored cadence
+  string — it just computes a fresh date and re-registers) and `YearInReview.abbreviated` (the
+  doc's time-budget fallback was never built; no timeout logic exists anywhere near
+  `generate_year_in_review`, a weekly background job with no latency pressure). Fixed two stale
+  "LifeEvent is owned by Layer 7" comments left over from before the real extractor shipped
+  2026-08-09. See `docs/layer-10-architecture.md`.
 
 ---
 
@@ -602,6 +771,27 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
 - **[done, 2026-08-09]** `region` now reads from the real, already-merged
   `config['layer11']['escalation']['default_region']` instead of `build_pipeline_steps`'s
   hardcoded `"india"` default standing in silently forever. See `docs/layer-11-architecture.md`.
+- **[done, 2026-08-12]** Polish pass: no file over the 200-line cap (already the case). Deleted,
+  confirmed with the user: `CrisisModeConstraints.no_memory_retrieval` (default only, never read;
+  wiring it means a real behavior change to Layer 2 recall during crisis turns with no call site
+  asking for it) and `CrisisModeState.follow_up_date` (never set anywhere; its boolean sibling
+  `follow_up_scheduled` is set for Tier 1 crises but also has no consumer — see the logged gap
+  below, a date on an already-unconsumed flag would compound, not fill it). Also removed two
+  doc-only fields that were never implemented at all (`CrisisModeState.current_protocol_step`,
+  `CrisisModeConstraints.sycophancy_guard_relaxation_expiry_sessions`) from §5.2's schema block —
+  doc/code had simply diverged, not a wiring gap.
+- **`CrisisModeConstraints`'s fields are directives, not enforced** — `[logged]` (2026-08-12), not
+  fixed inline (real design work, not routine pruning). Every construction site uses all-default
+  values (`CrisisModeConstraints()`), and only `max_response_length_words` is actually read
+  (`safe_mode_enforcer.py`). `response_format`/`no_task_references`/`no_proactive_content`/
+  `anthropomorphism_target`/`sycophancy_guard_relaxed`/`resource_provision_required` are computed
+  but nothing consults them — crisis mode's real enforcement instead runs through each layer's own
+  independent `crisis_mode_active` boolean check (Layer 9's `format_adapter.py` pure-prose/no-emoji
+  branch, Layer 6's proactive suppression, etc.), so the struct may be entirely redundant with
+  logic that already exists per-layer rather than a genuine gap — needs a design call, not a prune,
+  before touching it. Same shape as Layer 9's `FormatSpec` fields with no pre-generation consumer.
+  `CrisisModeState.follow_up_scheduled` is set (Tier 1 only) but nothing reads it either — no
+  follow-up delivery mechanism exists. See `docs/layer-11-architecture.md`.
 
 ---
 
@@ -609,7 +799,8 @@ dependency monitor weekly). Nothing needed fixing. Full detail: `docs/layer-11-a
 
 Same pattern as Layer 5/6/10: a fully-built, fully-tested (62 unit tests, all passing) module
 where only a fraction has a production caller. **Only SC-2 (Selective Deletion) is live** —
-`api/routes/memory.py`'s `DELETE /memory/{memory_id}` — verified end-to-end including
+`api/routes/privacy.py`'s `DELETE /memory/{memory_id}` (moved out of `memory.py` during the
+2026-08-10 Layer 2 file-length cleanup — see that layer's entry) — verified end-to-end including
 unrecallability through the `GET /memory/search` keyword fallback (new test:
 `tests/unit/api/test_routes_privacy.py::test_deleted_memory_unrecallable_via_keyword_search`).
 SC-1, SC-3, SC-4, and `privacy_agent.py` all have zero callers outside their own tests. Full
@@ -676,6 +867,28 @@ operation in this single-user local deployment needs consent-gating today.
 `selective_deletion.redact_cascade` strips deleted-episode references from affected semantic
 facts/weekly summaries, wired into `DELETE /memory/{id}`. See `docs/layer-12-architecture.md`.
 
+**[done, 2026-08-12]** Polish pass: split the 251-line `schemas.py` into a `schemas/` package
+(6 files by responsibility) and the 251-line `selective_deletion.py` into `deletion_scope.py`
+(request building/scope resolution) + `deletion_cascade.py` (dry-run cascade + redaction), with
+`selective_deletion.py` itself now just certificate generation + execution — all under the cap,
+all re-exported. Confirmed with the user and wired: `DeletionScope.date_range` now really narrows
+`resolve_scope`'s TOPIC_BASED branch by `created_at` (new regression test:
+`test_topic_scope_further_narrowed_by_date_range`). Deleted, confirmed with the user:
+`CascadeImpactReport.chapters_affected`/`.chapter_merge_required` (a 4th chapter/narrative-arc
+cascade store was never added as an injectable `dry_run_deletion` param — only semantic/
+personality/longitudinal are wired — so this would be new scope, not a prune). Also removed 4
+doc-only fields never implemented in code at all (`DeletionScope.semantic_category`/
+`.identity_category`/`.weekly_summary_ids`/`.retrospective_ids`) — doc/code had diverged, not a
+wiring gap. See `docs/layer-12-architecture.md`.
+- **`execute_deletion` only ever mutates `memory_store`, regardless of `deletion_type`** —
+  `[logged]` (2026-08-12), not fixed inline. `resolve_scope`'s SEMANTIC_WIPE/IDENTITY_MEMORY/
+  LONGITUDINAL_DATA branches return IDs from entirely different stores (semantic facts, identity
+  entries, chapters) but `execute_deletion` always calls `memory_store.get(mid)`/`.delete(mid)` —
+  correct today only because the one live caller (`DELETE /memory/{id}`) only ever issues
+  SINGLE_MEMORY requests. A real caller for the other four deletion types would need
+  `execute_deletion` to dispatch to the right store per type, a genuine design gap (multi-store
+  execution), not a routine fix. See `docs/layer-12-architecture.md`.
+
 ---
 
 ## Layer 13 — Onboarding & Cold Start (audited 2026-08-04)
@@ -721,6 +934,19 @@ has a production caller (via a lighter reimplementation in `api/elicitation.py`,
   the real activation already happens elsewhere, keyed off the same `cold_start_active` flag.
   **Re-verified, 2026-08-09**: still no real feature needing staged introduction exists anywhere
   in this codebase; no code changed.
+- **[done, 2026-08-12]** Polish pass (final layer): split the 297-line `schemas.py` into a
+  `schemas/` package (6 files by responsibility), all re-exported so existing import paths are
+  unchanged. Deleted, after properly analyzing wiring cost for each rather than a quick call:
+  `ElicitationItem.inferred_value` and `ColdStartBehaviorConfig.relationship_stage_advance_gate`/
+  `_cold_start`. See `docs/layer-13-architecture.md`.
+- **Only 3 of 8 `INITIAL_ELICITATION_ITEMS` targets have a matching `InitialState` field** —
+  `[logged]` (2026-08-12), not fixed inline. `user_handle`/`life_phase`/`primary_reason` map
+  directly; `verbosity_preference`/`emotional_expression_style` live nested inside
+  `CommunicationStyleProfile` under different names; `close_relationships`/`primary_goal_area`/
+  `core_values_sketch` have no backing field anywhere in `InitialState`. Surfaced while
+  investigating whether `ElicitationItem.inferred_value` could be cheaply wired — it can't, this
+  is a real design question (add the missing fields, or repoint the targets) affecting 5 of the
+  8 elicitation items, not a routine prune. See `docs/layer-13-architecture.md`.
 
 ---
 

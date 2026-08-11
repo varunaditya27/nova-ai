@@ -157,6 +157,16 @@ def test_anomaly_rapid_return():
     assert "rapid" in note.lower()
 
 
+def test_no_anomaly_when_gap_within_own_historical_range():
+    """A long-but-seen-before gap (§3.4 personalization) shouldn't fire condition 2."""
+    profile = _established_profile(longest_historical_gap_days=12.0)  # baseline 3d, threshold 7.5d
+    detected, note = tr.detect_temporal_anomaly(
+        CircadianBand.EVENING, 10 * 86400, profile
+    )
+    assert detected is False
+    assert note is None
+
+
 def test_no_anomaly_for_typical_message():
     profile = _established_profile()
     detected, note = tr.detect_temporal_anomaly(

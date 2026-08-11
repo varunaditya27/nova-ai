@@ -829,7 +829,6 @@ class FormatSpec:
     max_list_items: int                 # 0 = no lists; 3 = up to 3 bullets
     allow_headers: bool                 # markdown ## headers
     allow_bold: bool                    # **bold** emphasis
-    allow_horizontal_rules: bool        # --- separators
 
     # Length
     target_length_min_chars: int
@@ -837,7 +836,6 @@ class FormatSpec:
 
     # Emoji
     emoji_policy: Literal["none", "rare", "natural", "frequent"]
-    emoji_position: Literal["end_of_sentence", "end_of_message", "anywhere"]
     max_emojis_per_message: int
 
     # Code
@@ -1232,11 +1230,13 @@ Post-delivery:
 
 ## 12. Implementation Notes (as-built)
 
-- **Module map:** SC-1 `interaction_orchestrator.py` (assembly + `deliver` engine entry point),
-  with helpers `stream_typing_overlay.py` (§3.2), `thinking_pause.py` (§3.3), `self_edit_simulator.py`
+- **Module map:** SC-1 `interaction_orchestrator.py` (event assembly, `orchestrate_output`) +
+  `delivery.py` (the `deliver` engine entry point running SC-4 → SC-2 → SC-1 → SC-3), with helpers
+  `stream_typing_overlay.py` (§3.2), `thinking_pause.py` (§3.3), `self_edit_simulator.py`
   (§3.4), `length_calibrator.py` (§3.6); SC-2 `micro_interaction_engine.py` (§4); SC-3
   `voice_synthesizer.py` + `tts_backends/{base_backend,kokoro_backend}.py` (§5); SC-4
-  `format_adapter.py` + `user_format_profile.py` (§6); `schemas.py`.
+  `format_adapter.py` + `user_format_profile.py` (§6); `schemas/` (split by responsibility:
+  `enums.py`, `format.py`, `typing_events.py`, `voice.py`, `output.py`).
 - **Pure stdlib + dependency injection:** all randomness (typing noise, thinking-pause bands,
   self-edit probability, filler placement, micro-interaction selection) is injected as an `rng`
   parameter (default = `random`), and the TTS transport is an injected `request_fn` — so the
@@ -1373,3 +1373,14 @@ Layer 7's `Goal.milestones`/`Goal.habits` and Layer 10's `NarrativeArc.chapters`
   stayed pinned at their zero defaults. Forwarded `circadian_band` into `deliver()` (previously
   hardcoded to `"afternoon"`, so circadian modifiers never engaged) and stashed
   `format_spec_applied` onto `ctx`/`OrchestratedOutput` for a future consumer.
+- **2026-08-12:** Polish pass. Split the 227-line `schemas.py` into a `schemas/` package
+  (`enums.py`, `format.py`, `typing_events.py`, `voice.py`, `output.py`) and the 220-line
+  `interaction_orchestrator.py` by responsibility: `orchestrate_output` (event assembly, SC-1)
+  stays there, and the `deliver` engine entry point (SC-4 → SC-2 → SC-1 → SC-3) moves to a new
+  `delivery.py`; both files re-exported from the package `__init__.py` so all existing import
+  paths (`from backend.layer9_output import deliver`, `from backend.layer9_output.schemas import
+  X`) are unchanged. Deleted `MicroInteractionType` (zero callers anywhere — the six-type
+  taxonomy it duplicated is already fully implemented via `MicroInteractionPlan`'s six named
+  fields) and `FormatSpec.allow_horizontal_rules`/`emoji_position` (confirmed with the user:
+  neither has a producer in `compute_format_spec` nor a consumer in `enforce_format_spec` —
+  genuinely dead on both ends, not a wiring gap).

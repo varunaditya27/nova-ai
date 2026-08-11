@@ -1,6 +1,6 @@
 """Tests for SC-2 Selective Deletion (architecture doc §4)."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -30,8 +30,9 @@ class FakeMemoryStore:
         self._m.pop(mid, None)
 
 
-def _mem(mid, tags=None, person=None, content="some content"):
-    return SimpleNamespace(memory_id=mid, topic_tags=tags or [], person_name=person, content=content)
+def _mem(mid, tags=None, person=None, content="some content", created_at=None):
+    return SimpleNamespace(memory_id=mid, topic_tags=tags or [], person_name=person,
+                           content=content, created_at=created_at)
 
 
 def _store():
@@ -70,6 +71,19 @@ def test_topic_scope_resolves_matching_memories():
                                      DeletionScope(topic_tags=["arjun"]), now=NOW)
     ids = sd.resolve_scope(req.scope, req.deletion_type, _store())
     assert set(ids) == {"m1", "m2"}
+
+
+def test_topic_scope_further_narrowed_by_date_range():
+    store = FakeMemoryStore([
+        _mem("m1", tags=["arjun"], created_at=datetime(2025, 3, 15)),
+        _mem("m2", tags=["arjun"], created_at=datetime(2025, 9, 1)),  # outside range
+    ])
+    req = sd.create_deletion_request(
+        "u1", DeletionType.TOPIC_BASED.value,
+        DeletionScope(topic_tags=["arjun"], date_range=(date(2025, 1, 1), date(2025, 6, 30))),
+        now=NOW)
+    ids = sd.resolve_scope(req.scope, req.deletion_type, store)
+    assert set(ids) == {"m1"}
 
 
 def test_full_wipe_scope_resolves_everything():

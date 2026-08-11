@@ -501,7 +501,6 @@ class UserProfile:
 class RelationshipGraph:
     user_id: UUID
     people: list[PersonNode]
-    relationship_edges: list[RelationshipEdge]
     last_updated: datetime
 
 class PersonNode:
@@ -531,22 +530,14 @@ class PersonNode:
     is_active_in_user_life: bool          # has been mentioned in last 60 days
     source_episode_ids: list[UUID]        # episodic memories where this person appears
     notes: list[str]                      # brief narrative notes about this relationship
-
-class RelationshipEdge:
-    edge_id: UUID
-    person_id: UUID
-    user_id: UUID                         # always the primary user
-    relationship_tier: str                # mirrors PersonNode.relationship_tier
-    sentiment_history: list[SentimentPoint]   # time-series of relationship valence
-    recent_topics: list[str]              # topics discussed about this person recently
-    active_conflicts: list[str]           # any unresolved tensions flagged
-    shared_events: list[str]              # plans, events involving both
-
-class SentimentPoint:
-    timestamp: datetime
-    valence: float        # –1 to +1
-    source_episode_id: UUID
 ```
+
+**`RelationshipEdge`/`SentimentPoint` removed from the spec (2026-08-10, §19 Live Wiring
+Status).** Never constructed by `uwm_updater.py` and never read anywhere — genuine duplication
+with Layer 5's `SocialEdge` (tie strength, shared contexts, sentiment trend), which is the live
+owner of per-person relationship-edge data. `PersonNode` already carries the scalar
+`current_relationship_valence`/`emotional_significance_to_user` this layer actually uses; the
+time-series edge concept belongs to Layer 5, not duplicated here.
 
 ### 7.5 LifeContext Schema
 
@@ -554,9 +545,6 @@ class SentimentPoint:
 class LifeContext:
     # Active situations (things currently happening)
     active_situations: list[LifeSituation]
-
-    # Recurring themes (patterns over time)
-    recurring_themes: list[RecurringTheme]
 
     # Life timeline (major events)
     life_events: list[LifeEvent]
@@ -576,16 +564,14 @@ class LifeSituation:
     emotional_weight: float               # 0–1
     status: Literal["active", "resolved", "stalled", "monitoring"]
     related_episode_ids: list[UUID]
+```
 
-class RecurringTheme:
-    theme_id: UUID
-    description: str                      # "Anxiety about performance and external validation"
-    first_detected_at: datetime
-    evidence_count: int
-    last_occurrence_at: datetime
-    is_improving: Optional[bool]          # trend direction if detectable
-    related_semantic_memory_ids: list[UUID]
+**`RecurringTheme` removed from the spec (2026-08-10, §19 Live Wiring Status).** Never
+constructed by `uwm_updater.py` and never read anywhere; no extraction logic exists to populate
+it, and nothing downstream would consume it if it did — deleted rather than wired for its own
+sake, per CLAUDE.md's prefer-wiring-unless-genuinely-over-engineered rule.
 
+```python
 class LifeEvent:
     event_id: UUID
     description: str
@@ -1492,7 +1478,7 @@ unreachable code, and all eight sub-components now have real production callers.
 
 | Module | Sub-component(s) | Notes |
 |---|---|---|
-| `schemas.py` | all contract types | stdlib `@dataclass` + `str`-`Enum` |
+| `schemas/` | all contract types | stdlib `@dataclass` + `str`-`Enum`; package split by sub-component (2026-08-10, see below) |
 | `embedding.py` | vector infra | `cosine_similarity`; `Embedder`/`VectorIndex` protocols + deterministic/brute-force defaults (nomic-embed-text + ChromaDB in prod, not hnswlib/all-MiniLM — see below) |
 | `memory_strength.py` | §8.3 | S0, decay, reinforcement, delete/archive |
 | `recall_scorer.py` | SC-6 (§8.2) | four-component score; `RecallWeights` α=.40 β=.30 γ=.20 δ=.10 |
@@ -1688,6 +1674,25 @@ contradiction crosses threshold — the belief-rewrite call. `POST /chat` is syn
 this app (local, single-user, `system1` is the fast local model throughout), but worth knowing
 before assuming `/chat` latency is dominated by generation alone.
 
+**File-length cleanup + dead-schema pruning (2026-08-10).** `schemas.py` (598 lines) split into
+a `schemas/` package by sub-component (`enums.py`, `emotion.py`, `stm.py`, `episodic.py`,
+`semantic.py`, `identity.py`, `uwm.py`, `audit_narrative.py`, `fce.py`, `recall.py`), all under
+the 200-line cap, with `__init__.py` re-exporting everything so every existing
+`from backend.layer2_memory.schemas import X` import kept working unchanged. `api/routes/
+memory.py` (298 lines) was similarly split by layer ownership: the genuinely Layer-2 routes
+(`GET /memory/audit`, `/integrity`, `/search`, `/{id}`) stayed; the Layer-12 routes (`DELETE
+/memory/{id}`, `/audit/full`, `/audit/query`, `POST /{id}/correct`) and their six duck-type
+adapter classes moved to new `api/routes/privacy.py` + `api/routes/privacy_adapters.py` — see
+`docs/layer-12-architecture.md` for the updated file references. Re-audit of the UWM schema
+found `RelationshipEdge`/`SentimentPoint` and `RecurringTheme` fully defined but never
+constructed by `uwm_updater.py` and never read anywhere, unlike `PersonNode`/`LifeSituation`/
+`Stressor` in the same package (which are genuinely populated, just with a few individually
+unset fields — left alone, matching Layer 1's precedent of not touching partially-set-but-live
+classes). `RelationshipEdge` duplicated Layer 5's already-partially-live `SocialEdge`
+(tie_strength, shared_contexts, sentiment trend) — deleted rather than wired, to avoid forking
+relationship-edge data the way `communication_model`'s exclusion already avoided forking
+communication-style data. Full test suite (1588 passed, 1 skipped) verified before and after.
+
 ## 20. Decision Log
 
 - **2026-08-04 (Phase 2 polish pass):** Audited every module for a real caller; found 5 of 8
@@ -1726,6 +1731,13 @@ before assuming `/chat` latency is dominated by generation alone.
   doesn't hit the bare-`list` serde bug that affected other layers. Closed the write side only;
   the read side (generation reading `psychological_model` back out) remains unwired pending a
   concrete reason to change generation behavior based on it.
+- **2026-08-10 (simplification pass):** Split `schemas.py` and `api/routes/memory.py` under the
+  200-line file cap (see §19 for the full module map). Deleted `RelationshipEdge`/
+  `SentimentPoint` (duplicated Layer 5's live `SocialEdge`) and `RecurringTheme` (no producer or
+  consumer anywhere) from the UWM schema and this doc's §7.4/§7.5 spec tables, after confirming
+  with the user this was genuine cross-layer duplication rather than an unwired-but-intended
+  field — the same judgment call as Layer 1's `longest_historical_gap_days` decision, resolved
+  the other way here because a live duplicate already exists in Layer 5.
 
 ---
 

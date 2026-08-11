@@ -1040,8 +1040,10 @@ def make_temporal_profile_provider(session_factory, timezone_offset_hours: float
             gaps_days = [(b - a).total_seconds() / 86400
                         for a, b in zip(ordered_starts, ordered_starts[1:])]
             avg_frequency = sum(gaps_days) / len(gaps_days)
+            longest_gap_days = max(gaps_days)
         else:
             avg_frequency = 0.0
+            longest_gap_days = 0.0
 
         band_counts: dict[str, int] = {}
         for r in recent_user:
@@ -1064,6 +1066,7 @@ def make_temporal_profile_provider(session_factory, timezone_offset_hours: float
             "total_sessions": rel.total_sessions,
             "relationship_age_days": age_days,
             "average_session_frequency_days": avg_frequency,
+            "longest_historical_gap_days": longest_gap_days,
             "typical_bands": typical_bands,
             "last_session_end": last_session_end,
             "message_length_median_chars": length_median,

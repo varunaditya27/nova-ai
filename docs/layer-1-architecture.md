@@ -135,8 +135,7 @@ class UserTemporalProfile:
     timezone_offset_hours: float          # inferred or explicitly set
     typical_bands: dict[str, float]        # band → frequency (0–1), e.g. {"evening": 0.62}
     average_session_frequency_days: float  # rolling 90-day average
-    typical_session_duration_minutes: float
-    longest_historical_gap_days: float
+    longest_historical_gap_days: float     # personalizes the §3.4 anomaly condition-2 threshold
     last_session_end: datetime
     total_sessions: int
     relationship_age_days: int             # days since first conversation
@@ -148,7 +147,7 @@ class UserTemporalProfile:
 An anomaly flag is set when any of the following conditions are true:
 
 1. The current message falls in a band that accounts for less than 5% of the user's historical messages (atypical time)
-2. The session gap exceeds `average_session_frequency_days × 2.5`
+2. The session gap exceeds `average_session_frequency_days × 2.5`, **unless** the gap still falls within this user's own `longest_historical_gap_days` (implementation refinement, §15) — a long-but-seen-before gap isn't a real anomaly for a user with naturally bursty engagement
 3. The gap is shorter than 10% of the shortest gap in the rolling 30-day history (unusually rapid return — possible distress or high engagement)
 
 When an anomaly is detected, a `context_note` string is generated for downstream agents:
@@ -954,10 +953,16 @@ different, wrong quantity that silently defeats `detect_temporal_anomaly`'s cade
 making its threshold far tighter than the user's real cadence. `typical_bands` only populates
 once the bounded recent-history sample has 10+ banded messages; otherwise a low-confidence
 histogram would flag every not-yet-seen band as "atypical" the moment `total_sessions` crosses
-the anomaly-detection floor (5). Both derivations are bounded to `message_store.history`'s
-200-row cap — an approximation of recent behavior, not a precise lifetime statistic. `session_id`
-comes from the orchestrator's `ctx.session_id` (`PipelineSteps.perceive`'s fourth argument),
-not a freshly minted random UUID per message.
+the anomaly-detection floor (5). `longest_historical_gap_days` (2026-08-10) is derived from the
+same bounded session-start list as `average_session_frequency_days` (the max of the same
+consecutive-gap list, not just the mean) and feeds `detect_temporal_anomaly`'s condition-2
+threshold (§3.4) — a gap within a user's own historical range no longer fires a false anomaly.
+All three derivations are bounded to `message_store.history`'s 200-row cap — an approximation of
+recent behavior, not a precise lifetime statistic. `session_id` comes from the orchestrator's
+`ctx.session_id` (`PipelineSteps.perceive`'s fourth argument), not a freshly minted random UUID
+per message. `typical_session_duration_minutes` (§3.4's spec table) was removed from the schema
+entirely (2026-08-10) — no session-duration tracking exists anywhere in the live pipeline and no
+plausible real consumer was found for it, unlike `longest_historical_gap_days`.
 
 **SC-1 — Narrative threads (§3.5): fully live.** `backend/layer1_input/thread_extractor.py`
 implements `extract_thread(message, llm_fn, now, source_session_id)`: keyword pre-filter
@@ -1101,6 +1106,16 @@ silent surprise.
 - **2026-08-09 (found during Layer 4 investigation):** The critical-drift hard-override gap
   belongs to Layer 4, not Layer 1 — documented in `docs/layer-4-architecture.md` instead of
   duplicated here.
+- **2026-08-10 (simplification pass):** Split every module over the 200-line file cap into
+  single-responsibility files/packages (`schemas/`, `multimodal_normalizer/`,
+  `conflict_resolution.py`, `state_stores.py`) with zero behavior change — full test suite green
+  before and after. Re-audit found two `UserTemporalProfile` fields (§3.4) with zero readers or
+  writers anywhere in the codebase, unlike every sibling field: wired `longest_historical_gap_days`
+  a real producer (`api/state.py::make_temporal_profile_provider`) and a real consumer
+  (`detect_temporal_anomaly`'s condition-2 threshold now personalizes to it); deleted
+  `typical_session_duration_minutes` — no session-duration tracking exists anywhere to produce it
+  and no plausible consumer was found, so wiring it would have meant inventing new scope rather
+  than closing a real gap.
 
 ---
 

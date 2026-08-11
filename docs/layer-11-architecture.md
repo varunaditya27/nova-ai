@@ -612,7 +612,6 @@ class CrisisModeState:
     session_id: UUID
     activated_at: datetime
     tier: CrisisTier
-    current_protocol_step: int              # 1–5 for Tier 1; 1–4 for Tier 2
 
     # Behavioral constraints active during crisis mode
     constraints: CrisisModeConstraints
@@ -621,17 +620,14 @@ class CrisisModeState:
     session_flagged_as_crisis: bool
     post_crisis_monitoring_sessions: int    # sessions remaining at Tier 3 sensitivity
     follow_up_scheduled: bool
-    follow_up_date: Optional[date]
 
 class CrisisModeConstraints:
     response_format: Literal["prose_only"]          # never lists, never markdown, never headers
     max_response_length_words: int = 120            # keep it short; this is not the moment for length
     no_task_references: bool = True                 # never mention goals, tasks, or productivity
-    no_memory_retrieval: bool = False               # can reference past; "I remember when..."
     no_proactive_content: bool = True               # no scheduled topics or proactives
     anthropomorphism_target: float = 0.65           # higher than normal; warm, present
     sycophancy_guard_relaxed: bool = True           # unconditional warmth is appropriate here
-    sycophancy_guard_relaxation_expiry_sessions: int = 10  # re-evaluate after 10 sessions
     resource_provision_required: bool = True        # must include resources before end of response
 ```
 
@@ -1511,6 +1507,17 @@ scoped follow-up work, not bug-fixing.
 - **2026-08-09 (follow-up):** Wired `region` from `config/layer11.yaml`'s
   `escalation.default_region` into `build_pipeline_steps`, replacing the standing hardcoded
   `"india"` default with a real config read (same value today, but no longer a coincidence).
+- **2026-08-12:** Polish pass. No file was over the 200-line cap. Deleted, confirmed with the
+  user: `CrisisModeConstraints.no_memory_retrieval` and `CrisisModeState.follow_up_date`
+  (genuinely dead — no producer, no consumer). Removed two schema fields from §5.2's pseudocode
+  that had no code counterpart at all (`current_protocol_step`,
+  `sycophancy_guard_relaxation_expiry_sessions`) — doc/code had diverged, not a wiring gap.
+  Logged, not fixed inline: `CrisisModeConstraints`'s remaining fields beyond
+  `max_response_length_words` are computed at every construction site but never read by any
+  consumer — crisis-mode enforcement instead runs through each layer's own independent
+  `crisis_mode_active` check, so the struct may be entirely redundant with logic that already
+  exists per-layer. This needs a design call (redundant vs. genuinely missing central enforcement),
+  not a routine prune — see `docs/POLISH_BACKLOG.md`.
 
 ---
 

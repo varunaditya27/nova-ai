@@ -193,6 +193,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                     total_sessions=d["total_sessions"],
                     relationship_age_days=d["relationship_age_days"],
                     average_session_frequency_days=d["average_session_frequency_days"],
+                    longest_historical_gap_days=d["longest_historical_gap_days"],
                     typical_bands=d["typical_bands"],
                     last_session_end=d["last_session_end"],
                     timezone_offset_hours=timezone_offset_hours))
@@ -701,7 +702,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             relationship_stage=getattr(ctx.persona_packet.relationship_state, "stage", "new"),
             circadian_band=getattr(ctx.input_packet, "circadian_band", "afternoon"),
             voice_parameters=ctx.persona_packet.voice_parameters,
-            observation_llm_fn=lambda p: system1.complete(p))
+            observation_llm_fn=lambda p: system1.complete(p), now=ctx.now)
         # Only mark surfaced when the observation was actually delivered this turn (not when
         # injection deferred it for lack of length headroom) -- otherwise gate_3_recency would
         # start blocking a pattern the user never actually saw.

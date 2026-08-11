@@ -970,8 +970,8 @@ class CalendarEntry:
     description: str
     associated_id: UUID             # Goal, LifeEvent, NarrativeMoment, etc.
     priority: float                 # 0.0–1.0; controls surfacing decisions in Layer 6
-    is_recurring: bool
-    recurrence_rule: Optional[str]  # "annually", "monthly", etc.
+    is_recurring: bool               # informational; the actual re-registration each cycle is
+                                     # driven by job logic (§16 2026-08-12), not a stored cadence
     layer6_action: Optional[Layer6Action]  # what Layer 6 should do on this date
     has_fired: bool
     fired_at: Optional[datetime]
@@ -1234,7 +1234,7 @@ LAYER10_DATA_POLICY = {
 | Life Calendar entry misses a fire date | Mark as missed; generate retrospective on next check; surface within surfacing window |
 | Progress record computation fails | Return last successful snapshot; log error; block stale data from downstream |
 | Chapter boundary not detected cleanly | Keep current chapter open; set a manual review flag; human review option for edge cases |
-| Year in Review generation exceeds time budget | Generate abbreviated version (5 defining moments + emotional arc + headline); full version retried async |
+| Year in Review generation exceeds time budget | Generate abbreviated version (5 defining moments + emotional arc + headline); full version retried async — as-built: no timeout/budget tracking exists around `generate_year_in_review` yet (it's a weekly background job, not latency-sensitive), so `YearInReview.abbreviated` was removed as unwired speculative surface (§16 2026-08-12); reintroduce both together if a real budget concern shows up |
 | User has too few sessions for meaningful synthesis | Set `minimum_data_threshold_met = False`; suppress this sub-component's output; never fabricate |
 | Layer 7 data unavailable | Operate Layer 10 on Layer 2 data only; narrative and summaries still function; goal metrics absent |
 
@@ -1276,9 +1276,12 @@ LAYER10_DATA_POLICY = {
 - **Module map:** SC-1 `narrative_arc.py` (chapter boundary detection, emotional arc, arc assembly)
   + `life_narrative_engine.py` (defining-moment extraction, grounded chapter synthesis); SC-2
   `weekly_summary.py`; SC-3 `progress_tracker.py` (rolling metrics, domain balance, pattern
-  detection); SC-4 `retrospective.py` (retrospective packets, surfacing windows/priority, Year in
-  Review); SC-5 `life_calendar.py` (scheduler/registration); `engine.py` (`assemble_context_packet`
-  → `Layer10ContextPacket`); `schemas.py`.
+  detection); SC-4 `retrospective.py` (packet/year-in-review generation) + `retrospective_tables.py`
+  (surfacing window/priority/label lookups) + `retrospective_helpers.py` (then/now comparison,
+  LLM-JSON parsing); SC-5 `life_calendar.py` (scheduler/registration); `life_event_extractor.py`
+  (`LifeEvent` detection); `engine.py` (`assemble_context_packet` → `Layer10ContextPacket`);
+  `schemas/` (split by responsibility: `records.py`, `narrative.py`, `weekly.py`, `progress.py`,
+  `retrospective.py`, `calendar.py`, `context_packet.py`).
 - **Dependency injection:** all narrative/summary/retrospective synthesis is an injected ``llm_fn``,
   and every time-relative computation takes an explicit ``now`` / reference date — so the layer is
   deterministic and runs offline with no LLM, DB, or scheduler.
@@ -1293,8 +1296,9 @@ LAYER10_DATA_POLICY = {
     ProgressSnapshot, RetrospectivePacket, etc.).
   - Added `life_calendar.py` (SC-5, absent from the scaffold) and `engine.py` (context-packet
     assembly).
-  - `LifeEvent` is detected/owned by **Layer 7**; the scaffold's `life_event_tracker` test stub was
-    out of scope and removed. SC-5 *registers anniversaries* for life events it receives.
+  - `LifeEvent` detection is owned by Layer 10 itself (`life_event_extractor.py` — no other layer
+    ever built one, despite an earlier module comment claiming Layer 7 did; see §15). SC-5
+    *registers anniversaries* for life events it receives.
   - `ProgressSnapshot` implements a focused subset of §5.2's full dimension catalog (the metrics the
     retrospective/context paths actually consume); the remaining dimensions remain spec-level.
 - **Test coverage:** 63 unit tests across `test_narrative_arc` (11), `test_life_narrative_engine`
@@ -1448,6 +1452,19 @@ through them for real.
   Year in Review's annual trigger: the Nova-relationship day-365 milestone (not the never-registered
   `ANNIVERSARY_1YEAR` calendar-entry type), with the job re-registering itself for the following
   year so it recurs without new scheduling infrastructure.
+- **2026-08-12:** Polish pass. Split the 378-line `schemas.py` into a `schemas/` package
+  (`records.py`, `narrative.py`, `weekly.py`, `progress.py`, `retrospective.py`, `calendar.py`,
+  `context_packet.py`) and the 223-line `retrospective.py` into `retrospective_tables.py` (static
+  surfacing lookups), `retrospective_helpers.py` (then/now comparison + LLM-JSON parsing), and the
+  generation functions staying in `retrospective.py` — all re-exported so every existing import
+  path is unchanged. Deleted, confirmed with the user: `CalendarEntry.recurrence_rule` (the actual
+  recurrence mechanism — day-365 re-registration in `life_calendar_job.py` — computes a fresh date
+  and creates a new entry each cycle; it never reads a stored cadence string, and wiring one would
+  mean building a second, unused recurrence-interpretation path) and `YearInReview.abbreviated`
+  (the doc's time-budget fallback was never built — `generate_year_in_review` has no timeout/
+  budget-check logic, and Year in Review is a weekly background job, not a latency-sensitive path).
+  Also corrected two stale "LifeEvent is owned by Layer 7" comments (in `__init__.py` and this
+  doc's Implementation Notes) left over from before the real extractor was built 2026-08-09.
 
 ---
 

@@ -1205,15 +1205,30 @@ truth; §1–14 are the design intent.
 
 | Spec sub-component | Module | Key entry point |
 |---|---|---|
-| SC-1 Persona State Resolver | `persona_resolver.py` | `resolve_persona_state(...)`, `CORE_IDENTITY_ANCHORS`, `_ANCHOR_OVERRIDE_HINTS` |
+| SC-1 Persona State Resolver | `persona_resolver.py` + `identity_anchors.py` | `resolve_persona_state(...)`, `CORE_IDENTITY_ANCHORS`, `load_core_anchors` |
 | SC-2 Relationship State Manager | `relationship_manager.py` | `compute_relationship_state(...)`, `compute_session_delta`, `update_tie_strength`, `stage_for_sessions` |
-| SC-3 Tone & Style Calibrator | `tone_calibrator.py` | `calibrate_voice(...)`, `MODE_BASE_PARAMETERS`, `CIRCADIAN_ADJUSTMENTS` |
-| SC-4 Persona Drift Detector | `drift_detector.py` | `detect_drift(...)`, `compute_position_consistency` |
-| SC-5 Semantic Planner (Agent 4a) | `semantic_planner.py` | `generate_semantic_draft(...)`, `validate_advice_gate`, `strip_advice`, `extract_key_claims` |
-| SC-6 Emotion Refiner (Agent 4b) | `emotion_refiner.py` | `refine_emotion(...)`, `should_skip_refinement`, `validate_factual_preservation`, `reinsert_claims` |
-| PersonaPacket + FinalResponsePacket orchestration | `packet_builder.py` | `build_final_response_packet(...)`, `assemble_persona_packet` |
+| SC-3 Tone & Style Calibrator | `tone_calibrator.py` + `tone_tables.py` | `calibrate_voice(...)`, `MODE_BASE_PARAMETERS`, `CIRCADIAN_ADJUSTMENTS` |
+| SC-4 Persona Drift Detector | `drift_detector.py` + `drift_phrases.py` | `detect_drift(...)`, `compute_position_consistency` |
+| SC-5 Semantic Planner (Agent 4a) | `semantic_planner.py` + `advice_gate.py` | `generate_semantic_draft(...)`, `validate_advice_gate`, `strip_advice`, `extract_key_claims` |
+| SC-6 Emotion Refiner (Agent 4b) | `emotion_refiner.py` + `factual_validation.py` | `refine_emotion(...)`, `should_skip_refinement`, `validate_factual_preservation`, `reinsert_claims` |
+| PersonaPacket + FinalResponsePacket orchestration | `packet_builder.py` + `persona_packet_builder.py` | `build_final_response_packet(...)`, `assemble_persona_packet` |
 | Live adapter (actual call path) | `api/assembly.py` | `build_persona()`, `plan()`, `refine()` |
-| All dataclasses / enums | `schemas.py` | — |
+| All dataclasses / enums | `schemas/` | — |
+
+**File-length cleanup (2026-08-11).** Every module over the 200-line cap was split by
+responsibility, no behavior change (full test suite green before/after, modulo 5
+pre-existing date-sensitive failures unrelated to this layer — see `docs/POLISH_BACKLOG.md`):
+`schemas.py` (454) → `schemas/` package; `packet_builder.py` (296) → orchestration +
+`persona_packet_builder.py` (§6.4 assembly + the graceful-refusal packet, still exporting
+`GRACEFUL_REFUSAL_TEXT` for `api/assembly.py`'s live import); `tone_calibrator.py` (273) →
+calibration logic + `tone_tables.py` (the mode/circadian/stage lookup data); `persona_resolver.py`
+(269) → resolution logic + `identity_anchors.py` (the anchor constants + belief-override);
+`emotion_refiner.py` (253) → refiner logic + `factual_validation.py` (§8.6 claim-coverage
+checking); `semantic_planner.py` (221) → prompt/orchestration + `advice_gate.py` (§7.6
+deterministic advice detection); `drift_detector.py` (207) → detection logic +
+`drift_phrases.py` (the four checks' phrase lists). Also deleted one confirmed pre-existing dead
+import (`import math`, unused) and `DRIFT_CRITICAL_FALLBACK` (defined, never referenced anywhere)
+from `packet_builder.py`.
 
 ### 15.2 Type reuse, dependency injection, and test coverage
 
@@ -1358,6 +1373,41 @@ mocked steps: `test_real_layer4_wiring_forwards_recalled_memories_to_planner_pro
 `..._stays_inert_with_no_position_history`, and
 `test_real_layer4_wiring_identity_override_reaches_persona_state`.
 
+### 15.5 Newly found gaps (2026-08-11 re-audit)
+
+- **`communication_model` is never forwarded to `resolve_persona_state` live, in addition to the
+  already-documented tone_calibrator/relationship_manager non-forwarding.** `api/assembly.py`'s
+  `build_persona()` calls `resolve_persona_state(identity_memory_entries=..., psychological_model=...,
+  session_context=...)` with no `communication_model` argument, so SC-1's humor/directness/
+  technical-depth branches always take the `communication_model is None` fallback in production:
+  `humor_allowed` is always `False`, `directness_level` always defaults to the constant `0.6`, and
+  `technical_depth_allowed` is always `False`, regardless of what the user's real communication
+  style actually is. This is consistent with the deliberate reasoning already documented for
+  `tone_calibrator`/`relationship_manager` (avoid forking `style_learning.py`'s EMA-learned params),
+  but wasn't previously called out for `persona_resolver` specifically — logged for whoever
+  designs a real single-source adapter from `RelationshipState`'s EMA params into these three
+  `PersonaState` fields, rather than reaching for the UWM `communication_model` directly.
+- **`DynamicPersonaProperty`/`dynamic_properties` (§3.3) is a fully specified sub-feature with zero
+  live producer.** `DynamicPersonaProperty` is only ever constructed in tests; `resolve_persona_state`'s
+  `dynamic_properties` parameter is never supplied by the live `build_persona()` call, so
+  `_dynamic_float`'s per-property lookups (`warmth_calibration_for_user`, `humor_frequency_with_this_user`,
+  `directness_calibration`, `intellectual_engagement_preference`) always take their non-dynamic
+  defaults. This needs a real persistence + learning mechanism (who writes a `DynamicPersonaProperty`,
+  and when) — genuine feature work, not a wiring fix.
+- **Four dead `VoiceParameters` fields, never set by the live `tone_calibrator`/`tone_tables`
+  beyond their dataclass default:** `register_note`, `use_markdown`, `filler_expression_allowed`,
+  `certainty_phrase_allowed`. Every sibling field in the same class is genuinely computed.
+- **Two dead `RelationshipState` fields, never computed by the live `relationship_manager`:**
+  `personal_topic_exposure`, `reciprocity_score`. Every sibling intimacy-model field
+  (`emotional_disclosure_depth`, `vulnerability_moments`) is genuinely computed.
+
+None of the four VoiceParameters/RelationshipState fields were deleted this pass — each is a
+plausible real signal (list-formatting policy, markdown policy, filler-word policy, hedge-language
+policy; topic-exposure breadth, reciprocity) that a future SC-2/SC-3 refinement could compute for
+real, unlike Layer 2's `RelationshipEdge`/`RecurringTheme` (confirmed duplicates/no-plan). Logged
+in `docs/POLISH_BACKLOG.md` rather than wired inline — each needs a real signal source designed,
+not a quick adapter.
+
 ---
 
 *This document specifies Layer 4 completely. All six sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from the original design — Persona Drift detection, Relationship State Manager, VoiceParameters calibration system, Tone & Style Calibrator, post-refinement factual validation, and behavioral rules for identity under pressure — are resolved. Section 15 records the as-built implementation and current live-wiring state. No behavior of Layer 4 requires assumptions or inferences from other documents.*
@@ -1398,3 +1448,17 @@ mocked steps: `test_real_layer4_wiring_forwards_recalled_memories_to_planner_pro
   history was already persisted, just never read). Built `_ANCHOR_OVERRIDE_HINTS`, a keyword-gated
   category map, so SC-1 can override anchor values from real Identity Memory beliefs without
   over-matching unrelated beliefs in the same category.
+- **2026-08-11 (simplification pass):** Split every file over the 200-line cap into
+  single-responsibility modules (see §15.1) — no behavior change. Deleted `calibrate_voice`'s
+  unused `communication_model` parameter (never used inside the function, never passed by any
+  caller, and using it would reintroduce the exact EMA-clobbering trap already documented for
+  `relationship_manager`). Deleted the never-referenced `DRIFT_CRITICAL_FALLBACK` constant and an
+  unused `import math`. Re-audit found `communication_model` is also never forwarded to
+  `resolve_persona_state` live (SC-1's humor/directness/technical-depth branches are effectively
+  constant in production), the whole `DynamicPersonaProperty` sub-feature (§3.3) has zero live
+  producer, and four `VoiceParameters`/two `RelationshipState` fields are never computed by their
+  otherwise-live sub-components — all logged in §15.5 and `docs/POLISH_BACKLOG.md` rather than
+  built inline (each needs a real signal design, not a quick adapter). Also found, investigated,
+  and logged (not fixed — out of this layer's scope) a pre-existing, date-sensitive test failure
+  in four Layer 5 coaching-wiring tests and one Layer 6 proactive-job test that started failing on
+  the 2026-08-11 date rollover with zero Layer 4/5/6 code changed in between.

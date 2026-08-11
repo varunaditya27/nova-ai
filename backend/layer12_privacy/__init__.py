@@ -10,7 +10,8 @@ Four sub-components + coordinator:
 
     SC-1  encryption_manager.py    — key hierarchy + authenticated encryption (+ integrity_verifier.py
                                      Merkle tamper detection)
-    SC-2  selective_deletion.py    — six deletion types, undo windows, dry-run cascade, certificate
+    SC-2  selective_deletion.py    — execution + certificate (+ deletion_scope.py: request building
+                                     /scope resolution; deletion_cascade.py: dry-run cascade/redaction)
     SC-3  memory_audit.py          — transparency view + query intent + provenance
           correction_interface.py  — the six user corrections (edit/downgrade/.../anchor/expire)
     SC-4  sync_coordinator.py      — zero-knowledge encrypted deltas + per-type conflict resolution
