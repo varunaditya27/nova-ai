@@ -1115,7 +1115,12 @@ intent.
 SC-4 Accountability Response Modifier → `accountability_modifier.py` (`decide_goal_reference` →
 `GoalContextPacket`); SC-5 Goal Decomposer → `goal_decomposer.py` (`decompose_goal`,
 `register_milestones_with_layer6`, `check_milestone_completion`); orchestrator (§8) → `engine.py`
-(`run_goal_pipeline` → `Layer7Output`); dataclasses/enums → `schemas.py`.
+(`run_goal_pipeline` → `Layer7Output`); dataclasses/enums → `schemas/` package.
+
+**File-length cleanup (2026-08-11).** `schemas.py` (342 lines, the only file in this layer over
+the cap) split into a `schemas/` package by sub-component (`enums.py`, `goal.py`,
+`extraction.py`, `progress.py`, `context.py`), no behavior change. Every other module in this
+layer was already under the cap. All existing import paths kept working via re-exports.
 
 **Type reuse and dependency direction**: Layer 7 imports `EmotionClassification` from Layer 3 (the
 `emotional_state` used in SC-4's distress check). The SC-5 Layer 6 handoff imports Layer 6's
@@ -1220,6 +1225,27 @@ annotations on any dataclass that round-trips through `memory_serde` before addi
 end-to-end tests through `api/assembly.py`/`api/state.py` proving each wiring fix below against
 real object shapes rather than mocked pipeline steps.
 
+**Newly found gaps (2026-08-11 re-audit):**
+
+- **Three more `Layer7Output` audit fields never populated, extending the existing
+  `milestones_decomposed` note above.** `run_goal_pipeline` only ever sets `goal_context_packet`/
+  `goals_updated`/`new_goals_created`; `proactive_items_created`, `layer2_uwm_update`, and
+  `stale_goals_updated` stay permanently empty/`None`. Consistent with the same reasoning already
+  given for `milestones_decomposed` — the real work happens via direct `GoalStore` persistence
+  and separate background jobs (`goal_staleness_job.py`, `proactive_gen.py`), not through this
+  return value, so `Layer7Output` is a partial summary/audit struct by design, not a bug.
+- **`Habit` check-in tracking is a genuine missing sub-feature, not just unset fields.** SC-5
+  decomposition genuinely constructs `Habit` objects (`title`/`description`/`frequency`/
+  `target_count_per_period`/`goal_id`/`created_at`), but `current_streak`/`best_streak`/
+  `total_check_ins`/`last_checked_in`/`status` (beyond the `"active"` default) are never touched
+  anywhere — there is no habit check-in surface (route, background job, or turn-level detector)
+  in this codebase at all. Real feature work if ever prioritized, not a wiring fix.
+- **Six `Goal` fields never set by extraction or decomposition:** `title_embedding`,
+  `outcome_definition`, `motivation_notes`, `prior_attempts`, `last_setback_at`,
+  `emotional_weight_updated_at`. Every sibling field on the same live, per-turn-updated class is
+  genuinely populated. Left in place — each is a plausible signal a richer extraction prompt
+  could fill in later, following the precedent set in every other layer this pass.
+
 ## 18. Decision Log
 
 - **2026-08-04:** Phase 7 polish pass — `api/assembly.py`'s `_goal_directive` built its own
@@ -1248,5 +1274,11 @@ real object shapes rather than mocked pipeline steps.
   `decide_goal_reference`/`classify_progress_signal` were confirmed pure and callable directly from
   the read path, avoiding a persist-and-replay design that would reference goals under a stale
   gate decision.
+- **2026-08-11 (simplification pass):** Split `schemas.py` (342 lines, the only file over the
+  200-line cap) into a `schemas/` package by sub-component — no behavior change. Re-audit found
+  three more `Layer7Output` audit fields never populated (extending the existing
+  `milestones_decomposed` note), confirmed `Habit` check-in tracking is a genuine missing
+  sub-feature (habits are created but never checked in anywhere), and logged six unset `Goal`
+  fields on an otherwise fully-live class — all left in place, none deleted.
 
 *This document specifies Layer 7 completely. All five sub-components have full schemas, all algorithms are specified with exact logic, and all gaps from prior documents — goal extraction with LLM prompt and deduplication, Goal Store with full 12-field schema including milestones/habits, progress scoring formula and momentum metric, decision logic for all four reference types, goal decomposition with full prompt, Layer 6 milestone handoff, Layer 2 UWM contract, and cross-layer output contracts — are fully resolved. No behavior of Layer 7 requires assumptions or inference from other documents.*

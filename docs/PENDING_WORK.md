@@ -167,6 +167,11 @@ gap was found and why it wasn't fixed inline.
   all. See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** `progress_monitor.run_staleness_scan` now has a real weekly caller,
   `background/goal_staleness_job.py`. See `docs/layer-7-architecture.md`.
+- **Habit check-in tracking is a genuine missing sub-feature** — `Habit` objects are created but
+  never checked in anywhere; no habit check-in surface exists. Real feature work if prioritized.
+  See `docs/POLISH_BACKLOG.md`.
+- **[done, 2026-08-11]** File-length cleanup — `schemas.py` (the only file over the cap) split
+  into a `schemas/` package. See `docs/POLISH_BACKLOG.md`.
 
 ## Layer 8 — Tool Use & Actions
 

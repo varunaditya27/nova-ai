@@ -525,7 +525,7 @@ the same `config['system']['timezone_offset_hours']` Layer 1 uses (`docs/layer-1
 
 ---
 
-## Layer 7 — Goals & Accountability Engine (audited 2026-08-04)
+## Layer 7 — Goals & Accountability Engine (audited 2026-08-04; re-audited 2026-08-11)
 
 The best-wired layer audited so far: `run_goal_pipeline` (SC-1/2/3/4) runs for real every turn.
 Module itself is clean — 58/58 tests, matches spec. One real bug fixed, two structural gaps
@@ -569,6 +569,16 @@ logged. Full detail: `docs/layer-7-architecture.md`.
   time when the user simply stops mentioning it) now has a real caller:
   `background/goal_staleness_job.py` (weekly), applying each `GoalStateChange` back through the
   real `PostgresGoalStore`. See `docs/layer-7-architecture.md`.
+- **File-length cleanup — `[done]` (2026-08-11).** `schemas.py` (342, the only file in this layer
+  over the cap) split into a `schemas/` package by sub-component. No behavior change; all existing
+  import paths kept working via re-exports. See `docs/layer-7-architecture.md` §17.
+- **Habit check-in tracking is a genuine missing sub-feature — `[logged]` (2026-08-11).**
+  `Habit` objects are genuinely created by SC-5 decomposition, but nothing anywhere checks them
+  in or updates `current_streak`/`best_streak`/`total_check_ins`/`last_checked_in` — there is no
+  habit check-in surface at all (route, job, or turn-level detector). Real feature work if ever
+  prioritized. Also logged: three more `Layer7Output` audit fields never populated (same shape as
+  the already-documented `milestones_decomposed`) and six unset `Goal` fields on an otherwise
+  fully-live class. See `docs/layer-7-architecture.md` §17.
 
 ---
 
