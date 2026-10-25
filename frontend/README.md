@@ -1,8 +1,7 @@
 # Nova web app
 
 Next.js 16 (App Router, Turbopack) · React 19 · Tailwind v4 · TanStack Query · motion. The screens and
-the endpoints behind each are in [`PRODUCT_SURFACE.md`](PRODUCT_SURFACE.md). The vision docs the design
-came from are in `reference/`.
+the endpoints behind each are in [`PRODUCT_SURFACE.md`](PRODUCT_SURFACE.md).
 
 ## Run
 

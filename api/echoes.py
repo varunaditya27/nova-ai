@@ -1,4 +1,4 @@
-"""Project the memories Nova recalled this turn into UI 'echoes' (gpt-chat-reference Principle 7).
+"""Project the memories Nova recalled this turn into UI 'echoes'.
 
 Layer-2 recall returns ``ScoredMemory`` wrappers (``.memory`` is the episode, ``.fuzzy_temporal_label``
 is the human 'when' — e.g. "a few weeks ago", already computed per the no-raw-timestamps invariant).
