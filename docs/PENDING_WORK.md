@@ -36,10 +36,10 @@ gap was found and why it wasn't fixed inline.
 
 ## Layer 2 — Cognition & Memory
 
-- **STM buffer (SC-1) accumulates real turns but has no prompt-side reader** — in-session "what
+- **[done, 2026-10-25]** *(was: STM buffer has no prompt-side reader)* — `api/session_context.py` now feeds the last in-session turns to the planner. Original note: **STM buffer (SC-1) accumulates real turns but has no prompt-side reader** — in-session "what
   did I say 3 messages ago" recall is still not live; `stm.turns` is written every turn and never
   read back into generation. Real, bounded engineering work — no product decision needed.
-- **Narrative-chain linking's write path is live (SC-8) but nothing reads `active_narrative_chains`
+- **[done, 2026-10-25]** *(read side now live via `api/session_context.py`)* **Narrative-chain linking's write path is live (SC-8) but nothing reads `active_narrative_chains`
   back into generation** — `api/assembly.py::recall`'s hook contract only returns
   `recalled_memories`, and there's no prompt-building consumer waiting for chains even if it did.
   Same shape of gap as the STM item above.

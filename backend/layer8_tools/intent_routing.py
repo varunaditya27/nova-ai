@@ -7,26 +7,40 @@ the LLM param-extractor (which only enriches parameters, never re-routes).
 
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from backend.layer8_tools.schemas import ActionType, ToolIntent
 
-# Keyword → (tool, operation) fallback when no intent_fn is supplied.
+# A tool fires only on a *request addressed to Nova* — an imperative or "can you …" opener — never
+# on a bare keyword: "my meeting stresses me out" or "that song reminded me of my dad" are
+# conversation, and hijacking them into a tool form would derail exactly the moments that matter.
+_REQUEST_OPENER = (r"^\W*(?:(?:hey |hi )?nova\W+)?(?:(?:i need|i want|i'd like|i would like) you to |"
+                   r"(?:can|could|would|will) you )?(?:please |pls )?")
+
+
+def _request(verbs: str, rest: str = "") -> re.Pattern:
+    return re.compile(_REQUEST_OPENER + r"(?:" + verbs + r")\b" + rest, re.I)
+
+
 _KEYWORD_RULES = [
-    (("search", "look up", "google", "find online"), "web_search", "search"),
-    (("remind me", "reminder", "remind"), "reminders", "create_reminder"),
-    (("send email", "email", "send a mail"), "email", "draft"),
-    (("schedule", "calendar", "add event", "meeting", "appointment"), "calendar", "create_event"),
-    (("take a note", "make a note", "jot down", "write down", "note that"), "notes", "create_note"),
+    (_request(r"search|google|look up|find online"), "web_search", "search"),
+    (re.compile(r"\bremind me (?:to|about|that|of|at|in|on|tomorrow|tonight|next|every)\b|"
+                r"\b(?:set|create|add) (?:a |an )?reminder\b", re.I), "reminders", "create_reminder"),
+    (_request(r"email"), "email", "draft"),
+    (_request(r"send|write|draft|compose", r"(?: an?| the| my| quick)* e-?mail\b"), "email", "draft"),
+    (_request(r"schedule|book|set up|add|put|create", r".*\b(?:calendar|meeting|appointment|event|call)\b"),
+     "calendar", "create_event"),
+    (_request(r"take a note|make a note|jot (?:this |that )?down|write (?:this |that )?down"),
+     "notes", "create_note"),
 ]
 
 
 def keyword_route(message: str) -> Optional[tuple[str, str]]:
-    """Conservative (tool, operation) routing from keywords — the low-false-positive gate shared by
-    the deterministic fallback and the LLM param-extractor (which only enriches, never re-routes)."""
-    low = (message or "").lower()
-    for keywords, tool, operation in _KEYWORD_RULES:
-        if any(kw in low for kw in keywords):
+    """Conservative (tool, operation) routing — the low-false-positive gate shared by the
+    deterministic fallback and the LLM param-extractor (which only enriches, never re-routes)."""
+    for pattern, tool, operation in _KEYWORD_RULES:
+        if pattern.search(message or ""):
             return tool, operation
     return None
 

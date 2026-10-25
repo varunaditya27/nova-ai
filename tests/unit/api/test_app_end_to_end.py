@@ -12,8 +12,10 @@ def test_app_boots_and_chat_works(monkeypatch):
         def run_turn(self, user_id, message, now=None, session_id="", client_metadata=None):
             return SimpleNamespace(response_text="hello from nova", conversation_mode="casual",
                                    cognitive_system="system1", crisis_active=False, refined=False)
+    from tests.unit.api.test_chat import _empty_session_factory
     fake_state = SimpleNamespace(default_user_id="local-user", orchestrator=Orch(),
-                                 engine=None, config={"api": {"cors_origins": []}})
+                                 engine=None, config={"api": {"cors_origins": []}},
+                                 session_factory=_empty_session_factory())
     monkeypatch.setattr(main, "build_app_state", lambda: fake_state)
 
     app = main.create_app()

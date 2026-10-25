@@ -51,6 +51,9 @@ async def lifespan(app: FastAPI):
     finally:
         if scheduler is not None and hasattr(scheduler, "shutdown"):
             scheduler.shutdown(wait=False)
+        post_turn = getattr(app.state.nova, "post_turn", None)
+        if post_turn is not None:
+            post_turn.shutdown()   # land the last turn's deferred writes before the engine closes
         engine = getattr(app.state.nova, "engine", None)
         if engine is not None and hasattr(engine, "dispose"):
             engine.dispose()

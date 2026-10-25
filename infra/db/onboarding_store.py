@@ -40,8 +40,10 @@ class PostgresOnboardingStore:
             return {"surfaced_targets": surfaced,
                     "asked_this_session": str(session_key or "default") in sessions}
 
-    def record_elicitation(self, session_key, inference_target: str) -> None:
-        """Mark an inference target as surfaced (never re-ask it) and this session as having asked."""
+    def record_elicitation(self, session_key, inference_target: str, asked_message: str = "") -> None:
+        """Mark an inference target as surfaced (never re-ask it) and this session as having asked.
+        The *next* user message is its answer: ``pending_answer`` remembers what was asked and the
+        message that prompted it, so the asking turn itself is never mistaken for the reply."""
         key = str(session_key or "default")
         with session_scope(self._sf) as s:
             row = s.query(m.OnboardingState).filter_by(user_id=self._user_id).one_or_none()
@@ -54,11 +56,25 @@ class PostgresOnboardingStore:
             if inference_target and inference_target not in targets:
                 targets.append(inference_target)
             payload["surfaced_elicitation_targets"] = targets
+            payload["pending_answer"] = {"target": inference_target, "asked_message": asked_message}
             sessions = list(payload.get("elicitation_session_keys", []))
             if key not in sessions:
                 sessions.append(key)
             payload["elicitation_session_keys"] = sessions
             row.payload = payload
+
+    def take_pending_answer(self, current_message: str) -> str | None:
+        """The inference target awaiting an answer, if ``current_message`` is a later message than
+        the one that asked it; clears it. None when nothing is pending or this is the asking turn."""
+        with session_scope(self._sf) as s:
+            row = s.query(m.OnboardingState).filter_by(user_id=self._user_id).one_or_none()
+            payload = dict(row.payload or {}) if row is not None else {}
+            pending = payload.get("pending_answer")
+            if not pending or pending.get("asked_message") == current_message:
+                return None
+            payload.pop("pending_answer")
+            row.payload = payload
+            return pending["target"]
 
     def graduate_now(self) -> None:
         """Explicitly end cold start ahead of the session-counter fallback -- called when the

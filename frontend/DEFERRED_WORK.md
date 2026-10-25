@@ -72,8 +72,8 @@ person-to-person edges (the "Universe" view below still needs those).
 ## 6. Onboarding & persona depth  — `ROADMAP`
 - **Layer-13 feature-pacing** — active elicitation is done (one earned question/session); *progressive
   feature introduction* (revealing capabilities as the relationship matures) is not wired.
-- **Elicitation answer-capture** — Nova surfaces onboarding questions and never repeats them, but does
-  **not yet extract/infer the answer** from the user's reply (the Layer-13 `passive_elicitation`
+- **Elicitation answer-capture** — done (2026-10-25, `api/elicitation_capture.py`). Historical note: Nova surfaced onboarding questions and never repeated them, but did
+  **not extract/infer the answer** from the user's reply (the Layer-13 `passive_elicitation`
   extractors aren't wired to write the inferred value back). Today it asks; it doesn't yet *learn* the
   answer automatically.
 - **Deeper persona learning** — four communication-style params are learned (verbosity, formality,

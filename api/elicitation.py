@@ -64,7 +64,7 @@ def crude_emotional_intensity(message: str) -> float:
 
 
 def select_elicitation(message: str, session_number: int, surfaced_targets,
-                       asked_this_session: bool) -> Optional[ElicitationItem]:
+                       asked_this_session: bool, known_targets=()) -> Optional[ElicitationItem]:
     """The single ElicitationItem to surface this turn, or None (no trigger / already asked /
     rate-limited / inferred-only). Never returns an already-surfaced target.
 
@@ -78,7 +78,7 @@ def select_elicitation(message: str, session_number: int, surfaced_targets,
     if not triggers:
         return None
 
-    surfaced = set(surfaced_targets or [])
+    surfaced = set(surfaced_targets or []) | set(known_targets)   # never ask what Nova already knows
     items = []
     for base in INITIAL_ELICITATION_ITEMS:
         it = replace(base)                               # copy — never mutate the module constant

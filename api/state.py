@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -64,6 +65,7 @@ class AppState:
     voice_backend: Any = None
     stt_backend: Any = None
     stm_store: Any = None
+    post_turn: Any = None
 
 
 def build_voice_backend(config: dict):
@@ -625,11 +627,16 @@ def make_cold_start_provider(session_factory, graduation_sessions: int) -> Calla
         try:
             from api.elicitation import select_elicitation
             el = store.elicitation_state(session_id)
-            item = select_elicitation(message, state.get("session_index", 0) + 1,
-                                      el["surfaced_targets"], el["asked_this_session"])
+            from infra.db.initial_state_store import PostgresInitialStateStore
+            known = PostgresInitialStateStore(session_factory, user_id).load()
+            item = select_elicitation(
+                message, state.get("session_index", 0) + 1, el["surfaced_targets"],
+                el["asked_this_session"],
+                known_targets=[t for t in ("user_handle", "life_phase", "primary_reason")
+                               if getattr(known, t)])
             if item is not None:
                 directives.pending_elicitation = item
-                store.record_elicitation(session_id, item.inference_target)   # never re-ask it
+                store.record_elicitation(session_id, item.inference_target, message)   # never re-ask
         except Exception:
             logger.exception("elicitation selection failed; overlay without a question")
         return directives
@@ -679,7 +686,22 @@ def make_uwm_provider(session_factory) -> Callable:
     store = PostgresMemoryStore(session_factory)
 
     def _provider(user_id):
-        return store.load_uwm(user_id)
+        uwm = store.load_uwm(user_id)
+        # Layer 13's cold-start record learns the name/life stage from message one (regex + the
+        # onboarding answer); the UWM's LLM extraction can take sessions to catch up — and without
+        # this bridge nothing Layer 13 learned ever reached a prompt.
+        from infra.db.initial_state_store import PostgresInitialStateStore
+        known = PostgresInitialStateStore(session_factory, user_id).load()
+        if not (known.user_handle or known.life_phase):
+            return uwm
+        if uwm is None:
+            from backend.layer2_memory.schemas import UserWorldModel
+            uwm = UserWorldModel(user_id=uuid.uuid5(uuid.NAMESPACE_DNS, str(user_id)))
+        profile = uwm.profile
+        profile.preferred_name = profile.preferred_name or known.user_handle
+        if profile.current_life_stage == "unknown" and known.life_phase:
+            profile.current_life_stage = known.life_phase
+        return uwm
     return _provider
 
 
@@ -1287,7 +1309,10 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     session_factory = make_session_factory(engine)
     if vector_store is None:
         from infra.vector_store import build_vector_store
-        vector_store = build_vector_store(config)
+        try:
+            vector_store = build_vector_store(config)
+        except Exception:   # Chroma is an optional accelerator: recall degrades to the linear scan
+            logger.exception("vector store unreachable at boot; ANN recall disabled until restart")
 
     store = PostgresMemoryStore(session_factory)
     # Idempotent: seeds Nova's self-model once, on whichever process first finds it empty — not
@@ -1300,17 +1325,18 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     grad_sessions = config.get("onboarding", {}).get("graduation_sessions", 5)
     tz_offset = config.get("system", {}).get("timezone_offset_hours", 0.0)
     from infra.stm_store import InProcessSTMStore
+    from api.session_context import make_session_context_provider
+    from api.elicitation_capture import make_elicitation_answer_writer
     stm_store = InProcessSTMStore()
-    session_writer = _chain_writers(
-        make_message_writer(session_factory),
+    deferred_writers = _chain_writers(
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
                                  vector_store=vector_store, stm_store=stm_store,
                                  summarizer_llm=llm_clients["system1"],
                                  social_writer_fn=make_social_writer(
                                      session_factory, llm_clients["system1"])),
         make_goal_writer(session_factory, llm_clients["system1"], llm_clients["embed"]),
-        make_safety_writer(session_factory),
         make_onboarding_writer(session_factory, grad_sessions),
+        make_elicitation_answer_writer(session_factory, llm_clients["system1"], grad_sessions),
         make_cold_start_writer(session_factory, grad_sessions),
         make_relationship_writer(session_factory),
         make_proactive_writer(session_factory, grad_sessions),
@@ -1320,6 +1346,13 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         make_thread_writer(session_factory, llm_clients["system1"]),
         make_thread_proactive_writer(session_factory),
         make_life_event_writer(session_factory, llm_clients["system1"]))
+    from api.post_turn import PostTurnRunner
+    post_turn = PostTurnRunner(
+        deferred_writers, background=config.get("system", {}).get("post_turn_background", False))
+    # The message log and crisis safety record are cheap (no LLM) — the chat UI reads the log back
+    # immediately and a crisis record must be durable before the response — so only the rest defers.
+    session_writer = _chain_writers(make_message_writer(session_factory),
+                                    make_safety_writer(session_factory), post_turn.submit)
     default_user_id = config["system"]["default_user_id"]
     tool_manager = build_tool_manager(session_factory, default_user_id,
                                       intent_client=llm_clients.get("intent"))
@@ -1327,6 +1360,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     steps = build_pipeline_steps(
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
+        await_prior_turn=post_turn.drain,
         cold_start=make_cold_start_provider(session_factory, grad_sessions),
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),
@@ -1342,6 +1376,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         session_last_delivered_provider=make_session_last_delivered_provider(session_factory),
         thread_provider=make_thread_provider(session_factory),
         nova_positions_provider=make_nova_positions_provider(session_factory),
+        session_context_provider=make_session_context_provider(stm_store, store),
         vector_store=vector_store,
         layer1_config=Layer1Config.from_dict(config), timezone_offset_hours=tz_offset,
         region=config.get("layer11", {}).get("escalation", {}).get("default_region", "india"))
@@ -1351,4 +1386,4 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         orchestrator=ConversationOrchestrator(steps),
         default_user_id=default_user_id, tool_manager=tool_manager,
         voice_backend=build_voice_backend(config), stt_backend=build_stt_backend(config),
-        stm_store=stm_store)
+        stm_store=stm_store, post_turn=post_turn)

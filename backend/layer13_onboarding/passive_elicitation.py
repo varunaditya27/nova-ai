@@ -56,7 +56,8 @@ _RELATIONSHIP_CONTEXT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _STUDENT_SIGNALS = ["exam", "class", "semester", "assignment", "campus",
-                    "professor", "study", "college", "university", "degree"]
+                    "professor", "study", "college", "university", "degree", "student",
+                    "undergrad", "btech", "b.tech", "hostel", "lecture", "engineering"]
 _WORK_SIGNALS = ["work", "job", "office", "meeting", "deadline", "manager",
                  "client", "salary", "career", "company"]
 _HIGH_URGENCY_PATTERNS = ["asap", "urgent", "need to know now", "happening right now",

@@ -29,6 +29,13 @@ TIER_1_LEXICAL_PATTERNS = [
     r"(have|i've|i have) (a plan|pills|a gun|something) (to|for) (end|kill|hurt) (myself|my life)",
     r"(i'm going to|going to|i will) (hurt|kill|harm) (someone|them|him|her|you)",
     r"(currently|right now|already) (cutting|hurting|harming) (myself|yourself)",
+    # Explicit self-harm methods and the words themselves — hair-trigger by design (§4.3).
+    r"\b(kill|killing|hang|hanging|drown|drowning|shoot|shooting) myself\b",
+    r"\b(end|ending|take|taking) (my own life|my life)\b",
+    r"\b(commit|committing) suicide\b",
+    r"\boverdos(e|ed|ing)\b|\btook (a bunch of|too many|all my) pills\b",
+    r"\bjump(ing)? (off|from) (a |the |my )?(bridge|roof|building|balcony|cliff|window)\b",
+    r"\bkms\b",
 ]
 TIER_2_LEXICAL_PATTERNS = [
     r"(sometimes|part of me) (thinks?|wonders?|wishes?) .{0,20}(not being here|being gone|disappearing)",
@@ -43,6 +50,12 @@ TIER_2_LEXICAL_PATTERNS = [
     r"i (want to|wanna) die",
     r"(i )?want to end (it all|my life|everything)",
     r"(i'?d|i would) (be )?better off dead",
+    r"(?<!not )(?<!n't )(?<!never )\bsuicid(e|al)\b",
+    r"\bend(ing)? it all\b",
+    r"\b(want to|wanna) disappear\b|\bdisappear forever\b",
+    # Romanized Hindi — the user base writes this way; the 3 phrases below are unambiguous.
+    r"\b(marna chahta|marna chahti|mar jaana chahta|mar jana chahta|jeena nahi|jeene ka mann nahi|"
+    r"khud ko khatam|zindagi khatam)\b",
 ]
 TIER_3_LEXICAL_PATTERNS = [
     r"(feel like|feeling like) (a burden|worthless|nothing)",

@@ -1742,3 +1742,10 @@ communication-style data. Full test suite (1588 passed, 1 skipped) verified befo
 ---
 
 *This document specifies Layer 2 completely. All eight sub-components have full schemas, all algorithms are specified with exact logic, all gaps from the original design (User World Model schema, contradiction detection mechanism, clustering algorithm, audit trail, cross-session linking) are resolved. Live wiring status as of the most recent audit pass is tracked in §19 and `docs/POLISH_BACKLOG.md`; no behavior of Layer 2 requires assumptions or inferences from other documents.*
+
+- **2026-10-25 (first-principles re-audit):** STM turns and narrative chains now have a prompt-side
+  reader — `api/session_context.py::make_session_context_provider` (wired through
+  `build_pipeline_steps(session_context_provider=…)`, joined into the planner's
+  `response_instruction`): the last 6 in-session turns (scoped by session key; never another
+  session) and up to 2 multi-episode chains. Plain language only, no timestamps or scores.
+  *Still open:* recall has no semantic-relevance floor (see `docs/POLISH_BACKLOG.md`).

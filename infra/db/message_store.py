@@ -137,6 +137,13 @@ class PostgresMessageStore:
                  .order_by(m.ConversationMessage.id.asc()).first())
             return _row_to_dict(r) if r is not None else None
 
+    def last_message_meta(self) -> Optional[tuple[datetime, str]]:
+        """(created_at, session_key) of the newest message in the thread, or None if empty."""
+        with session_scope(self._sf) as s:
+            r = (s.query(m.ConversationMessage).filter_by(user_id=self._uid)
+                 .order_by(m.ConversationMessage.id.desc()).first())
+            return (r.created_at, r.session_key) if r is not None else None
+
     def last_interaction_at(self) -> Optional[datetime]:
         with session_scope(self._sf) as s:
             r = (s.query(m.ConversationMessage).filter_by(user_id=self._uid)

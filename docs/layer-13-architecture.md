@@ -1607,7 +1607,7 @@ What the user experiences across the cold start period:
 
 The implementation is **pure Python stdlib** (dataclasses + str-`Enum`, `re`, `datetime`, `uuid`)
 — no third-party dependencies, no LLM calls in any extractor or policy (matching the <20ms / <60ms
-performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1573
+performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1641
 passing). Module map: schemas (§4.2/§5.1/§6.2) split by responsibility into `schemas/`
 (`elicitation.py`, `passive_signals.py`, `cold_start_state.py`, `graduation.py`,
 `feature_pacing.py`, `coordinator.py`); SC-1 passive (§4.5) in
@@ -1777,3 +1777,15 @@ correctness of the underlying code.
   have a matching `InitialState` field at all) and `ColdStartBehaviorConfig.
   relationship_stage_advance_gate`/`_cold_start` (Layer 4's real stage-advancement logic has no
   cold-start injection point — wiring would be a cross-layer feature, not a field fix).
+
+- **2026-10-25 (first-principles re-audit):** (1) **Answer capture is live** —
+  `api/elicitation_capture.py` reads the reply to the pending question (`pending_answer` in
+  `PostgresOnboardingStore`; the asking turn is never mistaken for the answer) and writes
+  `user_handle`/`life_phase`/`primary_reason`/`primary_topic_areas` into `InitialState`.
+  Previously `primary_reason` had no extractor, so graduation by criteria could never fire.
+  (2) Questions whose target `InitialState` already holds are never asked
+  (`select_elicitation(known_targets=…)`). (3) **Bug fixed:** the name regex was case-insensitive,
+  so "I'm tired" set `user_handle="tired"`; now `context_constructor.extract_name`. (4) Passive
+  student signals widened ("student", "engineering", "btech", "hostel", …). (5) The learned name/
+  life stage now reach the persona prompt through `make_uwm_provider` (previously nothing Layer 13
+  learned reached any prompt). `FeaturePacingController` is still deliberately unwired.

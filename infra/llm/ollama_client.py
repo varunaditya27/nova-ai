@@ -10,11 +10,12 @@ from infra.llm.base_client import LLMClient
 
 class OllamaClient(LLMClient):
     def __init__(self, model: str, base_url: str, *,
-                 temperature: float | None = None, max_tokens: int | None = None):
+                 temperature: float | None = None, max_tokens: int | None = None,
+                 timeout: float | None = None):
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
-        self._client = ollama.Client(host=base_url)
+        self._client = ollama.Client(host=base_url, timeout=timeout)
 
     def _options(self, temperature, max_tokens) -> dict:
         opts = {}

@@ -376,3 +376,12 @@ constructs every `ParameterGap` with only `parameter_name`/`description`. Every 
 genuinely used (`required` is always its default `True`, correctly, since gaps are only raised for
 required parameters). Left in place rather than deleted — a plausible richer clarification-prompt
 signal for later, on an otherwise fully-wired class in the cleanest-audited layer of this pass.
+
+### Routing precision fix (first-principles re-audit, 2026-10-25)
+
+`intent_routing.py` previously matched bare substrings, so conversation containing "meeting",
+"schedule", "email", "remind" etc. was hijacked into a tool form — including "remind me what
+happened with my exam". Rules are now regexes that require a request addressed to Nova (imperative
+or "can you …"/"I need you to …"), except `remind me to|about|that|of|at|in|on|tomorrow|tonight|
+next|every` and `set|create|add a reminder`, which are inherently requests. The earlier "cleanest
+audit — zero bugs" conclusion did not hold; `tests/unit/test_tool_routing_precision.py` pins it.

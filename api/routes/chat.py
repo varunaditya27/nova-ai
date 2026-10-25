@@ -7,7 +7,6 @@ thread, so the assembly's async->sync bridge (`_run`) is safe (no running event 
 from __future__ import annotations
 
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -15,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from backend.layer9_output.stream_typing_overlay import StreamTypingOverlay
 from api.dependencies import get_state, get_orchestrator
 from api.schemas import ChatRequest, ChatResponse, EchoOut
+from api.session_resolver import resolve_session_id
 from api.streaming import stream_turn
 
 logger = logging.getLogger("nova.api")
@@ -38,7 +38,7 @@ def chat(req: ChatRequest, state=Depends(get_state),
          orchestrator=Depends(get_orchestrator)) -> ChatResponse:
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=422, detail="message must not be empty")
-    session_id = req.session_id or str(uuid.uuid4())
+    session_id = resolve_session_id(state, req.session_id)
     try:
         out = orchestrator.run_turn(state.default_user_id, req.message, session_id=session_id,
                                     client_metadata=_client_metadata(req))
@@ -73,7 +73,7 @@ def chat_stream(req: ChatRequest, state=Depends(get_state),
     """
     if not req.message or not req.message.strip():
         raise HTTPException(status_code=422, detail="message must not be empty")
-    session_id = req.session_id or str(uuid.uuid4())
+    session_id = resolve_session_id(state, req.session_id)
     gen = stream_turn(orchestrator, StreamTypingOverlay(), state.default_user_id, req.message,
                       session_id=session_id, client_metadata=_client_metadata(req))
     return StreamingResponse(gen, media_type="text/event-stream",

@@ -9,6 +9,16 @@ from api.routes.chat import router
 from api.dependencies import get_state, get_orchestrator
 
 
+def _empty_session_factory():
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from infra.db.engine import init_db, make_session_factory
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True,
+                           connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    init_db(engine)
+    return make_session_factory(engine)
+
+
 def _client(out=None, raises=False):
     app = FastAPI()
 
@@ -18,7 +28,8 @@ def _client(out=None, raises=False):
                 raise RuntimeError("boom")
             return out
     app.include_router(router)
-    app.dependency_overrides[get_state] = lambda: SimpleNamespace(default_user_id="local-user")
+    app.dependency_overrides[get_state] = lambda: SimpleNamespace(
+        default_user_id="local-user", config={}, session_factory=_empty_session_factory())
     app.dependency_overrides[get_orchestrator] = lambda: Orch()
     return TestClient(app, raise_server_exceptions=False)
 

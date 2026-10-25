@@ -5,6 +5,8 @@ system:
   chroma_port: ${CHROMA_PORT:-8000}
   default_user_id: ${NOVA_USER_ID:-local-user}
   debug_mode: false
+  session_gap_minutes: 30      # silence that ends a session (api/session_resolver.py) — drives stage + cold-start
+  post_turn_background: true   # defer the LLM-heavy post-turn writers off the response path (api/post_turn.py)
   # Single-user personal deployment — no per-user timezone capture exists (see
   # docs/layer-1-architecture.md §16), so this fixed offset stands in for it everywhere Layer 1
   # converts a stored UTC timestamp to local wall-clock time (circadian band, historical
@@ -43,6 +45,7 @@ llm:
   providers:
     ollama:
       base_url: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      timeout_seconds: 120      # a hung model must fail the call (every caller degrades), not pin a worker thread
 
 memory:
   recall_weights: { alpha: 0.40, beta: 0.30, gamma: 0.20, delta: 0.10 }

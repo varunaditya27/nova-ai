@@ -972,3 +972,63 @@ wired, with one real bug found and fixed:
   route never read. Fixed to load the real narrative arc and use its current chapter's title
   (falling back to its narrative summary). See `tests/unit/api/test_routes_conversation.py::
   test_home_desk_surfaces_the_real_current_chapter`.
+
+## First-principles re-audit (2026-10-25)
+
+Re-traced a real `/chat` turn end to end — real orchestrator, real stores, real Postgres, the real
+`OllamaClient` against a stub model server, and the real Next.js frontend driven by Playwright —
+instead of trusting the unit tests or these docs. Several "zero bugs" audit conclusions were wrong;
+each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
+
+- **[done] Layer 11 crisis protocol was never delivered.** `api/assembly.py::escalate` read
+  `resp.response_text`/`resp.message`, but `CrisisResponse`'s field is `.text`, so every confirmed
+  crisis fell through to a generic string — no "Are you safe right now?", no iCall/Vandrevala/
+  NIMHANS numbers. Fixed; `tests/unit/api/test_crisis_response_delivery.py` runs the real
+  orchestrator. (The Layer 11 "zero bugs" note below is superseded.)
+- **[done] SC-2 lexical layer missed plain-spoken risk.** The semantic layer is unwired, so the
+  regexes plus a 7B model's `crisis_flag` are the whole net. Added explicit methods, "suicide/
+  suicidal", "ending it all", "kms", overdose, jump-off and romanized-Hindi patterns, with negation
+  guards ("I'm not suicidal"). `tests/unit/test_crisis_lexicon_coverage.py`.
+- **[done] Layer 8 keyword routing hijacked conversation.** Substring matching sent "my meeting
+  stresses me out", "that song reminded me of my dad" and "remind me what happened with my exam"
+  into tool forms. Routing now requires a request addressed to Nova (imperative / "can you …" /
+  "remind me to|about|at…"). `tests/unit/test_tool_routing_precision.py`.
+- **[done] Boot crashed if Chroma was unreachable**, contradicting the documented "degrades to
+  the linear scan". `build_app_state` now logs and continues with `vector_store=None`.
+- **[done] Response latency included every post-turn LLM call.** Summary, UWM, social, goal,
+  identity and thread extraction (4–6 calls on a local model) ran before the HTTP response
+  returned. `api/post_turn.py` defers them to one worker (`system.post_turn_background`, on by
+  default); the message log and crisis safety record stay synchronous, and the next turn drains
+  the worker right after the crisis scan, so it always reads the previous turn's writes.
+- **[done] No LLM timeout.** A hung Ollama pinned a worker thread forever.
+  `llm.providers.ollama.timeout_seconds` (120) now reaches `ollama.Client`.
+- **[done] A "session" was a page load.** The frontend holds `session_id` in React state, so
+  reloads minted sessions and a long-lived tab stayed one — distorting relationship stage (which
+  gates how freely Nova may reference the past), cold-start graduation and STM scope.
+  `api/session_resolver.py`: the server ends a session after `system.session_gap_minutes` (30) of
+  silence; the client id is only adopted for the very first message.
+- **[done] STM turns and narrative chains had no prompt-side reader** (the two Layer 2 items in
+  `PENDING_WORK.md`). `api/session_context.py` folds the last in-session turns and multi-episode
+  chains into one plain-language planner directive.
+- **[done] Layer 13 asked questions it had the answer to, and never learned answers.**
+  `primary_reason` has no passive extractor, so graduation by criteria could never fire. Added
+  `api/elicitation_capture.py` (reply to the pending question → `InitialState`), skip questions
+  whose target is already known, and widened the passive student signals ("engineering student").
+- **[done] `_NAME_INTRO_RE` registered moods as names.** `re.IGNORECASE` made "I'm tired" set
+  `user_handle="tired"`. Now `extract_name` (capitalised-only for "I'm X", mood stoplist). The
+  learned name/life stage now also reach the persona prompt via `make_uwm_provider` — previously
+  nothing Layer 13 learned reached any prompt.
+- **[done] Packaging/tooling:** `background` was missing from `pyproject` `packages`;
+  `frontend/package-lock.json` was out of sync so `npm ci` failed.
+- **[open] Recall has no relevance floor.** `select_recall` keeps any memory with
+  `effective_score > 0`, and 60% of the formula (emotional/temporal/importance) is query-
+  independent, so Nova's "most important" memories surface — and are presented to the planner as
+  relevant context — even for "hey". Needs a semantic-similarity floor calibrated against real
+  `nomic-embed-text` scores (can't be tuned with the offline stub embedder) and a decision on how
+  it coexists with mood-congruent recall.
+- **[open] Episodic promotion only captures high-arousal / life-event-keyword turns.** Calm,
+  substantive facts ("I'm vegetarian", "my sister visits next week") never become episodes; they
+  survive only if the per-turn UWM extraction picks them up. Worth deciding whether the promotion
+  rule should also admit self-disclosure turns.
+- **[open] SC-2's semantic classifier layer is still unwired** (no model); lexical + the LLM
+  `crisis_flag` remain the only layers.

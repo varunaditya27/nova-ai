@@ -34,7 +34,22 @@ _FIRST_MESSAGE_LATE_NIGHT = (
 )
 _FIRST_MESSAGE_FALLBACK = "Hey. What's on your mind?"
 
-_NAME_INTRO_RE = re.compile(r"(?:I'm|I am|my name is|call me)\s+([A-Z][a-z]+)", re.IGNORECASE)
+# "my name is X" / "call me X" are unambiguous in any case. "I'm X" / "I am X" only count when X is
+# capitalised ("I'm Arjun") — and not a capitalised state word ("I'm Sorry") — since case-insensitive
+# matching made "I'm tired" register "tired" as the user's name.
+_NAME_INTRO_RE = re.compile(
+    r"(?:(?i:my name is|call me)\s+([A-Za-z]+)|\b(?:I'm|I am)\s+([A-Z][a-z]+)\b)")
+_NOT_NAMES = {"sorry", "fine", "good", "great", "tired", "happy", "sad", "not", "just", "here", "back",
+              "done", "okay", "sure", "ready", "glad", "worried", "scared", "stressed", "hungry",
+              "bored", "lost", "alone", "late", "trying", "going", "feeling", "really", "very", "so"}
+
+
+def extract_name(message: str):
+    for m in _NAME_INTRO_RE.finditer(message):
+        name = m.group(1) or m.group(2)
+        if name.lower() not in _NOT_NAMES:
+            return name.capitalize()
+    return None
 
 
 def make_initial_state(user_id: str) -> InitialState:
@@ -70,9 +85,9 @@ class ColdStartContextBuilder:
 
         # ── user handle ──────────────────────────────────────────────────────
         if initial_state.user_handle is None:
-            m = _NAME_INTRO_RE.search(message)
-            if m:
-                updates["user_handle"] = m.group(1)
+            name = extract_name(message)
+            if name:
+                updates["user_handle"] = name
 
         # ── life phase (only above the confidence threshold) ─────────────────
         lc = signals.life_context_signals

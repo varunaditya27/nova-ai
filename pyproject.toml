@@ -31,7 +31,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["config", "infra", "backend", "api"]
+packages = ["config", "infra", "backend", "api", "background"]
 
 [tool.pytest.ini_options]
 markers = [

@@ -57,7 +57,7 @@ overlay → tool use → generate → SC-1 guardrails → Layer-9 delivery → p
 | field | type | required | notes |
 |---|---|---|---|
 | `message` | string | yes | the user's message |
-| `session_id` | string \| null | no | omitted → a new UUID is minted and returned |
+| `session_id` | string \| null | no | only adopted for the very first message; afterwards the server owns session boundaries — a message within `system.session_gap_minutes` (30) of the last continues that session, a later one starts a new UUID. Always echoed in the response |
 
 **Response — `ChatResponse`**
 | field | type | notes |
@@ -71,7 +71,7 @@ overlay → tool use → generate → SC-1 guardrails → Layer-9 delivery → p
 | `tool_invoked` | bool | a Layer-8 tool handled the turn (see `/tools/*`) |
 | `confabulation_guard` | bool | true when no memories were recalled (model told not to invent) |
 | `echoes` | list | memories Nova recalled this turn: `{summary, when, created_at}` — render as tiny dismissible "echoes" |
-| `session_id` | string | echo (or minted) session id |
+| `session_id` | string | the resolved session id (may differ from the one sent) |
 
 `curl -X POST /chat -d '{"message":"hey Nova","session_id":"s1"}'`
 

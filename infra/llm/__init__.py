@@ -33,7 +33,8 @@ def build_llm_client(role: str, config: dict) -> "LLMClient":
     if provider == "ollama":
         from infra.llm.ollama_client import OllamaClient
         return OllamaClient(model=model, base_url=conn["base_url"],
-                            temperature=temperature, max_tokens=max_tokens)
+                            temperature=temperature, max_tokens=max_tokens,
+                            timeout=conn.get("timeout_seconds"))
     raise ValueError(f"unknown LLM provider {provider!r} for role {role!r}")
 
 

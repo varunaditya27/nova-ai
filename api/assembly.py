@@ -129,6 +129,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          session_last_delivered_provider: Optional[Callable] = None,
                          thread_provider: Optional[Callable] = None,
                          nova_positions_provider: Optional[Callable] = None,
+                         session_context_provider: Optional[Callable] = None,
+                         await_prior_turn: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
@@ -605,8 +607,14 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             return GRACEFUL_REFUSAL_TEXT
         drift_directive = (pre_drift.planner_directive
                           if pre_drift and pre_drift.drift_detected else None)
+        session_context = ""
+        if session_context_provider is not None:
+            try:
+                session_context = session_context_provider(ctx.user_id, ctx.session_id)
+            except Exception:
+                logger.exception("session context provider failed; planning without it")
         directive = " ".join(d for d in (
-            _goal_directive(ctx), _elicitation_directive(ctx), _longitudinal_directive(ctx),
+            session_context, _goal_directive(ctx), _elicitation_directive(ctx), _longitudinal_directive(ctx),
             drift_directive) if d)
         # Forward the real Layer 2 recall + Layer 3 advice-gate signals that already sit on
         # ctx — previously dropped, so the planner never actually grounded responses in
@@ -732,8 +740,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                 getattr(assessment, "tier", CrisisTier.TIER_2.value),
                 signal=getattr(assessment, "signal", None), region=region,
                 llm_fn=lambda p: system2.complete(p))
-            return (getattr(resp, "response_text", None) or getattr(resp, "message", None)
-                    or _CRISIS_TEXT)
+            return resp.text or _CRISIS_TEXT
         except Exception:
             logger.exception("escalate adapter failed; using crisis fallback")
             return _CRISIS_TEXT
@@ -808,4 +815,5 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         perceive=perceive, recall=recall, classify=classify, cold_start=cold_start,
         safety_scan=safety_scan, build_persona=build_persona, tool_use=tool_use,
         plan=plan, refine=refine, social_coaching=social_coaching, guardrails=guardrails,
-        escalate=escalate, deliver=deliver, state_update=state_update)
+        escalate=escalate, deliver=deliver, state_update=state_update,
+        await_prior_turn=await_prior_turn)

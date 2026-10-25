@@ -53,6 +53,7 @@ class PipelineSteps:
     escalate: Optional[Callable] = None         # L11 SC-3 (ctx, crisis) -> crisis response
     deliver: Optional[Callable] = None          # L9  (ctx, response, crisis_mode_active) -> out
     state_update: Optional[Callable] = None     # post-turn (ctx) -> None
+    await_prior_turn: Optional[Callable] = None  # () -> None; blocks until the last turn's writes land
 
 
 @dataclass
@@ -158,6 +159,11 @@ class ConversationOrchestrator:
 
         # ── Layer 11 SC-2: crisis detection runs first and is NEVER blocked ──
         ctx.crisis_assessment = self._safe_safety_scan(ctx)
+
+        # The previous turn's (possibly deferred) writes must land before this turn reads state —
+        # after the crisis scan, so safety is never delayed by them.
+        if s.await_prior_turn is not None:
+            s.await_prior_turn()
 
         try:
             # ── Layer 1: input perception ───────────────────────────────────
@@ -327,7 +333,7 @@ class ConversationOrchestrator:
             confabulation_guard=ctx.confabulation_guard, cold_start_active=ctx.cold_start_active,
             proactivity_mode=ctx.proactivity_mode, pending_elicitation=ctx.pending_elicitation,
             guardrail_flags=ctx.guardrail_flags, degraded=ctx.degraded,
-            state_updated=ctx.state_updated, layers_run=ctx.layers_run,
+            state_updated=ctx.state_updated, layers_run=list(ctx.layers_run),
             recalled_memories=list(ctx.recalled_memories or []),
             layer9_events=list(ctx.layer9_events or []),
             format_spec_applied=ctx.format_spec_applied)
