@@ -1,20 +1,32 @@
 "use client";
 
+import { useRef, type ReactNode } from "react";
 import { Margin } from "@/components/brand/Margin";
-import { useRef } from "react";
-import { ButtonLink } from "@/components/ui/Button";
-import { LightField } from "@/components/brand/LightField";
-import { gsap, MOTION_OK, SplitText, useGSAP } from "@/lib/gsap";
-import { HeroFilm } from "./HeroFilm";
-import { introWillPlay } from "./Intro";
 import { MagneticButton } from "@/components/brand/MagneticButton";
+import type { Light } from "@/components/ThemeProvider";
+import { ButtonLink } from "@/components/ui/Button";
+import { Mark } from "@/components/ui/Mark";
+import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
+import { dayLight, heroHour } from "@/lib/welcome/dayLight";
+import { HeroLight } from "./HeroLight";
+import { HeroRuler } from "./HeroRuler";
+import { SHADE_END, beamX, openingScore, pagePeel, scrollScore } from "./heroScore";
 import { useBegin } from "./useBegin";
 
-const LINES = ["A companion ", "that remembers ", "you."];
+const SKIP_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart"];
+
+const Line = ({ children }: { children: ReactNode }) => (
+  <span className="block overflow-hidden pb-[0.12em]">
+    <span data-hero-line className="block motion-safe:opacity-0">
+      {children}
+    </span>
+  </span>
+);
 
 /**
- * The opening shot: a day passing over one life, filling the frame, with the promise set over it in
- * very large type. The camera pushes in as you scroll, and a pool of light follows the pointer.
+ * The opening: a page, in the light of the visitor's real hour. A window's light crosses it from first
+ * light and lands on "now"; the promise is set; the stamp lands. The page is dog-eared (`fold`), and as
+ * you leave it the fold grows across the page. The score lives in heroScore.ts.
  */
 export function Hero() {
   const begin = useBegin();
@@ -23,92 +35,28 @@ export function Hero() {
   useGSAP(
     () => {
       const el = root.current!;
+      const q = gsap.utils.selector(el);
+      const d = new Date();
+      const shown = document.documentElement.dataset.light as Light;
+      const now = dayLight(heroHour(shown, d.getHours() + d.getMinutes() / 60));
+      el.style.setProperty("--at", String(now.at));
+
       const mm = gsap.matchMedia();
       mm.add(MOTION_OK, () => {
-        gsap.set("[data-hero-bar]", { scaleY: 1 });
-        gsap.set("[data-hero-line]", { autoAlpha: 0 });
-        const tl = gsap.timeline({ delay: introWillPlay() ? 2.45 : 0.15 });
-        tl.from(
-          "[data-hero-film]",
-          { scale: 1.3, autoAlpha: 0, duration: 2.6, ease: "power3.out" },
-          0,
-        )
-          .to(
-            "[data-hero-bar]",
-            { scaleY: 0, duration: 1.8, ease: "expo.inOut" },
-            0.1,
-          )
-          .from(
-            "[data-hero-item]",
-            {
-              y: 32,
-              autoAlpha: 0,
-              duration: 1,
-              stagger: 0.1,
-              ease: "power4.out",
-            },
-            1.1,
-          );
-
-        document.fonts.ready.then(() => {
-          const lines = gsap.utils.toArray<HTMLElement>("[data-hero-line]");
-          lines.forEach((line, i) => {
-            const chars = SplitText.create(line, {
-              type: "chars",
-              aria: "none",
-            }).chars;
-            gsap.set(line, { autoAlpha: 1 });
-            gsap.from(chars, {
-              yPercent: 125,
-              rotate: 7,
-              duration: 1.15,
-              stagger: { each: 0.028, from: "start" },
-              ease: "power4.out",
-              delay: (introWillPlay() ? 2.45 : 0.15) + 0.25 + i * 0.16,
-            });
-          });
-        });
-        gsap.to("[data-hero-push]", {
-          scale: 1.3,
-          yPercent: 10,
-          ease: "none",
-          scrollTrigger: {
-            trigger: el,
-            start: "top top",
-            end: "bottom top",
-            scrub: true,
-          },
-        });
-        gsap.to("[data-hero-copy]", {
-          yPercent: -14,
-          autoAlpha: 0.1,
-          ease: "none",
-          scrollTrigger: {
-            trigger: el,
-            start: "top top",
-            end: "bottom 30%",
-            scrub: true,
-          },
-        });
+        const tl = openingScore(el, dayLight(5.5), now);
+        const skip = () => tl.progress(1);
+        SKIP_EVENTS.forEach((e) => window.addEventListener(e, skip, { once: true, passive: true }));
+        scrollScore(el, now);
+        return () => SKIP_EVENTS.forEach((e) => window.removeEventListener(e, skip));
       });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.set(q("[data-hero-beam]"), { xPercent: beamX(now.at), skewX: now.skew, opacity: now.strength, color: now.tint });
+        gsap.set(q("[data-hero-shade]"), { opacity: SHADE_END });
+      });
+      mm.add(`${MOTION_OK} and (min-width: 768px)`, () => pagePeel(el));
       mm.add(`${MOTION_OK} and (pointer: fine)`, () => {
-        const pos = { x: el.clientWidth * 0.68, y: el.clientHeight * 0.4 };
-        const paint = () => {
-          el.style.setProperty("--mx", `${pos.x}px`);
-          el.style.setProperty("--my", `${pos.y}px`);
-        };
-        paint();
-        const move = (e: PointerEvent) => {
-          const r = el.getBoundingClientRect();
-          gsap.to(pos, {
-            x: e.clientX - r.left,
-            y: e.clientY - r.top,
-            duration: 1.1,
-            ease: "power3.out",
-            overwrite: true,
-            onUpdate: paint,
-          });
-        };
+        const lean = gsap.quickTo(q("[data-hero-beam]"), "x", { duration: 1.1, ease: "power3" });
+        const move = (e: PointerEvent) => lean((e.clientX / window.innerWidth - 0.5) * -16);
         el.addEventListener("pointermove", move);
         return () => el.removeEventListener("pointermove", move);
       });
@@ -120,84 +68,77 @@ export function Hero() {
     <section
       id="top"
       ref={root}
-      data-light="night"
-      data-cursor="film"
-      className="relative isolate flex min-h-dvh items-end overflow-hidden bg-[#151210] px-5 pb-16 pt-32 text-ink sm:px-8 sm:pb-24 lg:px-12"
+      className="fold relative isolate flex min-h-dvh items-end overflow-hidden bg-ground px-5 pb-16 pt-32 [--c:56px] [clip-path:polygon(0_0,calc(100%-var(--c))_0,100%_var(--c),100%_calc(100%-var(--p,0px)),calc(100%-var(--p,0px))_100%,0_100%)] sm:px-8 sm:pb-24 lg:px-12 lg:[--c:88px]"
     >
-      <div
-        data-hero-film
+      <HeroLight />
+      <HeroRuler />
+      <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-20 overflow-hidden"
-      >
-        <div data-hero-push className="size-full lg:translate-x-[11%]">
-          <HeroFilm className="size-full object-cover [object-position:63%_50%]" />
-        </div>
-      </div>
-      <LightField className="pointer-events-none absolute inset-0 -z-10 size-full opacity-60 mix-blend-screen" />
-      <div
-        aria-hidden
-        data-hero-bar
-        className="absolute inset-x-0 top-0 z-10 h-[11vh] origin-top scale-y-0 bg-[#0c0a09]"
-      />
-      <div
-        aria-hidden
-        data-hero-bar
-        className="absolute inset-x-0 bottom-0 z-10 h-[11vh] origin-bottom scale-y-0 bg-[#0c0a09]"
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            "linear-gradient(90deg, rgb(21 18 16 / 0.78) 0%, rgb(21 18 16 / 0.35) 48%, transparent 75%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10"
-        style={{
-          background:
-            "radial-gradient(520px circle at var(--mx, 68%) var(--my, 40%), rgb(255 179 71 / 0.14), transparent 62%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-x-0 bottom-0 -z-10 h-1/2"
-        style={{
-          background: "linear-gradient(to top, #151210 5%, transparent)",
-        }}
+        className="pointer-events-none absolute bottom-0 right-0 z-20 h-[var(--p,0px)] w-[var(--p,0px)] [filter:drop-shadow(-4px_-4px_8px_rgb(20_12_8/0.25))]"
+        style={{ background: "linear-gradient(to bottom right, var(--raised), var(--surface) 49.5%, transparent 50%)" }}
       />
 
-      <div data-hero-copy className="mx-auto w-full max-w-6xl">
-        <h1 className="text-[length:clamp(3.1rem,0.4rem+9vw,9.5rem)] leading-[0.92] tracking-[-0.035em]">
-          {LINES.map((l) => (
-            <span key={l} className="block overflow-hidden pb-[0.12em]">
-              <span data-hero-line className="block">
-                {l}
-              </span>
-            </span>
-          ))}
-        </h1>
-        <div className="mt-10 grid items-end gap-10 lg:grid-cols-12">
-          <p
-            data-hero-item
-            className="read max-w-lg text-ink-soft lg:col-span-5"
+      <div data-hero-copy className="relative z-10 mx-auto w-full max-w-6xl">
+        {/* The stamp sits beside the widest line of the headline, outside the heading so its "n" is not part of the heading's text. */}
+        <div className="relative w-fit">
+          <h1 className="text-[length:clamp(3.1rem,0.4rem+9vw,9.5rem)] leading-[0.92] tracking-[-0.035em]">
+            <Line>A companion </Line>
+            <Line>
+              that{" "}
+              <span className="relative inline-block">
+                remembers
+                <svg
+                  aria-hidden
+                  viewBox="0 0 300 14"
+                  preserveAspectRatio="none"
+                  className="absolute -bottom-[0.02em] left-0 h-[0.1em] w-full overflow-visible text-accent"
+                >
+                  <path
+                    data-hero-ink-line
+                    d="M2 9 C 40 3, 90 12, 150 7 S 250 4, 298 8"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              </span>{" "}
+            </Line>
+            <Line>you.</Line>
+          </h1>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-full right-0 mb-5 lg:-top-2 lg:bottom-auto lg:left-full lg:right-auto lg:mb-0 lg:ml-[clamp(1rem,2.5vw,2.5rem)]"
           >
+            <div className="-rotate-6">
+              <div data-hero-stamp className="relative motion-safe:opacity-0">
+                <span
+                  data-hero-ink
+                  className="absolute inset-[-35%] rounded-full opacity-0"
+                  style={{ background: "radial-gradient(closest-side, color-mix(in srgb, var(--accent) 38%, transparent), transparent)" }}
+                />
+                <span data-hero-shadow className="absolute inset-x-[6%] -bottom-[6%] h-[14%] rounded-[50%] bg-[#140c08] opacity-50 blur-xl" />
+                <Mark size="clamp(6rem, 10.5vw, 11rem)" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-10 grid items-end gap-10 lg:grid-cols-12">
+          <p data-hero-item className="read max-w-lg text-ink-soft motion-safe:opacity-0 lg:col-span-5">
             Nova is one conversation that goes on for years. It remembers what
             you tell it, notices how you’re doing, and runs on your own
             computer, so what you share stays with you.
           </p>
           <div
             data-hero-item
-            className="flex flex-wrap items-center gap-x-7 gap-y-4 lg:col-span-7 lg:justify-end"
+            className="flex flex-wrap items-center gap-x-7 gap-y-4 motion-safe:opacity-0 lg:col-span-7 lg:justify-end"
           >
-            <MagneticButton onClick={begin}>
-              Begin the conversation
-            </MagneticButton>
+            <MagneticButton onClick={begin}>Begin the conversation</MagneticButton>
             <ButtonLink href="#proof" variant="text">
               See it in action
             </ButtonLink>
-            <Margin tilt={-4} className="hidden sm:inline-block">
+            <Margin tilt={-4} delay={2.6} className="hidden sm:inline-block">
               no sign-up, just hello
             </Margin>
           </div>

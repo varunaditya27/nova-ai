@@ -1,0 +1,43 @@
+/*
+ * Scrollbars as a ruler: a square ink thumb sliding along a track with tick marks on its outer edge,
+ * the same marks as the .ruler meters. Chrome and Safari draw it (::-webkit-scrollbar). Where that is
+ * not available the standard properties give a thin ink bar. They are kept apart on purpose: Chrome
+ * ignores ::-webkit-scrollbar as soon as scrollbar-width or scrollbar-color is set. Colours are theme
+ * variables, so the bar follows dawn, day, dusk and night.
+ */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-track {
+    background: repeating-linear-gradient(to bottom, var(--rule) 0 1px, transparent 1px 10px) right / 6px 100% no-repeat;
+  }
+  ::-webkit-scrollbar-track:horizontal {
+    background: repeating-linear-gradient(to right, var(--rule) 0 1px, transparent 1px 10px) bottom / 100% 6px no-repeat;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--ink-soft);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-right-width: 4px;
+  }
+  ::-webkit-scrollbar-thumb:horizontal {
+    border-right-width: 2px;
+    border-bottom-width: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-button,
+  ::-webkit-scrollbar-corner {
+    display: none;
+  }
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-soft) transparent;
+  }
+}

@@ -2,7 +2,6 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { NovaCursor } from "@/components/brand/NovaCursor";
 import { SmoothScroll } from "@/components/brand/SmoothScroll";
 import { CommandMenuProvider } from "./CommandMenu";
 import { MobileNav } from "./MobileNav";
@@ -19,7 +18,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     <CommandMenuProvider>
       <div className="grain" />
       <SmoothScroll enabled={pathname !== "/"} />
-      <NovaCursor />
       <a href="#main" className="skip-link">
         Skip to the page
       </a>

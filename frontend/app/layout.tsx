@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./pointer.css";
+import "./scrollbar.css";
 import { ThemeProvider, lightNoFlashScript } from "@/components/ThemeProvider";
 import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
 import { QueryProvider } from "@/components/QueryProvider";

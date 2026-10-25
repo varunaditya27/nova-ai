@@ -61,7 +61,7 @@ export function SideNav() {
                       aria-current={active ? "page" : undefined}
                       onClick={() => play("click")}
                       className={cn(
-                        "relative flex min-h-10 items-center gap-3 px-4 transition-colors duration-200",
+                        "relative flex min-h-9 items-center gap-3 px-4 transition-colors duration-200",
                         active
                           ? "bg-raised text-ink before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:bg-accent"
                           : "text-ink-soft hover:bg-sunk hover:text-ink",

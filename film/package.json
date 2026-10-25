@@ -2,11 +2,9 @@
   "name": "nova-film",
   "private": true,
   "version": "1.0.0",
-  "description": "Remotion source for Nova's landing-page films. Renders into ../frontend/public/film.",
+  "description": "Remotion source for the landing page's Growth film. Renders into ../frontend/public/film.",
   "scripts": {
     "studio": "remotion studio",
-    "still": "remotion still src/index.ts Hero --frame=150 --output=../frontend/public/film/hero-poster.jpg",
-    "render": "remotion render src/index.ts Hero ../frontend/public/film/hero.mp4",
     "render:all": "bash render.sh"
   },
   "dependencies": {

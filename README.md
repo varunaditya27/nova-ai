@@ -17,7 +17,7 @@ memory, emotional understanding and context across years. Runs entirely on your 
 
 <br/>
 
-<img src="docs/images/welcome.jpg" alt="Nova's landing page: a film of a day passing around the stamp mark, with the headline 'A companion that remembers you.'" width="100%">
+<img src="docs/images/welcome.jpg" alt="Nova's landing page: a page in the light of the visitor's real hour, a window's light falling on a ruler of the day marked 'now', the headline 'A companion that remembers you.' and the stamp mark." width="100%">
 
 </div>
 
@@ -140,8 +140,9 @@ that Nova **keeps** things, and it looks and sounds like it.
 - **A character.** Nova speaks in the first person from one voice file, and its stamp has moods: it breathes,
   pulses while thinking, hops when a reply arrives, dozes off when you go quiet, and looks lost on a missing page.
   Every page carries a handwritten margin note.
-- **A cinematic landing page.** An opening film made with Remotion and a scroll score built with GSAP, with a
-  still, static version for anyone who prefers reduced motion.
+- **A cinematic landing page.** The opening is live, not a video: a window's light crosses a page and lands on the
+  visitor's real hour before the stamp is pressed, scored with GSAP, with a still, static version for anyone who
+  prefers reduced motion. The "how it grows" scene scrubs frames rendered with Remotion.
 - **Plain language.** Enum values, timestamps in ISO format and raw scores never reach the screen.
 - **Accessible and tested.** Playwright runs axe checks on every page in all four lights.
 
@@ -212,7 +213,7 @@ nova-ai/
 ├── migrations/     Alembic schema migrations
 ├── config/         defaults.yaml and one file per layer
 ├── frontend/       The Next.js web app
-├── film/           Remotion source for the landing-page films
+├── film/           Remotion source for the "how it grows" frames
 ├── docker/         Compose file and Dockerfiles
 ├── docs/           Architecture, API reference, per-layer specs, diagrams
 ├── scripts/        run_local.sh

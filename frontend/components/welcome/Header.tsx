@@ -34,7 +34,6 @@ export function Header() {
   });
   return (
     <header
-      data-light={over ? "night" : undefined}
       className={`fixed inset-x-0 top-0 z-40 px-5 text-ink transition-colors duration-500 sm:px-8 lg:px-12 ${over ? "bg-transparent" : "bg-ground"}`}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6">

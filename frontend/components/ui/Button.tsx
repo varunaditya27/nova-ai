@@ -45,7 +45,6 @@ export function Button({
   return (
     <button
       className={cn(base, variants[variant], className)}
-      data-cursor-tone={variant === "danger" ? "danger" : undefined}
       {...props}
     >
       {children}

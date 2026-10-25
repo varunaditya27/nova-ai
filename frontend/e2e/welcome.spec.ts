@@ -1,17 +1,46 @@
 import { test, expect } from "@playwright/test";
 
-/** Skip the title sequence (it plays once per visit) so tests start on the page itself. */
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.setItem("nova-intro", "1"));
+const stamp = (page: import("@playwright/test").Page) => page.locator("[data-hero-stamp]");
+
+test("the opening settles with the promise, the stamp and the day's ruler in place", async ({ page }) => {
+  await page.goto("/welcome");
+  await expect(page.locator("[data-hero-line]")).toHaveCount(3);
+  await expect(page.locator("[data-hero-now-label]")).toHaveCSS("opacity", "1", { timeout: 8_000 });
+  await expect(stamp(page)).toHaveCSS("opacity", "1");
+  for (const line of await page.locator("[data-hero-line]").all()) await expect(line).toHaveCSS("opacity", "1");
+  await expect(page.getByRole("button", { name: "Begin the conversation" }).first()).toBeVisible();
 });
 
-test("the title sequence plays once, then the curtain is gone", async ({ page }) => {
-  await page.addInitScript(() => sessionStorage.removeItem("nova-intro"));
+test("the window's light lands on the tick for the visitor's hour", async ({ page }) => {
   await page.goto("/welcome");
-  await expect(page.getByText("nova", { exact: true }).first()).toBeVisible();
-  await expect(page.locator("[data-intro-mark]")).toBeHidden({ timeout: 10_000 });
-  await page.reload();
-  await expect(page.locator("[data-intro-mark]")).toBeHidden();
+  await expect(page.locator("[data-hero-now-label]")).toHaveCSS("opacity", "1", { timeout: 8_000 });
+  await page.waitForTimeout(600);
+  const beam = (await page.locator("[data-hero-beam]").boundingBox())!;
+  const now = (await page.locator("[data-hero-now]").boundingBox())!;
+  expect(Math.abs(beam.x + beam.width / 2 - (now.x + now.width / 2))).toBeLessThan(12);
+});
+
+test("a click skips the opening to its end", async ({ page }) => {
+  await page.goto("/welcome");
+  await page.locator("[data-hero-line]").first().waitFor();
+  await page.mouse.click(700, 450);
+  await expect(stamp(page)).toHaveCSS("opacity", "1", { timeout: 1_000 });
+});
+
+test("with reduced motion the opening is simply there", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/welcome");
+  await expect(stamp(page)).toHaveCSS("opacity", "1", { timeout: 1_500 });
+  for (const line of await page.locator("[data-hero-line]").all()) await expect(line).toHaveCSS("opacity", "1");
+  await expect(page.locator("[data-hero-now-label]")).toHaveCSS("opacity", "1");
+});
+
+test("the hero no longer loads a film", async ({ page }) => {
+  const films: string[] = [];
+  page.on("request", (r) => /\/film\/hero/.test(r.url()) && films.push(r.url()));
+  await page.goto("/welcome");
+  await page.waitForTimeout(1500);
+  expect(films).toEqual([]);
 });
 
 test("the welcome page explains Nova and begins the conversation", async ({ page }) => {
@@ -113,4 +142,58 @@ test("the chapter rail follows where you are and jumps to a chapter", async ({ p
   await expect(rail.getByRole("link", { name: "Questions" })).toHaveAttribute("aria-current", "true");
   await rail.getByRole("link", { name: "The proof" }).click();
   await expect(rail.getByRole("link", { name: "The proof" })).toHaveAttribute("aria-current", "true", { timeout: 8000 });
+});
+
+test("the stamp never sits on the headline, at any width", async ({ page }) => {
+  for (const [width, height] of [[1920, 1080], [1440, 900], [1100, 800], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/welcome");
+    await expect(page.locator("[data-hero-now-label]")).toHaveCSS("opacity", "1", { timeout: 8_000 });
+    const stampBox = (await stamp(page).boundingBox())!;
+    // the edges of the actual words, not of the boxes the lines sit in
+    const words = await page.locator("[data-hero-line]").evaluateAll((lines) =>
+      lines.map((line) => {
+        const range = document.createRange();
+        range.selectNodeContents(line);
+        const r = range.getBoundingClientRect();
+        return { right: r.right, top: r.top };
+      }),
+    );
+    // wide screens: beside the headline; narrow ones: above it
+    if (width >= 1024) expect(stampBox.x, `${width}px wide`).toBeGreaterThanOrEqual(Math.max(...words.map((w) => w.right)));
+    else expect(stampBox.y + stampBox.height, `${width}px wide`).toBeLessThanOrEqual(words[0].top + 2);
+  }
+});
+
+test("the ribbon under the hero moves at its set pace", async ({ page }) => {
+  await page.goto("/welcome");
+  await page.waitForTimeout(1500);
+  const read = () => page.locator("[data-track]").evaluate((el) => ({ x: new DOMMatrix(getComputedStyle(el).transform).m41, w: (el as HTMLElement).offsetWidth }));
+  const a = await read();
+  await page.waitForTimeout(2000);
+  const b = await read();
+  const c = await (async () => { await page.waitForTimeout(2000); return read(); })();
+  // use whichever pair did not straddle the loop's wrap-around
+  const perSecond = Math.abs(b.x < a.x ? (b.x - a.x) / 2 : (c.x - b.x) / 2);
+  const expected = a.w / 2 / 35.4; // half the track per 35.4 s: 30% faster than the 46 s it had
+  expect(perSecond).toBeGreaterThan(expected * 0.9);
+  expect(perSecond).toBeLessThan(expected * 1.1);
+});
+
+test("every point of the example life shows up as you scroll to it", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.goto("/welcome");
+  await page.waitForTimeout(1500);
+  for (let i = 0; i < 80; i++) {
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(60);
+    if ((await page.locator("#connects").evaluate((el) => el.getBoundingClientRect().top)) < 150) break;
+  }
+  await page.waitForTimeout(2500);
+  const nodes = page.locator("[data-node]");
+  await expect(nodes).toHaveCount(6);
+  for (const node of await nodes.all()) {
+    await expect(node).toHaveCSS("opacity", "1");
+    await expect(node).toHaveCSS("visibility", "visible");
+  }
 });

@@ -16,7 +16,7 @@ export function Marquee() {
       mm.add(MOTION_OK, () => {
         const drift = gsap.to("[data-track]", {
           xPercent: -50,
-          duration: 46,
+          duration: 35.4,
           ease: "none",
           repeat: -1,
         });

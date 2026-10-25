@@ -8,7 +8,6 @@ import { Difference } from "@/components/welcome/Difference";
 import { Growth } from "@/components/welcome/Growth";
 import { ThreadProof } from "@/components/welcome/ThreadProof";
 import { ChapterRail } from "@/components/welcome/ChapterRail";
-import { Intro } from "@/components/welcome/Intro";
 import { Marquee } from "@/components/welcome/Marquee";
 import { Header } from "@/components/welcome/Header";
 import { Hero } from "@/components/welcome/Hero";
@@ -21,7 +20,7 @@ import { Questions } from "@/components/welcome/Questions";
 export default function Welcome() {
   return (
     <MotionConfig reducedMotion="user">
-      <div>
+      <div className="overflow-x-clip">
         <Header />
         <Hero />
         <Marquee />
@@ -36,7 +35,6 @@ export default function Welcome() {
         <Questions />
         <Closing />
         <ChapterRail />
-        <Intro />
       </div>
     </MotionConfig>
   );

@@ -12,11 +12,14 @@ import { useReducedMotionSafe } from "@/lib/motion";
 export function Margin({
   children,
   tilt = -1.5,
+  delay = 0,
   className,
 }: {
   children: ReactNode;
   /** Degrees. Notes lean a little differently so a page never looks printed. */
   tilt?: number;
+  /** Seconds to wait before the note and its pen-stroke arrive. */
+  delay?: number;
   className?: string;
 }) {
   const { reduced } = useReducedMotionSafe();
@@ -30,7 +33,7 @@ export function Margin({
       initial={reduced ? false : { opacity: 0, x: -6 }}
       whileInView={{ opacity: 1, x: 0 }}
       viewport={{ once: true, margin: "-10% 0px" }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}
+      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1], delay: 0.25 + delay }}
     >
       {children}
       <svg
@@ -49,7 +52,7 @@ export function Margin({
           initial={reduced ? false : { pathLength: 0 }}
           whileInView={{ pathLength: 1 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.7, ease: "easeOut", delay: 0.7 }}
+          transition={{ duration: 0.7, ease: "easeOut", delay: 0.7 + delay }}
         />
       </svg>
     </motion.span>

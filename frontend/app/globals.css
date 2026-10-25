@@ -446,20 +446,6 @@
   }
 }
 
-/* While Nova's cursor is on, the system pointer steps aside, except where you type. */
-html.nova-cursor,
-html.nova-cursor * {
-  cursor: none !important;
-}
-html.nova-cursor
-  :is(
-    input:not([type="range"], [type="checkbox"], [type="radio"]),
-    textarea,
-    [contenteditable="true"]
-  ) {
-  cursor: text !important;
-}
-
 /* On the inverted bands (ink background) the accent is unreadable; the margin note takes the ground colour.
    Unlayered on purpose, so it outranks the text-accent utility. */
 .bg-ink .hand {

@@ -15,11 +15,10 @@ for (const light of LIGHTS) {
         localStorage.setItem("nova-light-mode", l === "night" ? "night" : "day");
         window.addEventListener("DOMContentLoaded", () => document.documentElement.setAttribute("data-light", l));
       }, light);
-      await page.addInitScript(() => sessionStorage.setItem("nova-intro", "1"));
       await page.goto(route);
       await page.locator("h1").first().waitFor();
       await page.evaluate((l) => document.documentElement.setAttribute("data-light", l), light);
-      await page.waitForTimeout(route === "/welcome" ? 4500 : 1200); // the landing page's opening shot takes a few seconds to settle
+      await page.waitForTimeout(route === "/welcome" ? 4500 : 1200); // the landing page's opening takes a few seconds to settle
       const scan = async (exclude: string[] = []) => {
         let axe = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]);
         for (const e of exclude) axe = axe.exclude(e);

@@ -1087,18 +1087,41 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   voice (`lib/voice.ts`), a living stamp with moods and habits (`Mark`, `lib/companion/`), handwritten margin notes (`Margin`), and every page,
   empty state, loading line, error, toast, 404, command menu, nav caption, welcome chapter and intro rewritten in Nova's first-person voice.
   Third-person survives only in `/privacy` and `/welcome` factual claims, deliberately. Toasts and sheets lost their last soft/rounded corners.
+- **[done, 2026-10-25] Hero rebuilt as a live scene.** The film-based hero and the separate title sequence are gone; the
+  hero is a page in the light of the visitor's real hour (`components/welcome/Hero*.tsx`, `lib/welcome/dayLight.ts`),
+  folded in with the stamp press, about 3.4 s and skippable, page lifts at its bottom-right corner on scroll. About 11 MB of
+  video removed; `film/` keeps only the Growth frames. Specs: `e2e/welcome.spec.ts`. Details in `frontend/PRODUCT_SURFACE.md`.
+- **[done, 2026-10-25] Custom cursor replaced by a drawn folded-corner pointer** (`app/pointer.css`) and scrollbars restyled as a ruler (`app/scrollbar.css`). The 650-line JS cursor was deleted. The sidebar's
+  pointer and sound toggles were removed at the owner's request, so the pointer is always on (no stored preference, no component).
+- **[done, 2026-10-25] Unneeded scrollbars removed:** `/welcome` sideways bar (GSAP pin-spacer width, clipped on the page
+  wrapper), the chat box (overflow hidden until its 220px cap), the tab strips (an underline hung 1px below the strip, now
+  drawn inside it) and the sidebar (rows 36px, fits windows of 880px and taller). Specs: `e2e/scrollbars.spec.ts`.
 - **[done, 2026-10-25] "Hear it" read the SSML tags aloud** (Layer 9, see `docs/layer-9-architecture.md` Decision Log).
+- **[done, 2026-10-25] Frontend container:** `docker/frontend.Dockerfile` and a `frontend` service (profile `app`, port 3090).
 - **[done, 2026-10-25] Dictation could never work in Docker:** the backend's default speech-to-text address was `stt:8880`, but the
   container serves on 8000 (verified: refused on 8880, HTTP 200 on 8000). Fixed in `config/defaults.yaml`, `docker/.env.example` and the
   local `docker/.env`; `tests/unit/test_docker_wiring.py` now checks the Kokoro and STT defaults against the compose container ports.
   Verified live: Nova spoke a sentence and its own `/voice/transcribe` returned the same sentence.
+- **[done, 2026-10-25] `docker/Dockerfile` renamed `docker/backend.Dockerfile`** to match `kokoro.`, `stt.` and `frontend.Dockerfile`
+  (references in the compose file and the file's own comment updated).
 - **[open, 2026-10-25] First dictation after 5 idle minutes can fail once.** The STT server unloads its model when idle; the first
   request reloads it, which can exceed the backend's 30 s httpx timeout (`api/state.py::build_stt_backend`), so `/voice/transcribe` answers
   503 once and works on the retry. Fix options: a longer timeout for the transcribe call, or a startup warm-up request.
 - **[open, 2026-10-25] `docker/ollama.Dockerfile` and `docker/ollama-entrypoint.sh` are unused:** compose has no `ollama` service since it
   moved to host Ollama (`host.docker.internal:11434`). Delete them or bring the service back; left alone pending a decision.
-- **[done, 2026-10-25] Frontend container:** `docker/frontend.Dockerfile` and a `frontend` service (profile `app`, port 3090).
-- **[done, 2026-10-25] `docker/Dockerfile` renamed `docker/backend.Dockerfile`** to match `kokoro.`, `stt.` and `frontend.Dockerfile`
-  (references in the compose file and the file's own comment updated).
+- **[done, 2026-10-25] "How it connects": every point stayed hidden on production builds.** I first logged the failing e2e
+  test as a flaky race; it was a real bug. `Constellation` revealed its points with `from({ scale: 0, autoAlpha: 0 })`, and a
+  `from` tween takes its end values from the element when the tween is created. In a production build that read happens
+  during ScrollTrigger's repeated refreshes and caught the already-hidden state, so the tween went hidden to hidden (the lines
+  drew, the points never appeared). Now `fromTo` with explicit ends. The e2e suite normally runs against the dev server, where
+  the timing differs and hid it for good; the new spec "every point of the example life shows up as you scroll to it" was
+  verified failing on the old container and passing on the rebuilt one. Audited the rest of `/welcome` on the production build
+  after a full scroll: nothing else stays hidden (only the chapter rail's hover labels, by design). Worth running the e2e
+  suite against the container from time to time, not only the dev server.
+- **[done, 2026-10-25] Hero stamp sat on the headline at wide screens** (it was anchored to the container edge); it now sits beside
+  the headline block, outside the `<h1>` so its "n" is not part of the heading text. **Ribbon under the hero 30% faster**
+  (46 s to 35.4 s per loop, `components/welcome/Marquee.tsx`). **Sidebar pointer and sound buttons removed** at the owner's request.
+- **[open, 2026-10-25] At 1920px wide the headline wraps to four lines** ("that" / "remembers"): "that remembers" needs 1205px and
+  `max-w-6xl` is 1152px. Not caused by the hero rebuild (same sizes before). Options: a slightly lower font cap or a wider column.
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).

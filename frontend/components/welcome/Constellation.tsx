@@ -98,11 +98,12 @@ export function Constellation() {
           "[data-edge]",
           { strokeDashoffset: 1, stagger: 0.12, duration: 0.6, ease: "none" },
           0,
-        ).from(
+        ).fromTo(
           "[data-node]",
+          { scale: 0, autoAlpha: 0 },
           {
-            scale: 0,
-            autoAlpha: 0,
+            scale: 1,
+            autoAlpha: 1,
             stagger: 0.1,
             duration: 0.5,
             ease: "power3.out",

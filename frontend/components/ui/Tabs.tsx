@@ -29,7 +29,7 @@ export function Tabs<T extends string>({
     <div
       role="tablist"
       aria-label={label}
-      className="inline-flex max-w-full overflow-x-auto border-b border-rule"
+      className="inline-flex max-w-full overflow-x-auto shadow-[inset_0_-1px_0_var(--rule)]"
     >
       {items.map((item, i) => {
         const active = item.value === value;
@@ -56,7 +56,7 @@ export function Tabs<T extends string>({
             <span
               aria-hidden
               className={cn(
-                "absolute inset-x-5 -bottom-px h-[3px] origin-left bg-accent transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                "absolute inset-x-5 bottom-0 h-[3px] origin-left bg-accent transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
                 active ? "scale-x-100" : "scale-x-0",
               )}
             />

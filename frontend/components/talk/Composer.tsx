@@ -55,6 +55,7 @@ export function Composer({
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    el.style.overflowY = el.scrollHeight > 220 ? "auto" : "hidden";
   }, [value]);
 
   return (
@@ -77,7 +78,7 @@ export function Composer({
           rows={1}
           placeholder={placeholder}
           aria-describedby="say-hint"
-          className="read max-h-[220px] min-h-11 flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-mute"
+          className="read max-h-[220px] min-h-11 flex-1 resize-none overflow-y-hidden bg-transparent py-2 outline-none placeholder:text-mute"
         />
         {dictation.supported && (
           <button

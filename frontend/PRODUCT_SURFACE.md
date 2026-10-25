@@ -7,7 +7,7 @@ live; the routes are the single source of truth in `lib/nav.ts`. Full schemas:
 **Product spine:** one permanent conversation (Talk) that never accumulates widgets; every other
 page is a separate lens over the same data. No "new chat", no folders.
 
-**Identity: "kept" (full rationale in `frontend/BRAND.md`).** The brand is a journal: a bookplate stamp (`Mark`), a dog-eared corner (`.fold`/`.fold-sm`/`.fold-lg`, a clip-path with a folded flap) on buttons, cards and fields only, ruler-mark meters (`.ruler`), mono timestamps (`.stamp-text`) and an ink-pen cursor. Nothing is a pill. Editorial structure comes from rules, numbered chapters (`01 · The proof`) and Libre Baskerville display type. Buttons fill with ink from the left on hover; tabs are underlined. Nova speaks in the first person (`lib/voice.ts`) and has a body: the stamp has moods and leans toward your pointer, and every page carries a handwritten margin note. Shared brand layer (smooth scroll, grain, pen cursor with a sidebar on/off switch) lives in `components/brand/` and is mounted by `AppShell`.
+**Identity: "kept" (full rationale in `frontend/BRAND.md`).** The brand is a journal: a bookplate stamp (`Mark`), a dog-eared corner (`.fold`/`.fold-sm`/`.fold-lg`, a clip-path with a folded flap) on buttons, cards and fields only, ruler-mark meters (`.ruler`), mono timestamps (`.stamp-text`) and a folded-corner pointer. Nothing is a pill. Editorial structure comes from rules, numbered chapters (`01 · The proof`) and Libre Baskerville display type. Buttons fill with ink from the left on hover; tabs are underlined. Nova speaks in the first person (`lib/voice.ts`) and has a body: the stamp has moods and leans toward your pointer, and every page carries a handwritten margin note. Shared brand layer (smooth scroll, grain, the pointer, drawn in `app/pointer.css`) lives in `components/brand/` and is mounted by `AppShell`.
 
 **Design direction:** *the light follows your real day.* `data-light` (dawn / day / dusk / night) is
 stamped on `<html>` from the local hour (`components/ThemeProvider.tsx`, no-flash inline script, manual
@@ -47,17 +47,19 @@ entrance everywhere (`focusPull` in `lib/motion.ts`: slightly low, slightly smal
 decelerate on `power4.out`, moves between states ease both ends, durations are 0.35 / 0.5 / 0.8 s. Every scene has a
 main action, a supporting detail and a slow ambient layer. Nothing is `linear` except things tied directly to scroll.
 
-**The opening shot is a film**, not a web animation: `film/` holds the Remotion source (1920×1080, 10 s, a day passing over one
-life, seamless loop); it is graded in ffmpeg and shipped as `public/film/hero.{mp4,webm}` (+ `hero-sm.*` for phones, + a poster).
-It plays only on screen, and is a still for anyone who prefers less motion.
+**The opening is live, not a film** (`components/welcome/Hero.tsx`, `HeroLight.tsx`, `HeroRuler.tsx`, score in `heroScore.ts`): the hero is
+a page in the light of the visitor's real hour. A window's light crosses it from first light and lands on "now" (the ruler along
+the foot of the page, `lib/welcome/dayLight.ts`), the promise is set, one ink stroke is drawn under "remembers", there is a held
+beat, then the stamp lands and everything it touches reacts in the same frame. About 3.4 s; any click, key, wheel or touch skips to
+the end. The page is dog-eared at the top-right and lifts at the bottom-right corner as you leave. Under reduced motion it is a
+static frame at the real hour. The only film left is the Growth scene's frames (`film/`).
 
 **Scroll score**, in order (researched: no scroll-jacking, every pin has a clear release, no more than two pins, high-impact
 transitions only at hand-offs, desktop choreography simplifies on small screens):
 
 | Act | Behaviour |
 |---|---|
-| Title sequence | Once per visit: the stamp is pressed, the name is set and "hello." is written, then the page peels away toward its folded corner. The hero waits for it. |
-| Opening | Camera pushes in and the copy lifts away as you leave (counter-motion); a pool of light follows the pointer. |
+| Opening | The ~3.4 s entrance above, in the room's real light. As you leave: the camera keeps pushing, the window's light travels on toward dusk, the copy lifts away (counter-motion) and the page lifts at its bottom-right corner (not on phones). No pin. The window's light leans a little with the pointer. |
 | Ribbon | The four verbs drift; scrolling speeds it up and leans it. |
 | The proof | Marks accumulate on a ruler as you scroll; the reply is read word by word. |
 | The difference | Words come up in turn; the two cards move at different speeds (depth). |
@@ -67,8 +69,8 @@ transitions only at hand-offs, desktop choreography simplifies on small screens)
 | Privacy | Opens like the section above; try-it tamper chain. |
 | Chapter rail | Right edge, wide screens: a marker rides a ruler as you scroll and shows the chapter you are in; it doubles as a contents list. |
 
-Tooling: GSAP (ScrollTrigger, SplitText), Lenis smooth scroll (off for reduced motion), `motion/react`, Remotion (film only). `prefers-reduced-motion`:
-no smooth scroll, no pinning, no scrubbing, still film, content simply sits in its final state.
+Tooling: GSAP (ScrollTrigger, SplitText), Lenis smooth scroll (off for reduced motion), `motion/react`, Remotion (the Growth frames only). `prefers-reduced-motion`:
+no smooth scroll, no pinning, no scrubbing, a static opening, content simply sits in its final state.
 
 ## Notes
 - **One thread.** `GET /messages` returns the whole relationship, paginated by `before=<id>`; the UI
