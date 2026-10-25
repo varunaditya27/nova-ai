@@ -106,44 +106,9 @@ That is the philosophy behind Nova.
 
 # The 13-Layer Cognitive Architecture
 
-```mermaid
-flowchart TD
+<p align="center"><img src="docs/diagrams/turn.svg" alt="One conversation turn: the message passes perception, recall, classification and generation, then guardrails and delivery, while a crisis scan runs in parallel and can veto the reply; writes happen after the reply and feed the next turn." width="100%"></p>
 
-    U["🌐 User Input"] --> L1
-
-    subgraph P1 ["🧠 Perception"]
-        L1["Layer 1 · Input Perception\nTemporal awareness · Behavioral signals"]
-    end
-
-    subgraph P2 ["💾 Cognition"]
-        L2["Layer 2 · Memory System\nEpisodic · Semantic · Identity memory"]
-        L3["Layer 3 · Emotion & Reasoning\nIntent understanding · Empathy modeling"]
-    end
-
-    subgraph P3 ["🎭 Identity & Social"]
-        L4["Layer 4 · Persona Engine\nStable personality · Response planning"]
-        L5["Layer 5 · Social Intelligence\nRelationship graphs · Social reasoning"]
-    end
-
-    subgraph P4 ["🔮 Proactivity"]
-        L6["Layer 6 · Proactive Engagement\nCheck-ins · Timing intelligence"]
-        L7["Layer 7 · Goals & Accountability\nGoal extraction · Progress tracking"]
-    end
-
-    subgraph P5 ["🛡️ Safety & Delivery"]
-        L8["Layer 8 · Tool Use & Actions\nCalendar · Email · Reminders · Web search"]
-        L9["Layer 9 · Interaction Orchestration\nTyping behavior · Voice synthesis"]
-    end
-
-    subgraph P6 ["📖 Longitudinal Intelligence"]
-        L10["Layer 10 · Life Narrative Layer\nNarrative arcs · Retrospectives"]
-        L11["Layer 11 · Ethical Safety\nDependency monitoring · Guardrails"]
-        L12["Layer 12 · Privacy Infrastructure\nEncryption · Audit systems"]
-        L13["Layer 13 · Onboarding Engine\nCold start · Progressive elicitation"]
-    end
-
-    L1 --> L2 --> L3 --> L4 --> L5 --> L6 --> L7 --> L8 --> L9 --> L10 --> L11 --> L12 --> L13
-```
+<p align="center"><sub>One turn. Thirteen layers are not a chain: a crisis scan runs beside the pipeline and can veto the reply, tool requests skip generation, and everything that persists is written after you have your answer. The layers are described one by one below.</sub></p>
 
 ---
 
@@ -408,39 +373,9 @@ The system slowly transitions from generic interaction to deep personalization o
 
 # Infrastructure Stack
 
-```mermaid
-graph TB
+<p align="center"><img src="docs/diagrams/topology.svg" alt="Runtime topology: the web app talks to FastAPI over REST and server-sent events; for recall FastAPI has Ollama embed the query, asks Chroma for the nearest memory ids, then hydrates those rows from Postgres; Kokoro turns text into speech." width="100%"></p>
 
-    subgraph API ["⚡ Runtime"]
-        A1["FastAPI"]
-        A2["SSE Streaming"]
-        A3["Async/Sync Orchestrator Bridge"]
-    end
-
-    subgraph MEMORY ["💾 Memory"]
-        M1["PostgreSQL"]
-        M2["ChromaDB"]
-        M3["SQLCipher"]
-    end
-
-    subgraph INFERENCE ["🧠 Inference — fully offline via Ollama"]
-        I1["Main tier · 7-11B · generation"]
-        I2["Mini tier · 1-2B · classification & tool-intent"]
-    end
-
-    subgraph DELIVERY ["✨ Interaction"]
-        D1["Typing Simulation"]
-        D2["Voice Synthesis"]
-        D3["SSML Runtime"]
-    end
-
-    A1 --> M1
-    A1 --> M2
-    A1 --> I1
-    A1 --> I2
-    A1 --> D1
-    A1 --> D2
-```
+<p align="center"><sub>What talks to what. A recall is three hops: embed the query, ask Chroma for the nearest ids, hydrate the rows from Postgres (falling back to a scan if the index is cold). Everything runs locally; there is no cloud model.</sub></p>
 
 ---
 
