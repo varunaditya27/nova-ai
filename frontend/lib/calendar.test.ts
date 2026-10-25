@@ -3,8 +3,14 @@ import { buildDays, mondayOffset, monthRange, quiltTone } from "@/lib/calendar";
 
 describe("buildDays", () => {
   it("enumerates an inclusive UTC day range with counts and weekdays", () => {
-    const days = buildDays("2026-07-06T00:00:00Z", "2026-07-08T12:00:00Z", { "2026-07-07": 9 });
-    expect(days.map((d) => d.date)).toEqual(["2026-07-06", "2026-07-07", "2026-07-08"]);
+    const days = buildDays("2026-07-06T00:00:00Z", "2026-07-08T12:00:00Z", {
+      "2026-07-07": 9,
+    });
+    expect(days.map((d) => d.date)).toEqual([
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+    ]);
     expect(days.find((d) => d.date === "2026-07-07")?.count).toBe(9);
     expect(days.find((d) => d.date === "2026-07-08")?.count).toBe(0);
     expect(days[0].dow).toBe(1); // 2026-07-06 is a Monday

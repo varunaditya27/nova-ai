@@ -1,7 +1,9 @@
 import type { PersonOut } from "@/lib/api/types";
 
 /** How things feel between you and someone, in a sentence — never a score. */
-export function feeling(p: Pick<PersonOut, "relationship_valence" | "valence_trend">): string {
+export function feeling(
+  p: Pick<PersonOut, "relationship_valence" | "valence_trend">,
+): string {
   const base =
     p.relationship_valence > 0.3
       ? "Things sound warm between you"

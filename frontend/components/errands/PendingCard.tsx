@@ -18,19 +18,33 @@ export function PendingCard({ item }: { item: ToolConfirmation }) {
   return (
     <div className="tone-sunk flex flex-col gap-4 px-6 py-5">
       <div>
-        <p className="text-[length:var(--text-small)] text-ink-soft">{toolName(item.tool_name)} · Nova would like to</p>
+        <p className="text-[length:var(--text-small)] text-ink-soft">
+          {toolName(item.tool_name)} · Nova would like to
+        </p>
         <p className="read mt-1">{item.action_description}</p>
       </div>
       <p className="text-[length:var(--text-small)] text-ink-soft">
-        {item.reversible ? "You can undo this afterwards." : "This can’t be undone once it’s done."}
+        {item.reversible
+          ? "You can undo this afterwards."
+          : "This can’t be undone once it’s done."}
       </p>
       <div className="flex flex-wrap gap-3">
         <Button
           disabled={busy}
           onClick={() =>
             confirm.mutate(item.request_id, {
-              onSuccess: (r) => toast(r.ok ? "Done" : "That didn’t work", r.ok ? r.result_summary : (r.error_message ?? r.result_summary)),
-              onError: () => toast("Couldn’t do that just now", "Nothing was changed. You can try again."),
+              onSuccess: (r) =>
+                toast(
+                  r.ok ? "Done" : "That didn’t work",
+                  r.ok
+                    ? r.result_summary
+                    : (r.error_message ?? r.result_summary),
+                ),
+              onError: () =>
+                toast(
+                  "Couldn’t do that just now",
+                  "Nothing was changed. You can try again.",
+                ),
             })
           }
         >
@@ -39,7 +53,11 @@ export function PendingCard({ item }: { item: ToolConfirmation }) {
         <Button
           variant="quiet"
           disabled={busy}
-          onClick={() => deny.mutate(item.request_id, { onSuccess: () => toast("Okay, left alone", "Nova won’t do that.") })}
+          onClick={() =>
+            deny.mutate(item.request_id, {
+              onSuccess: () => toast("Okay, left alone", "Nova won’t do that."),
+            })
+          }
         >
           Not now
         </Button>

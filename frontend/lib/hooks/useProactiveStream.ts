@@ -27,7 +27,9 @@ export function useProactiveStream() {
     const source = new EventSource(`${STREAM_BASE}/proactive/stream`);
 
     source.addEventListener("item", (event) => {
-      const item = JSON.parse((event as MessageEvent).data) as ProactiveStreamItem;
+      const item = JSON.parse(
+        (event as MessageEvent).data,
+      ) as ProactiveStreamItem;
       if (seen.current.has(item.item_id)) return;
       seen.current.add(item.item_id);
       setItems((prev) => [item, ...prev]);

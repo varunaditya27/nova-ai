@@ -15,7 +15,8 @@ function ensure(): AudioContext | null {
   if (!ctx) {
     const AC =
       window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
     if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
@@ -49,7 +50,11 @@ function tone(freq: number, start: number, dur: number, peak = 1): void {
 function paperClick(): void {
   if (!ctx || !master) return;
   const dur = 0.035;
-  const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+  const buf = ctx.createBuffer(
+    1,
+    Math.ceil(ctx.sampleRate * dur),
+    ctx.sampleRate,
+  );
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * (1 - i / data.length); // decaying noise burst

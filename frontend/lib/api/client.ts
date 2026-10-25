@@ -59,7 +59,7 @@ export function getHome(): Promise<HomeOut> {
 }
 
 export function getMessages(
-  params: { limit?: number; before?: number } = {}
+  params: { limit?: number; before?: number } = {},
 ): Promise<MessageOut[]> {
   const q = new URLSearchParams();
   if (params.limit) q.set("limit", String(params.limit));
@@ -70,7 +70,7 @@ export function getMessages(
 
 export function searchMessages(
   query: string,
-  opts: { start?: string; end?: string; limit?: number } = {}
+  opts: { start?: string; end?: string; limit?: number } = {},
 ): Promise<MessageOut[]> {
   const q = new URLSearchParams({ q: query });
   if (opts.start) q.set("start", opts.start);
@@ -85,7 +85,9 @@ export function searchMemory(query: string, limit = 5): Promise<MemoryOut[]> {
 }
 
 export function getSummaries(limit = 10): Promise<LongitudinalSummary[]> {
-  return requestJson<LongitudinalSummary[]>(`/longitudinal/summaries?limit=${limit}`);
+  return requestJson<LongitudinalSummary[]>(
+    `/longitudinal/summaries?limit=${limit}`,
+  );
 }
 
 /** Latest weekly chapter. Resolves to null on 404 (none generated yet). */
@@ -98,7 +100,10 @@ export async function getLatestSummary(): Promise<LongitudinalSummary | null> {
   }
 }
 
-export function getCalendar(start?: string, end?: string): Promise<CalendarOut> {
+export function getCalendar(
+  start?: string,
+  end?: string,
+): Promise<CalendarOut> {
   const q = new URLSearchParams();
   if (start) q.set("start", start);
   if (end) q.set("end", end);
@@ -111,7 +116,9 @@ export function getMuseum(): Promise<MuseumOut> {
 }
 
 export function getGoals(status?: string): Promise<Goal[]> {
-  return requestJson<Goal[]>(`/goals${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+  return requestJson<Goal[]>(
+    `/goals${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+  );
 }
 
 export function getGoal(goalId: string): Promise<Goal> {
@@ -124,7 +131,7 @@ export function createGoal(title: string, description?: string): Promise<Goal> {
 
 export function updateGoal(
   goalId: string,
-  patch: { status?: string; progress_score?: number }
+  patch: { status?: string; progress_score?: number },
 ): Promise<Goal> {
   return requestJson<Goal>(`/goals/${encodeURIComponent(goalId)}`, {
     method: "PATCH",
@@ -134,8 +141,11 @@ export function updateGoal(
 }
 
 export async function deleteGoal(goalId: string): Promise<void> {
-  const res = await fetch(`${BASE}/goals/${encodeURIComponent(goalId)}`, { method: "DELETE" });
-  if (!res.ok) throw new ApiError(res.status, `goal delete failed (${res.status})`);
+  const res = await fetch(`${BASE}/goals/${encodeURIComponent(goalId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok)
+    throw new ApiError(res.status, `goal delete failed (${res.status})`);
 }
 
 export function getRelationship(): Promise<RelationshipOut> {
@@ -147,7 +157,9 @@ export function getPeople(): Promise<PersonOut[]> {
 }
 
 export function getPerson(personId: string): Promise<PersonDetailOut> {
-  return requestJson<PersonDetailOut>(`/people/${encodeURIComponent(personId)}`);
+  return requestJson<PersonDetailOut>(
+    `/people/${encodeURIComponent(personId)}`,
+  );
 }
 
 export function getProactive(limit = 5): Promise<ProactiveItem[]> {
@@ -156,8 +168,12 @@ export function getProactive(limit = 5): Promise<ProactiveItem[]> {
 
 /** SC-5: call the moment a client actually shows a proactive item to the user, so the next reply
  *  can be attributed to it via ChatRequest.is_reply_to_proactive. */
-export function markProactiveDelivered(itemId: string): Promise<{ item_id: string; status: string }> {
-  return requestJson(`/proactive/${encodeURIComponent(itemId)}/delivered`, { method: "POST" });
+export function markProactiveDelivered(
+  itemId: string,
+): Promise<{ item_id: string; status: string }> {
+  return requestJson(`/proactive/${encodeURIComponent(itemId)}/delivered`, {
+    method: "POST",
+  });
 }
 
 /** One memory in full — the detail view behind an echo or a list entry. */
@@ -180,7 +196,10 @@ export function getIntegrity(): Promise<IntegrityOut> {
 
 /** Layer-12 selective "forget" — content/embedding zeroed, row kept for proof. */
 export function deleteMemory(memoryId: string): Promise<MemoryDeletion> {
-  return requestJson<MemoryDeletion>(`/memory/${encodeURIComponent(memoryId)}`, { method: "DELETE" });
+  return requestJson<MemoryDeletion>(
+    `/memory/${encodeURIComponent(memoryId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function getSyncStatus(): Promise<SyncStatus> {
@@ -188,7 +207,9 @@ export function getSyncStatus(): Promise<SyncStatus> {
 }
 
 export function runJob(name: string): Promise<JobRunOut> {
-  return requestJson<JobRunOut>(`/admin/jobs/${encodeURIComponent(name)}`, { method: "POST" });
+  return requestJson<JobRunOut>(`/admin/jobs/${encodeURIComponent(name)}`, {
+    method: "POST",
+  });
 }
 
 export function getOnboarding(): Promise<OnboardingOut> {
@@ -204,15 +225,21 @@ export function getPendingTools(): Promise<ToolConfirmation[]> {
 }
 
 export function confirmTool(requestId: string): Promise<ToolResult> {
-  return requestJson<ToolResult>(`/tools/confirm/${encodeURIComponent(requestId)}`, {
-    method: "POST",
-  });
+  return requestJson<ToolResult>(
+    `/tools/confirm/${encodeURIComponent(requestId)}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function denyTool(requestId: string): Promise<{ denied: string }> {
-  return requestJson<{ denied: string }>(`/tools/deny/${encodeURIComponent(requestId)}`, {
-    method: "POST",
-  });
+  return requestJson<{ denied: string }>(
+    `/tools/deny/${encodeURIComponent(requestId)}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function getToolHistory(): Promise<ToolAction[]> {
@@ -220,9 +247,12 @@ export function getToolHistory(): Promise<ToolAction[]> {
 }
 
 export function undoTool(actionId: string): Promise<{ undone: boolean }> {
-  return requestJson<{ undone: boolean }>(`/tools/undo/${encodeURIComponent(actionId)}`, {
-    method: "POST",
-  });
+  return requestJson<{ undone: boolean }>(
+    `/tools/undo/${encodeURIComponent(actionId)}`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function getSafetyEvents(limit = 20): Promise<SafetyEvent[]> {
@@ -231,7 +261,7 @@ export function getSafetyEvents(limit = 20): Promise<SafetyEvent[]> {
 
 export function getBookmarks(category?: string): Promise<MessageOut[]> {
   return requestJson<MessageOut[]>(
-    `/bookmarks${category ? `?category=${encodeURIComponent(category)}` : ""}`
+    `/bookmarks${category ? `?category=${encodeURIComponent(category)}` : ""}`,
   );
 }
 
@@ -239,42 +269,62 @@ export function getMilestones(): Promise<MessageOut[]> {
   return requestJson<MessageOut[]>("/milestones");
 }
 
-export function setBookmark(messageId: string, category?: string): Promise<MessageOut> {
-  return requestJson<MessageOut>(`/messages/${messageId}/bookmark`, jsonPost({ category }));
+export function setBookmark(
+  messageId: string,
+  category?: string,
+): Promise<MessageOut> {
+  return requestJson<MessageOut>(
+    `/messages/${messageId}/bookmark`,
+    jsonPost({ category }),
+  );
 }
 
 export function removeBookmark(messageId: string): Promise<MessageOut> {
-  return requestJson<MessageOut>(`/messages/${messageId}/bookmark`, { method: "DELETE" });
+  return requestJson<MessageOut>(`/messages/${messageId}/bookmark`, {
+    method: "DELETE",
+  });
 }
 
-export function setMilestone(messageId: string, label?: string): Promise<MessageOut> {
-  return requestJson<MessageOut>(`/messages/${messageId}/milestone`, jsonPost({ label }));
+export function setMilestone(
+  messageId: string,
+  label?: string,
+): Promise<MessageOut> {
+  return requestJson<MessageOut>(
+    `/messages/${messageId}/milestone`,
+    jsonPost({ label }),
+  );
 }
 
 export function removeMilestone(messageId: string): Promise<MessageOut> {
-  return requestJson<MessageOut>(`/messages/${messageId}/milestone`, { method: "DELETE" });
+  return requestJson<MessageOut>(`/messages/${messageId}/milestone`, {
+    method: "DELETE",
+  });
 }
 
 /** Non-streamed full turn — also the fallback when the SSE stream fails. */
 export function postChat(
   message: string,
   sessionId?: string,
-  signals?: TypingSignals
+  signals?: TypingSignals,
 ): Promise<ChatResponse> {
-  return requestJson<ChatResponse>("/chat", jsonPost({ message, session_id: sessionId, ...signals }));
+  return requestJson<ChatResponse>(
+    "/chat",
+    jsonPost({ message, session_id: sessionId, ...signals }),
+  );
 }
 
 /** Synthesize speech. Throws (any non-200, incl. 503) so the caller can quietly stay text. */
 export async function postVoice(
   text: string,
   conversationMode = "casual",
-  voiceId?: string
+  voiceId?: string,
 ): Promise<Blob> {
   const res = await fetch(
     `${BASE}/voice`,
-    jsonPost({ text, conversation_mode: conversationMode, voice_id: voiceId })
+    jsonPost({ text, conversation_mode: conversationMode, voice_id: voiceId }),
   );
-  if (!res.ok) throw new ApiError(res.status, `voice unavailable (${res.status})`);
+  if (!res.ok)
+    throw new ApiError(res.status, `voice unavailable (${res.status})`);
   return res.blob();
 }
 
@@ -283,7 +333,11 @@ export async function postVoice(
 export async function transcribeVoice(blob: Blob): Promise<TranscribeOut> {
   const form = new FormData();
   form.append("file", blob, "clip.webm");
-  const res = await fetch(`${BASE}/voice/transcribe`, { method: "POST", body: form });
-  if (!res.ok) throw new ApiError(res.status, `transcription unavailable (${res.status})`);
+  const res = await fetch(`${BASE}/voice/transcribe`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok)
+    throw new ApiError(res.status, `transcription unavailable (${res.status})`);
   return (await res.json()) as TranscribeOut;
 }

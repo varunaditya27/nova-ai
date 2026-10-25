@@ -1,7 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getCalendar, getLatestSummary, getMuseum, getSummaries } from "@/lib/api/client";
+import {
+  getCalendar,
+  getLatestSummary,
+  getMuseum,
+  getSummaries,
+} from "@/lib/api/client";
 
 /** Weekly chapters (Layer 10 longitudinal summaries), newest first. */
 export function useSummaries() {
@@ -9,11 +14,17 @@ export function useSummaries() {
 }
 
 export function useLatestSummary() {
-  return useQuery({ queryKey: ["summary", "latest"], queryFn: getLatestSummary });
+  return useQuery({
+    queryKey: ["summary", "latest"],
+    queryFn: getLatestSummary,
+  });
 }
 
 export function useCalendar(start?: string, end?: string) {
-  return useQuery({ queryKey: ["calendar", start, end], queryFn: () => getCalendar(start, end) });
+  return useQuery({
+    queryKey: ["calendar", start, end],
+    queryFn: () => getCalendar(start, end),
+  });
 }
 
 export function useMuseum() {

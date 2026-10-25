@@ -1,7 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { confirmTool, denyTool, getPendingTools, getToolHistory, undoTool } from "@/lib/api/client";
+import {
+  confirmTool,
+  denyTool,
+  getPendingTools,
+  getToolHistory,
+  undoTool,
+} from "@/lib/api/client";
 
 /** Pending SOFT/HARD confirmations. Polled, since there is no push channel. */
 export function usePendingTools() {
@@ -20,7 +26,10 @@ export function useToolHistory() {
 export function useToolActions() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["tools"] });
-  const confirm = useMutation({ mutationFn: confirmTool, onSuccess: invalidate });
+  const confirm = useMutation({
+    mutationFn: confirmTool,
+    onSuccess: invalidate,
+  });
   const deny = useMutation({ mutationFn: denyTool, onSuccess: invalidate });
   const undo = useMutation({ mutationFn: undoTool, onSuccess: invalidate });
   return { confirm, deny, undo };

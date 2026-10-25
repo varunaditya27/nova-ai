@@ -11,7 +11,9 @@ import type { MemoryDeletion } from "@/lib/api/types";
 
 /** A short, readable number for a long signed receipt: first and last characters. */
 export function receiptNumber(certificate: string): string {
-  return certificate.length <= 16 ? certificate : `${certificate.slice(0, 8)}…${certificate.slice(-6)}`.toUpperCase();
+  return certificate.length <= 16
+    ? certificate
+    : `${certificate.slice(0, 8)}…${certificate.slice(-6)}`.toUpperCase();
 }
 
 /** What Nova stores about how much a memory matters, in a word rather than a decimal. */
@@ -22,7 +24,13 @@ function weight(importance: number): string {
 }
 
 /** One memory in full, and the only place that can make Nova forget it — in two deliberate steps. */
-export function MemorySheet({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function MemorySheet({
+  id,
+  onClose,
+}: {
+  id: string | null;
+  onClose: () => void;
+}) {
   const q = useMemoryDetail(id);
   const forget = useDeleteMemory();
   const { toast } = useToast();
@@ -36,11 +44,17 @@ export function MemorySheet({ id, onClose }: { id: string | null; onClose: () =>
   };
 
   return (
-    <Sheet open={Boolean(id)} onClose={close} title={receipt ? "Forgotten" : "A memory"}>
+    <Sheet
+      open={Boolean(id)}
+      onClose={close}
+      title={receipt ? "Forgotten" : "A memory"}
+    >
       {receipt ? (
         <div className="flex flex-col gap-5">
           <p className="read">
-            Nova can no longer recall this, and its words have been erased from memory. The signed receipt below proves it happened and can’t be forged.
+            Nova can no longer recall this, and its words have been erased from
+            memory. The signed receipt below proves it happened and can’t be
+            forged.
           </p>
           {receipt.cascade && (
             <p className="text-ink-soft">
@@ -49,13 +63,30 @@ export function MemorySheet({ id, onClose }: { id: string | null; onClose: () =>
             </p>
           )}
           <p className="tone-sunk px-5 py-4">
-            <span className="block text-[length:var(--text-small)] text-ink-soft">Receipt number</span>
-            <span className="text-[length:var(--text-read)]" aria-label="Receipt number">
+            <span className="block text-[length:var(--text-small)] text-ink-soft">
+              Receipt number
+            </span>
+            <span
+              className="text-[length:var(--text-read)]"
+              aria-label="Receipt number"
+            >
               {receiptNumber(receipt.certificate)}
             </span>
           </p>
           <div className="flex gap-3">
-            <Button variant="quiet" onClick={() => navigator.clipboard?.writeText(receipt.certificate).then(() => toast("Full receipt copied", "Keep it somewhere safe — it proves this memory was erased."))}>
+            <Button
+              variant="quiet"
+              onClick={() =>
+                navigator.clipboard
+                  ?.writeText(receipt.certificate)
+                  .then(() =>
+                    toast(
+                      "Full receipt copied",
+                      "Keep it somewhere safe — it proves this memory was erased.",
+                    ),
+                  )
+              }
+            >
               Copy full receipt
             </Button>
             <Button onClick={close}>Done</Button>
@@ -64,16 +95,21 @@ export function MemorySheet({ id, onClose }: { id: string | null; onClose: () =>
       ) : q.isLoading ? (
         <Skeleton lines={4} />
       ) : q.isError || !q.data ? (
-        <Trouble what="That memory couldn’t be opened. It may already have been forgotten." onRetry={() => q.refetch()} />
+        <Trouble
+          what="That memory couldn’t be opened. It may already have been forgotten."
+          onRetry={() => q.refetch()}
+        />
       ) : (
         <div className="flex flex-col gap-6">
           <p className="read whitespace-pre-wrap">{q.data.summary}</p>
           <p className="text-ink-soft">
-            From {longDate(q.data.created_at)} ({relativeTime(q.data.created_at)}). {weight(q.data.importance)}.
+            From {longDate(q.data.created_at)} (
+            {relativeTime(q.data.created_at)}). {weight(q.data.importance)}.
           </p>
           {q.data.topic_tags.length > 0 && (
             <p className="text-ink-soft">
-              About: <span className="text-ink">{q.data.topic_tags.join(", ")}</span>
+              About:{" "}
+              <span className="text-ink">{q.data.topic_tags.join(", ")}</span>
             </p>
           )}
 
@@ -84,13 +120,21 @@ export function MemorySheet({ id, onClose }: { id: string | null; onClose: () =>
               </Button>
             </div>
           ) : (
-            <div role="alertdialog" aria-label="Confirm forgetting" className="tone-sunk flex flex-col gap-4 px-6 py-6">
-              <h3 className="text-[length:var(--text-read)]">Forget this for good?</h3>
+            <div
+              role="alertdialog"
+              aria-label="Confirm forgetting"
+              className="tone-sunk flex flex-col gap-4 px-6 py-6"
+            >
+              <h3 className="text-[length:var(--text-read)]">
+                Forget this for good?
+              </h3>
               <p>
-                Nova will erase what it remembers about this and will never bring it up again. You’ll get a signed receipt.
+                Nova will erase what it remembers about this and will never
+                bring it up again. You’ll get a signed receipt.
               </p>
               <p className="text-ink-soft">
-                The original messages stay in your conversation history, and this can’t be undone.
+                The original messages stay in your conversation history, and
+                this can’t be undone.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Button
@@ -99,7 +143,11 @@ export function MemorySheet({ id, onClose }: { id: string | null; onClose: () =>
                   onClick={() =>
                     forget.mutate(q.data.memory_id, {
                       onSuccess: (r) => setReceipt(r),
-                      onError: () => toast("Couldn’t forget that just now", "Nothing was changed. Please try again."),
+                      onError: () =>
+                        toast(
+                          "Couldn’t forget that just now",
+                          "Nothing was changed. Please try again.",
+                        ),
                     })
                   }
                 >

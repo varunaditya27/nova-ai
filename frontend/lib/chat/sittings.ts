@@ -29,7 +29,10 @@ export function passageOfTime(ms: number): string | null {
  * Split the (oldest → newest) thread into sittings: a new one starts when the server-owned session
  * changes. The thread stays one continuous conversation; sittings are only how it is *read*.
  */
-export function groupSittings(messages: MessageOut[], now: Date = new Date()): Sitting[] {
+export function groupSittings(
+  messages: MessageOut[],
+  now: Date = new Date(),
+): Sitting[] {
   const sittings: Sitting[] = [];
   let prev: MessageOut | undefined;
   for (const m of messages) {
@@ -37,7 +40,8 @@ export function groupSittings(messages: MessageOut[], now: Date = new Date()): S
     if (!current || (prev && m.session_key !== prev.session_key)) {
       const gap =
         prev?.created_at && m.created_at
-          ? new Date(m.created_at).getTime() - new Date(prev.created_at).getTime()
+          ? new Date(m.created_at).getTime() -
+            new Date(prev.created_at).getTime()
           : 0;
       sittings.push({
         key: m.message_id,

@@ -4,7 +4,13 @@ import { useRef, type ReactNode } from "react";
 import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
 
 /** A panel that turns a few degrees toward the pointer, with a pool of light that follows it. Mouse only; still otherwise. */
-export function Tilt({ children, className }: { children: ReactNode; className?: string }) {
+export function Tilt({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   const root = useRef<HTMLDivElement>(null);
 
   useGSAP(
@@ -12,8 +18,14 @@ export function Tilt({ children, className }: { children: ReactNode; className?:
       const el = root.current!;
       const mm = gsap.matchMedia();
       mm.add(`${MOTION_OK} and (pointer: fine)`, () => {
-        const rx = gsap.quickTo(el, "rotationX", { duration: 0.7, ease: "power3" });
-        const ry = gsap.quickTo(el, "rotationY", { duration: 0.7, ease: "power3" });
+        const rx = gsap.quickTo(el, "rotationX", {
+          duration: 0.7,
+          ease: "power3",
+        });
+        const ry = gsap.quickTo(el, "rotationY", {
+          duration: 0.7,
+          ease: "power3",
+        });
         const move = (e: PointerEvent) => {
           const r = el.getBoundingClientRect();
           const px = (e.clientX - r.left) / r.width;
@@ -38,16 +50,23 @@ export function Tilt({ children, className }: { children: ReactNode; className?:
         };
       });
     },
-    { scope: root }
+    { scope: root },
   );
 
   return (
-    <div ref={root} className={`relative [transform-style:preserve-3d] ${className ?? ""}`}>
+    <div
+      ref={root}
+      className={`relative [transform-style:preserve-3d] ${className ?? ""}`}
+    >
       {children}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[1.25rem] opacity-[var(--lo,0)] transition-opacity duration-500"
-        style={{ background: "radial-gradient(420px circle at var(--lx,50%) var(--ly,50%), rgb(255 255 255 / 0.28), transparent 60%)", mixBlendMode: "soft-light" }}
+        className="pointer-events-none absolute inset-0 cut opacity-[var(--lo,0)] transition-opacity duration-500"
+        style={{
+          background:
+            "radial-gradient(420px circle at var(--lx,50%) var(--ly,50%), rgb(255 255 255 / 0.28), transparent 60%)",
+          mixBlendMode: "soft-light",
+        }}
       />
     </div>
   );

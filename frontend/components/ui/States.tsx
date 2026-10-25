@@ -18,8 +18,13 @@ export function Empty({
   className?: string;
 }) {
   return (
-    <div className={cn("tone flex flex-col items-start gap-4 px-7 py-10 sm:px-10 sm:py-12", className)}>
-      <Ember size={28} state="idle" className="text-accent" />
+    <div
+      className={cn(
+        "tone flex flex-col items-start gap-4 px-7 py-10 sm:px-10 sm:py-12",
+        className,
+      )}
+    >
+      <Ember size={30} state="idle" className="text-accent" />
       <h2 className="max-w-lg text-[length:var(--text-title)]">{title}</h2>
       {children && <p className="read max-w-xl text-ink-soft">{children}</p>}
       {action}
@@ -36,9 +41,14 @@ export function Trouble({
   onRetry?: () => void;
 }) {
   return (
-    <div role="alert" className="tone-sunk flex flex-col items-start gap-4 px-7 py-8">
+    <div
+      role="alert"
+      className="tone-sunk flex flex-col items-start gap-4 px-7 py-8"
+    >
       <p className="read max-w-xl">{what}</p>
-      <p className="max-w-xl text-ink-soft">Nothing you’ve said or saved is lost. This usually clears up on its own.</p>
+      <p className="max-w-xl text-ink-soft">
+        Nothing you’ve said or saved is lost. This usually clears up on its own.
+      </p>
       {onRetry && (
         <Button variant="quiet" onClick={onRetry}>
           Try again
@@ -49,11 +59,21 @@ export function Trouble({
 }
 
 /** Loading is a calm settle of flat blocks, never a spinner. */
-export function Skeleton({ lines = 3, className }: { lines?: number; className?: string }) {
+export function Skeleton({
+  lines = 3,
+  className,
+}: {
+  lines?: number;
+  className?: string;
+}) {
   return (
     <div aria-hidden className={cn("flex flex-col gap-3", className)}>
       {Array.from({ length: lines }).map((_, i) => (
-        <div key={i} className="h-5 rounded-full bg-sunk" style={{ width: `${88 - i * 14}%` }} />
+        <div
+          key={i}
+          className="shimmer h-5 rounded-[2px] bg-sunk"
+          style={{ width: `${88 - i * 14}%` }}
+        />
       ))}
     </div>
   );

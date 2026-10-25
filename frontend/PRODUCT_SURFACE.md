@@ -7,6 +7,8 @@ live; the routes are the single source of truth in `lib/nav.ts`. Full schemas:
 **Product spine:** one permanent conversation (Talk) that never accumulates widgets; every other
 page is a separate lens over the same data. No "new chat", no folders.
 
+**Shape language: the star-cut.** Nothing is a pill or a soft rounded box. Every button, card, field and nav item is a plain rectangle with the four concave points of Nova's star bitten out of its corners (`.cut-sm` / `.cut` / `.cut-lg` in `app/globals.css`, drawn with a CSS mask so the cut is exact at any size and focus rings sit inside it). Circles are reserved for the knots of the thread. Editorial structure comes from rules, numbered chapters (`01 · The proof`) and one oversized display face. Buttons fill with ink from the left on hover; tabs are underlined, not pills. Shared brand layer (smooth scroll, grain, cursor) lives in `components/brand/` and is mounted by `AppShell` for every page.
+
 **Design direction:** *the light follows your real day.* `data-light` (dawn / day / dusk / night) is
 stamped on `<html>` from the local hour (`components/ThemeProvider.tsx`, no-flash inline script, manual
 override in the sidebar). Flat tone steps instead of lines or shadows (shadows only on floating

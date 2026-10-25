@@ -20,9 +20,34 @@ export function worthShowing(events: SafetyEvent[]): SafetyEvent[] {
 }
 
 /** Real people to call. Kept identical to the numbers Nova itself offers during a crisis. */
-export const HELPLINES: { name: string; phone: string; tel: string; when: string }[] = [
-  { name: "iCall", phone: "9152987821", tel: "9152987821", when: "Monday to Saturday, 8am–10pm" },
-  { name: "Vandrevala Foundation", phone: "1860-2662-345", tel: "18602662345", when: "Any time, every day" },
-  { name: "NIMHANS", phone: "080-46110007", tel: "08046110007", when: "Any time, every day" },
-  { name: "Emergency services", phone: "112", tel: "112", when: "If you or someone is in immediate danger" },
+export const HELPLINES: {
+  name: string;
+  phone: string;
+  tel: string;
+  when: string;
+}[] = [
+  {
+    name: "iCall",
+    phone: "9152987821",
+    tel: "9152987821",
+    when: "Monday to Saturday, 8am–10pm",
+  },
+  {
+    name: "Vandrevala Foundation",
+    phone: "1860-2662-345",
+    tel: "18602662345",
+    when: "Any time, every day",
+  },
+  {
+    name: "NIMHANS",
+    phone: "080-46110007",
+    tel: "08046110007",
+    when: "Any time, every day",
+  },
+  {
+    name: "Emergency services",
+    phone: "112",
+    tel: "112",
+    when: "If you or someone is in immediate danger",
+  },
 ];

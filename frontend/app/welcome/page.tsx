@@ -8,10 +8,8 @@ import { Difference } from "@/components/welcome/Difference";
 import { Growth } from "@/components/welcome/Growth";
 import { ThreadProof } from "@/components/welcome/ThreadProof";
 import { ChapterRail } from "@/components/welcome/ChapterRail";
-import { Cursor } from "@/components/welcome/Cursor";
 import { Intro } from "@/components/welcome/Intro";
 import { Marquee } from "@/components/welcome/Marquee";
-import { SmoothScroll } from "@/components/welcome/SmoothScroll";
 import { Header } from "@/components/welcome/Header";
 import { Hero } from "@/components/welcome/Hero";
 import { LightDemo } from "@/components/welcome/LightDemo";
@@ -23,8 +21,7 @@ import { Questions } from "@/components/welcome/Questions";
 export default function Welcome() {
   return (
     <MotionConfig reducedMotion="user">
-      <div className="grain">
-        <SmoothScroll />
+      <div>
         <Header />
         <Hero />
         <Marquee />
@@ -39,7 +36,6 @@ export default function Welcome() {
         <Questions />
         <Closing />
         <ChapterRail />
-        <Cursor />
         <Intro />
       </div>
     </MotionConfig>

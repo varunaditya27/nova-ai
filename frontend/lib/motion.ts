@@ -53,5 +53,11 @@ export const nova = {
 /** The entrance pattern: slightly low, slightly small and out of focus, then settled and sharp. Used everywhere on the landing page. */
 export const focusPull: Variants = {
   hidden: { opacity: 0, y: 28, scale: 0.98, filter: "blur(8px)" },
-  show: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", transition: { duration: nova.dur.slow + 0.2, ease: nova.ease } },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: { duration: nova.dur.slow + 0.2, ease: nova.ease },
+  },
 };

@@ -9,7 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { play as playSound, resume, type SoundName } from "@/lib/acoustics/player";
+import {
+  play as playSound,
+  resume,
+  type SoundName,
+} from "@/lib/acoustics/player";
 
 type AcousticsApi = {
   play: (name: SoundName) => void;
@@ -80,7 +84,7 @@ export function AcousticsProvider({ children }: { children: ReactNode }) {
       if (muted) return;
       playSound(name);
     },
-    [muted]
+    [muted],
   );
 
   return (

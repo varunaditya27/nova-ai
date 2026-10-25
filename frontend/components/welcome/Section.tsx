@@ -1,12 +1,14 @@
 "use client";
 
 import { useRef, type ReactNode } from "react";
-import { motion } from "motion/react";
-import { focusPull } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
 
-const TONES = { ground: "", sunk: "bg-sunk", ink: "bg-ink text-ground" } as const;
+const TONES = {
+  ground: "",
+  sunk: "bg-sunk",
+  ink: "bg-ink text-ground",
+} as const;
 
 /** One band of the page: a full-width tone, with content held to the same column as every other page. */
 export function Section({
@@ -31,27 +33,45 @@ export function Section({
     if (!reveal) return;
     const mm = gsap.matchMedia();
     mm.add(MOTION_OK, () => {
-      gsap.fromTo(el.current, { clipPath: "inset(7% 3% round 3.5rem)" }, { clipPath: "inset(0% 0% round 0rem)", ease: "none", scrollTrigger: { trigger: el.current, start: "top 95%", end: "top 25%", scrub: true } });
+      gsap.fromTo(
+        el.current,
+        { clipPath: "inset(7% 3%)" },
+        {
+          clipPath: "inset(0% 0%)",
+          ease: "none",
+          scrollTrigger: {
+            trigger: el.current,
+            start: "top 95%",
+            end: "top 25%",
+            scrub: true,
+          },
+        },
+      );
     });
   });
   return (
-    <section ref={el} id={id} aria-label={label} className={cn("scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28 lg:px-12", TONES[tone])}>
+    <section
+      ref={el}
+      id={id}
+      aria-label={label}
+      className={cn(
+        "scroll-mt-16 px-5 py-20 sm:px-8 sm:py-28 lg:px-12",
+        TONES[tone],
+      )}
+    >
       <div className={cn("mx-auto max-w-6xl", className)}>{children}</div>
     </section>
   );
 }
 
-/** Settles into place the first time it scrolls into view. Reduced-motion users see it immediately. */
-export function Reveal({ children, className }: { children: ReactNode; className?: string }) {
+export { Reveal } from "@/components/brand/Reveal";
+
+/** The editorial header of a chapter: a rule, its number, its name. The same names the chapter rail uses. */
+export function SectionHead({ n, name }: { n: string; name: string }) {
   return (
-    <motion.div
-      className={className}
-      variants={focusPull}
-      initial="hidden"
-      whileInView="show"
-      viewport={{ once: true, margin: "0px 0px -8% 0px" }}
-    >
-      {children}
-    </motion.div>
+    <div className="rule-top mb-12 flex items-baseline gap-5 pt-4">
+      <span className="font-display text-[length:var(--text-read)]">{n}</span>
+      <span className="label">{name}</span>
+    </div>
   );
 }

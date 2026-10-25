@@ -35,10 +35,12 @@ export class TypingTracker {
 
   /** Call when sending: returns this message's signals and resets the draft state. */
   snapshot(finalText: string, now: number = Date.now()): TypingSignals {
-    const isBurst = this.lastSentAt !== null && now - this.lastSentAt <= BURST_WINDOW_MS;
+    const isBurst =
+      this.lastSentAt !== null && now - this.lastSentAt <= BURST_WINDOW_MS;
     this.burst = isBurst ? this.burst + 1 : 1;
     const signals: TypingSignals = {
-      user_typing_started_at: this.startedAt === null ? null : new Date(this.startedAt).toISOString(),
+      user_typing_started_at:
+        this.startedAt === null ? null : new Date(this.startedAt).toISOString(),
       deletion_occurred: this.deletions > 0,
       deletion_count: this.deletions,
       peak_draft_length_chars: Math.max(this.peak, finalText.length),

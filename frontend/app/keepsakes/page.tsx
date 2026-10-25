@@ -23,10 +23,16 @@ function Byline({ m }: { m: MessageOut }) {
 function Links({ m, onRemove }: { m: MessageOut; onRemove: () => void }) {
   return (
     <p className="mt-2 flex flex-wrap gap-x-5 text-[length:var(--text-small)]">
-      <Link href={`/?m=${m.message_id}`} className="inline-flex min-h-9 items-center text-accent underline underline-offset-4">
+      <Link
+        href={`/?m=${m.message_id}`}
+        className="inline-flex min-h-9 items-center text-accent underline underline-offset-4"
+      >
         See it in the conversation
       </Link>
-      <button onClick={onRemove} className="inline-flex min-h-9 items-center text-ink-soft underline underline-offset-4 hover:text-ink">
+      <button
+        onClick={onRemove}
+        className="inline-flex min-h-9 items-center text-ink-soft underline underline-offset-4 hover:text-ink"
+      >
         Remove
       </button>
     </p>
@@ -47,11 +53,19 @@ function Saved() {
   }, [q.data]);
 
   if (q.isLoading) return <Skeleton lines={4} />;
-  if (q.isError) return <Trouble what="Your saved messages couldn’t be loaded just now." onRetry={() => q.refetch()} />;
+  if (q.isError)
+    return (
+      <Trouble
+        what="Your saved messages couldn’t be loaded just now."
+        onRetry={() => q.refetch()}
+      />
+    );
   if (folders.length === 0) {
     return (
       <Empty title="Nothing saved yet.">
-        When Nova says something worth keeping — advice, a line that made you laugh, a hard-won idea — hover over it in the conversation and choose “Save”. You can file it under a name of your own.
+        When Nova says something worth keeping — advice, a line that made you
+        laugh, a hard-won idea — hover over it in the conversation and choose
+        “Save”. You can file it under a name of your own.
       </Empty>
     );
   }
@@ -63,11 +77,18 @@ function Saved() {
           <ul className="flex max-w-3xl flex-col gap-8">
             {items.map((m) => (
               <li key={m.message_id}>
-                <blockquote className="read whitespace-pre-wrap">{m.content}</blockquote>
+                <blockquote className="read whitespace-pre-wrap">
+                  {m.content}
+                </blockquote>
                 <Byline m={m} />
                 <Links
                   m={m}
-                  onRemove={() => bookmark.mutate({ id: m.message_id, on: false }, { onSuccess: () => toast("Removed from Keepsakes") })}
+                  onRemove={() =>
+                    bookmark.mutate(
+                      { id: m.message_id, on: false },
+                      { onSuccess: () => toast("Removed from Keepsakes") },
+                    )
+                  }
                 />
               </li>
             ))}
@@ -83,12 +104,20 @@ function Moments() {
   const { milestone } = useAnnotate();
   const { toast } = useToast();
   if (q.isLoading) return <Skeleton lines={4} />;
-  if (q.isError) return <Trouble what="Your moments couldn’t be loaded just now." onRetry={() => q.refetch()} />;
+  if (q.isError)
+    return (
+      <Trouble
+        what="Your moments couldn’t be loaded just now."
+        onRetry={() => q.refetch()}
+      />
+    );
   const items = q.data ?? [];
   if (items.length === 0) {
     return (
       <Empty title="No moments marked yet.">
-        Some things you say change your life — getting in, quitting, finishing something hard. Hover over the message in the conversation and choose “This mattered”, and it will be kept here like a photograph.
+        Some things you say change your life — getting in, quitting, finishing
+        something hard. Hover over the message in the conversation and choose
+        “This mattered”, and it will be kept here like a photograph.
       </Empty>
     );
   }
@@ -100,11 +129,21 @@ function Moments() {
             <span aria-hidden className="size-3 rounded-full bg-earned" />
             {m.milestone_label || "A moment that mattered"}
           </p>
-          <blockquote className="font-display text-[length:var(--text-title)] leading-[1.15]">“{m.content}”</blockquote>
+          <blockquote className="font-display text-[length:var(--text-title)] leading-[1.15]">
+            “{m.content}”
+          </blockquote>
           <div className="mt-3">
             <Byline m={m} />
           </div>
-          <Links m={m} onRemove={() => milestone.mutate({ id: m.message_id, on: false }, { onSuccess: () => toast("No longer marked as a moment") })} />
+          <Links
+            m={m}
+            onRemove={() =>
+              milestone.mutate(
+                { id: m.message_id, on: false },
+                { onSuccess: () => toast("No longer marked as a moment") },
+              )
+            }
+          />
         </li>
       ))}
     </ul>

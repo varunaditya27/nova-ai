@@ -5,7 +5,13 @@ import { Button } from "@/components/ui/Button";
 import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
 
 /** A button that leans a little toward the pointer, then settles. Fine pointers only. */
-export function MagneticButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+export function MagneticButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   const wrap = useRef<HTMLSpanElement>(null);
 
   useGSAP(
@@ -30,12 +36,16 @@ export function MagneticButton({ onClick, children }: { onClick: () => void; chi
         };
       });
     },
-    { scope: wrap }
+    { scope: wrap },
   );
 
   return (
     <span ref={wrap} className="inline-block">
-      <Button onClick={onClick} className="glint min-h-14 px-9 text-[length:var(--text-read)]">
+      <Button
+        onClick={onClick}
+        arrow
+        className="min-h-14 px-9 text-[length:var(--text-read)]"
+      >
         {children}
       </Button>
     </span>

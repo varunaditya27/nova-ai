@@ -5,7 +5,12 @@ import type { MessageOut } from "@/lib/api/types";
 const DAY = 86_400_000;
 const NOW = new Date("2026-10-25T20:00:00");
 
-function msg(id: string, session: string, at: Date, role: "user" | "nova" = "user"): MessageOut {
+function msg(
+  id: string,
+  session: string,
+  at: Date,
+  role: "user" | "nova" = "user",
+): MessageOut {
   return {
     message_id: id,
     cursor: Number(id.replace(/\D/g, "")) || 0,
@@ -44,7 +49,7 @@ describe("groupSittings", () => {
         msg("m2", "a", new Date(t0.getTime() + 60_000), "nova"),
         msg("m3", "b", new Date(NOW.getTime() - 60_000)),
       ],
-      NOW
+      NOW,
     );
     expect(sittings).toHaveLength(2);
     expect(sittings[0].messages.map((m) => m.message_id)).toEqual(["m1", "m2"]);

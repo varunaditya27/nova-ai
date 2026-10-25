@@ -22,7 +22,9 @@ export function useDictation(onTranscript: (text: string) => void) {
   // false, flip after mount) so SSR and the first client render always agree.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSupported("mediaDevices" in navigator && typeof MediaRecorder !== "undefined");
+    setSupported(
+      "mediaDevices" in navigator && typeof MediaRecorder !== "undefined",
+    );
   }, []);
 
   const start = useCallback(async () => {
@@ -38,7 +40,9 @@ export function useDictation(onTranscript: (text: string) => void) {
       };
       recorder.onstop = async () => {
         streamRef.current?.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
         setTranscribing(true);
         try {
           const result = await transcribeVoice(blob);

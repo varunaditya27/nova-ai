@@ -2,6 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { Cursor } from "@/components/brand/Cursor";
+import { SmoothScroll } from "@/components/brand/SmoothScroll";
 import { CommandMenuProvider } from "./CommandMenu";
 import { MobileNav } from "./MobileNav";
 import { SideNav } from "./SideNav";
@@ -15,11 +17,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <CommandMenuProvider>
+      <div className="grain" />
+      <SmoothScroll enabled={pathname !== "/"} />
+      <Cursor />
       <a href="#main" className="skip-link">
         Skip to the page
       </a>
       {!bare && <SideNav />}
-      <main id="main" tabIndex={-1} className={bare ? "min-h-dvh" : "min-h-dvh pb-20 outline-none lg:ml-72 lg:pb-0"}>
+      <main
+        id="main"
+        tabIndex={-1}
+        className={
+          bare ? "min-h-dvh" : "min-h-dvh pb-20 outline-none lg:ml-72 lg:pb-0"
+        }
+      >
         {children}
       </main>
       {!bare && <MobileNav />}

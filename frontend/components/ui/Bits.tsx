@@ -22,10 +22,16 @@ export function Meter({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={pct}
-      className={cn("h-2.5 w-full overflow-hidden rounded-full bg-sunk", className)}
+      className={cn(
+        "h-2.5 w-full overflow-hidden rounded-[2px] bg-sunk",
+        className,
+      )}
     >
       <div
-        className={cn("h-full rounded-full transition-[width] duration-700", earned ? "bg-earned" : "bg-accent")}
+        className={cn(
+          "h-full cut-sm transition-[width] duration-700",
+          earned ? "bg-earned" : "bg-accent",
+        )}
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -46,7 +52,15 @@ function hash(s: string): number {
 }
 
 /** Initials on a flat tone chosen from the name, so the same person always looks the same. */
-export function Avatar({ name, size = 48, className }: { name: string; size?: number; className?: string }) {
+export function Avatar({
+  name,
+  size = 48,
+  className,
+}: {
+  name: string;
+  size?: number;
+  className?: string;
+}) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -56,7 +70,11 @@ export function Avatar({ name, size = 48, className }: { name: string; size?: nu
   return (
     <span
       aria-hidden
-      className={cn("grid shrink-0 place-items-center rounded-full font-display", TONES[hash(name) % TONES.length], className)}
+      className={cn(
+        "grid shrink-0 place-items-center cut-sm font-display",
+        TONES[hash(name) % TONES.length],
+        className,
+      )}
       style={{ width: size, height: size, fontSize: size * 0.4 }}
     >
       {initials || "?"}

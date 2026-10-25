@@ -18,7 +18,9 @@ export function MobileNav() {
   const [more, setMore] = useState(false);
   const menu = useCommandMenu();
   const errands = usePendingTools().data?.length ?? 0;
-  const inMore = !TABS.some((t) => isActive(pathname, t.href)) && ALL_NAV.some((i) => isActive(pathname, i.href));
+  const inMore =
+    !TABS.some((t) => isActive(pathname, t.href)) &&
+    ALL_NAV.some((i) => isActive(pathname, i.href));
 
   return (
     <>
@@ -35,11 +37,15 @@ export function MobileNav() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-2xl text-[length:var(--text-small)]",
-                active ? "bg-raised text-ink" : "text-ink-soft"
+                "flex min-h-14 flex-col items-center justify-center gap-0.5 cut text-[length:var(--text-small)]",
+                active ? "bg-raised text-ink" : "text-ink-soft",
               )}
             >
-              <Icon size={20} aria-hidden className={active ? "text-accent" : undefined} />
+              <Icon
+                size={20}
+                aria-hidden
+                className={active ? "text-accent" : undefined}
+              />
               {item.label}
             </Link>
           );
@@ -47,13 +53,22 @@ export function MobileNav() {
         <button
           onClick={() => setMore(true)}
           className={cn(
-            "relative flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-2xl text-[length:var(--text-small)]",
-            inMore ? "bg-raised text-ink" : "text-ink-soft"
+            "relative flex min-h-14 flex-col items-center justify-center gap-0.5 cut text-[length:var(--text-small)]",
+            inMore ? "bg-raised text-ink" : "text-ink-soft",
           )}
         >
-          <Ellipsis size={20} aria-hidden className={inMore ? "text-accent" : undefined} />
+          <Ellipsis
+            size={20}
+            aria-hidden
+            className={inMore ? "text-accent" : undefined}
+          />
           More
-          {errands > 0 && <span aria-label={`${errands} errands waiting`} className="absolute right-4 top-2 size-2.5 rounded-full bg-accent" />}
+          {errands > 0 && (
+            <span
+              aria-label={`${errands} errands waiting`}
+              className="absolute right-4 top-2 size-2.5 rounded-full bg-accent"
+            />
+          )}
         </button>
       </nav>
 
@@ -63,28 +78,38 @@ export function MobileNav() {
             setMore(false);
             menu.open();
           }}
-          className="mb-5 min-h-11 rounded-full bg-sunk px-5 text-left text-ink-soft"
+          className="mb-5 min-h-11 cut-sm bg-sunk px-5 text-left text-ink-soft"
         >
           Jump to a page, or search…
         </button>
         <nav aria-label="All pages" className="flex flex-col gap-5">
           {NAV.map((group, gi) => (
             <div key={gi}>
-              {group.title && <p className="mb-1.5 text-[length:var(--text-small)] text-mute">{group.title}</p>}
+              {group.title && (
+                <p className="mb-1.5 text-[length:var(--text-small)] text-mute">
+                  {group.title}
+                </p>
+              )}
               <ul className="flex flex-col gap-0.5">
                 {group.items.map((item) => (
                   <li key={item.href}>
                     <Link
                       href={item.href}
                       onClick={() => setMore(false)}
-                      aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                      aria-current={
+                        isActive(pathname, item.href) ? "page" : undefined
+                      }
                       className={cn(
-                        "block rounded-2xl px-3 py-2.5",
-                        isActive(pathname, item.href) ? "bg-sunk" : "hover:bg-sunk"
+                        "block cut px-3 py-2.5",
+                        isActive(pathname, item.href)
+                          ? "bg-sunk"
+                          : "hover:bg-sunk",
                       )}
                     >
                       <span className="block">{item.label}</span>
-                      <span className="block text-[length:var(--text-small)] text-ink-soft">{item.about}</span>
+                      <span className="block text-[length:var(--text-small)] text-ink-soft">
+                        {item.about}
+                      </span>
                     </Link>
                   </li>
                 ))}
@@ -92,7 +117,7 @@ export function MobileNav() {
             </div>
           ))}
         </nav>
-        <div className="mt-8 flex flex-col gap-4 rounded-2xl bg-sunk p-4">
+        <div className="mt-8 flex flex-col gap-4 cut bg-sunk p-4">
           <Pulse />
           <Controls />
         </div>

@@ -15,31 +15,36 @@ export const STAGES: Stage[] = [
     id: "new",
     name: "Just meeting",
     upTo: 3,
-    meaning: "Nova keeps things light and doesn’t bring up past conversations yet — it’s still learning who you are.",
+    meaning:
+      "Nova keeps things light and doesn’t bring up past conversations yet — it’s still learning who you are.",
   },
   {
     id: "acquaintance",
     name: "Getting comfortable",
     upTo: 15,
-    meaning: "Nova may gently mention things you’ve told it before, and asks a few more questions.",
+    meaning:
+      "Nova may gently mention things you’ve told it before, and asks a few more questions.",
   },
   {
     id: "developing",
     name: "Building trust",
     upTo: 40,
-    meaning: "Nova refers back to earlier conversations naturally and follows up on what matters to you.",
+    meaning:
+      "Nova refers back to earlier conversations naturally and follows up on what matters to you.",
   },
   {
     id: "established",
     name: "Old friends",
     upTo: 100,
-    meaning: "Nova draws freely on your shared history, and can tell you when something seems off.",
+    meaning:
+      "Nova draws freely on your shared history, and can tell you when something seems off.",
   },
   {
     id: "close",
     name: "Close",
     upTo: null,
-    meaning: "Nova is fully at ease with you. It can say hard things kindly, and it remembers across years.",
+    meaning:
+      "Nova is fully at ease with you. It can say hard things kindly, and it remembers across years.",
   },
 ];
 
@@ -48,9 +53,15 @@ export function stageById(id: string): Stage {
 }
 
 /** How many more conversations until the next stage, or null at the last. */
-export function toNextStage(stageId: string, sessions: number): { next: Stage; remaining: number } | null {
+export function toNextStage(
+  stageId: string,
+  sessions: number,
+): { next: Stage; remaining: number } | null {
   const i = STAGES.findIndex((s) => s.id === stageId);
   const current = STAGES[i];
   if (!current || current.upTo === null) return null;
-  return { next: STAGES[i + 1], remaining: Math.max(1, current.upTo + 1 - sessions) };
+  return {
+    next: STAGES[i + 1],
+    remaining: Math.max(1, current.upTo + 1 - sessions),
+  };
 }

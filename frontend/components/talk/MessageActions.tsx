@@ -11,7 +11,7 @@ import type { MessageOut } from "@/lib/api/types";
 const CATEGORIES = ["Advice", "Funny", "Hard days", "Ideas"];
 
 const chip =
-  "inline-flex min-h-9 items-center gap-1.5 rounded-full px-3.5 text-[length:var(--text-small)] text-ink-soft transition-colors hover:bg-sunk hover:text-ink";
+  "inline-flex min-h-9 items-center gap-1.5 cut-sm px-3.5 text-[length:var(--text-small)] text-ink-soft transition-colors hover:bg-sunk hover:text-ink";
 
 /**
  * What you can do with one message: keep it, mark it as a moment that mattered, copy it, hear it.
@@ -36,7 +36,13 @@ export function MessageActions({
   const keep = (category?: string) => {
     bookmark.mutate(
       { id: message.message_id, on: true, category },
-      { onSuccess: () => toast("Saved to Keepsakes", category ? `Filed under “${category}”.` : undefined) }
+      {
+        onSuccess: () =>
+          toast(
+            "Saved to Keepsakes",
+            category ? `Filed under “${category}”.` : undefined,
+          ),
+      },
     );
     play("click");
     setPanel(null);
@@ -45,7 +51,13 @@ export function MessageActions({
   const mark = () => {
     milestone.mutate(
       { id: message.message_id, on: true, label: label.trim() || undefined },
-      { onSuccess: () => toast("Kept as a moment that mattered", "You’ll find it in Keepsakes.") }
+      {
+        onSuccess: () =>
+          toast(
+            "Kept as a moment that mattered",
+            "You’ll find it in Keepsakes.",
+          ),
+      },
     );
     play("click");
     setPanel(null);
@@ -57,39 +69,71 @@ export function MessageActions({
       <div
         className={cn(
           "flex flex-wrap items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
-          panel && "opacity-100"
+          panel && "opacity-100",
         )}
       >
         {message.bookmarked ? (
-          <button className={chip} onClick={() => bookmark.mutate({ id: message.message_id, on: false })}>
-            <Bookmark size={15} className="fill-accent text-accent" aria-hidden />
-            Saved{message.bookmark_category ? ` · ${message.bookmark_category}` : ""} — remove
+          <button
+            className={chip}
+            onClick={() =>
+              bookmark.mutate({ id: message.message_id, on: false })
+            }
+          >
+            <Bookmark
+              size={15}
+              className="fill-accent text-accent"
+              aria-hidden
+            />
+            Saved
+            {message.bookmark_category ? ` · ${message.bookmark_category}` : ""}{" "}
+            — remove
           </button>
         ) : (
-          <button className={chip} onClick={() => setPanel(panel === "save" ? null : "save")} aria-expanded={panel === "save"}>
+          <button
+            className={chip}
+            onClick={() => setPanel(panel === "save" ? null : "save")}
+            aria-expanded={panel === "save"}
+          >
             <Bookmark size={15} aria-hidden /> Save
           </button>
         )}
         {message.is_milestone ? (
-          <button className={chip} onClick={() => milestone.mutate({ id: message.message_id, on: false })}>
-            <Star size={15} className="fill-earned text-earned" aria-hidden />
-            A moment that mattered{message.milestone_label ? ` · ${message.milestone_label}` : ""} — remove
+          <button
+            className={chip}
+            onClick={() =>
+              milestone.mutate({ id: message.message_id, on: false })
+            }
+          >
+            <Star size={15} className="fill-earned text-earned" aria-hidden />A
+            moment that mattered
+            {message.milestone_label ? ` · ${message.milestone_label}` : ""} —
+            remove
           </button>
         ) : (
-          <button className={chip} onClick={() => setPanel(panel === "moment" ? null : "moment")} aria-expanded={panel === "moment"}>
+          <button
+            className={chip}
+            onClick={() => setPanel(panel === "moment" ? null : "moment")}
+            aria-expanded={panel === "moment"}
+          >
             <Star size={15} aria-hidden /> This mattered
           </button>
         )}
         {message.role === "nova" && onSpeak && (
           <button className={chip} onClick={onSpeak}>
-            {speaking ? <VolumeX size={15} aria-hidden /> : <Volume2 size={15} aria-hidden />}
+            {speaking ? (
+              <VolumeX size={15} aria-hidden />
+            ) : (
+              <Volume2 size={15} aria-hidden />
+            )}
             {speaking ? "Stop" : "Hear it"}
           </button>
         )}
         <button
           className={chip}
           onClick={() => {
-            navigator.clipboard?.writeText(message.content).then(() => toast("Copied"));
+            navigator.clipboard
+              ?.writeText(message.content)
+              .then(() => toast("Copied"));
           }}
         >
           <Copy size={15} aria-hidden /> Copy
@@ -98,9 +142,15 @@ export function MessageActions({
 
       {panel === "save" && (
         <div className="tone mt-2 flex flex-wrap items-center gap-2 px-4 py-3">
-          <span className="text-[length:var(--text-small)] text-ink-soft">File it under</span>
+          <span className="text-[length:var(--text-small)] text-ink-soft">
+            File it under
+          </span>
           {CATEGORIES.map((c) => (
-            <button key={c} onClick={() => keep(c)} className="min-h-9 rounded-full bg-sunk px-4 text-[length:var(--text-small)] hover:bg-raised">
+            <button
+              key={c}
+              onClick={() => keep(c)}
+              className="min-h-9 cut-sm bg-sunk px-4 text-[length:var(--text-small)] hover:bg-raised"
+            >
               {c}
             </button>
           ))}
@@ -116,10 +166,13 @@ export function MessageActions({
               onChange={(e) => setCustom(e.target.value)}
               aria-label="Your own name for this folder"
               placeholder="or your own…"
-              className="min-h-9 w-36 rounded-full bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
+              className="min-h-9 w-36 cut-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
             />
           </form>
-          <button onClick={() => keep()} className="min-h-9 px-2 text-[length:var(--text-small)] text-accent underline underline-offset-4">
+          <button
+            onClick={() => keep()}
+            className="min-h-9 px-2 text-[length:var(--text-small)] text-accent underline underline-offset-4"
+          >
             No folder
           </button>
         </div>
@@ -133,7 +186,10 @@ export function MessageActions({
           }}
           className="tone mt-2 flex flex-wrap items-center gap-3 px-4 py-3"
         >
-          <label className="text-[length:var(--text-small)] text-ink-soft" htmlFor={`moment-${message.message_id}`}>
+          <label
+            className="text-[length:var(--text-small)] text-ink-soft"
+            htmlFor={`moment-${message.message_id}`}
+          >
             What should this moment be called?
           </label>
           <input
@@ -141,9 +197,12 @@ export function MessageActions({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="e.g. Got into RVCE"
-            className="min-h-9 min-w-48 flex-1 rounded-full bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
+            className="min-h-9 min-w-48 flex-1 cut-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
           />
-          <button type="submit" className="min-h-9 rounded-full bg-accent px-5 text-[length:var(--text-small)] text-accent-ink">
+          <button
+            type="submit"
+            className="min-h-9 cut-sm bg-accent px-5 text-[length:var(--text-small)] text-accent-ink"
+          >
             Keep it
           </button>
         </form>

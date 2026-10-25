@@ -31,7 +31,9 @@ describe("streamReducer", () => {
           cognitive_system: "system1",
           crisis_active: false,
           refined: false,
-          echoes: [{ summary: "the hackathon", when: "last week", created_at: null }],
+          echoes: [
+            { summary: "the hackathon", when: "last week", created_at: null },
+          ],
         },
       },
     ];
@@ -61,7 +63,10 @@ describe("parseSSE", () => {
     expect(r1.frames).toHaveLength(0); // incomplete → buffered
     const r2 = parseSSE(b, r1.buffer);
     expect(r2.frames).toHaveLength(1);
-    expect(r2.frames[0]).toEqual({ type: "token", data: { token: "Hi", delay_ms: 40 } });
+    expect(r2.frames[0]).toEqual({
+      type: "token",
+      data: { token: "Hi", delay_ms: 40 },
+    });
   });
 
   it("parses multiple frames in one chunk and leaves no buffer", () => {

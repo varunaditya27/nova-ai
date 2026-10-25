@@ -27,7 +27,11 @@ export function useChatStream() {
   const reset = useCallback(() => setState(initialStreamState), []);
 
   const fallback = useCallback(
-    async (message: string, sessionId?: string, signals?: TypingSignals): Promise<StreamState> => {
+    async (
+      message: string,
+      sessionId?: string,
+      signals?: TypingSignals,
+    ): Promise<StreamState> => {
       try {
         const resp = await postChat(message, sessionId, signals);
         const next: StreamState = {
@@ -57,11 +61,15 @@ export function useChatStream() {
         return errored;
       }
     },
-    []
+    [],
   );
 
   const send = useCallback(
-    async (message: string, sessionId?: string, signals?: TypingSignals): Promise<StreamState> => {
+    async (
+      message: string,
+      sessionId?: string,
+      signals?: TypingSignals,
+    ): Promise<StreamState> => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -89,7 +97,7 @@ export function useChatStream() {
           if (done) break;
           const { frames, buffer: next } = parseSSE(
             decoder.decode(value, { stream: true }),
-            buffer
+            buffer,
           );
           buffer = next;
           for (const frame of frames) {
@@ -106,7 +114,7 @@ export function useChatStream() {
         return fallback(message, sessionId, signals);
       }
     },
-    [fallback]
+    [fallback],
   );
 
   return { state, send, reset };

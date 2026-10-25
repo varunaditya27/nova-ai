@@ -18,20 +18,31 @@ export function Controls() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <p id="light-label" className="text-[length:var(--text-small)] text-ink-soft">
+        <p
+          id="light-label"
+          className="text-[length:var(--text-small)] text-ink-soft"
+        >
           Room light
         </p>
         <button
           onClick={() => setMuted(!muted)}
           aria-pressed={!muted}
-          aria-label={muted ? "Soft sounds are off — turn on" : "Soft sounds are on — turn off"}
+          aria-label={
+            muted
+              ? "Soft sounds are off — turn on"
+              : "Soft sounds are on — turn off"
+          }
           title={muted ? "Soft sounds are off" : "Soft sounds are on"}
-          className="grid size-9 place-items-center rounded-full text-ink-soft hover:bg-raised hover:text-ink"
+          className="grid size-9 place-items-center cut-sm text-ink-soft hover:bg-raised hover:text-ink"
         >
           {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
       </div>
-      <div role="radiogroup" aria-labelledby="light-label" className="flex gap-1 rounded-full bg-ground p-1">
+      <div
+        role="radiogroup"
+        aria-labelledby="light-label"
+        className="flex gap-1 cut-sm bg-ground p-1"
+      >
         {MODES.map((m) => (
           <button
             key={m.value}
@@ -40,8 +51,10 @@ export function Controls() {
             title={m.hint}
             onClick={() => setMode(m.value)}
             className={cn(
-              "min-h-9 flex-1 rounded-full px-2 text-[length:var(--text-small)] transition-colors",
-              mode === m.value ? "bg-raised text-ink" : "text-ink-soft hover:text-ink"
+              "min-h-9 flex-1 cut-sm px-2 text-[length:var(--text-small)] transition-colors",
+              mode === m.value
+                ? "bg-raised text-ink"
+                : "text-ink-soft hover:text-ink",
             )}
           >
             {m.label}

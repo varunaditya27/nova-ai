@@ -1,6 +1,6 @@
-import { Section, Reveal } from "./Section";
-import { Drift } from "./Drift";
-import { Tilt } from "./Tilt";
+import { Section, Reveal, SectionHead } from "./Section";
+import { Drift } from "@/components/brand/Drift";
+import { Tilt } from "@/components/brand/Tilt";
 import { ScrubText } from "./ScrubText";
 
 function Exchange({
@@ -51,6 +51,7 @@ const NOVA = [
 export function Difference() {
   return (
     <Section tone="sunk" label="The difference">
+      <SectionHead n="02" name="The difference" />
       <Reveal className="mb-12 max-w-3xl">
         <ScrubText className="text-[length:var(--text-display)] leading-[0.98]">
           Most assistants start from zero every time.

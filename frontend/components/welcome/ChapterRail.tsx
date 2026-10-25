@@ -92,12 +92,12 @@ export function ChapterRail() {
     >
       <span
         aria-hidden
-        className="absolute bottom-0 right-[5px] top-0 w-[2px] rounded-full bg-sunk"
+        className="absolute bottom-0 right-[5px] top-0 w-[2px] cut-sm bg-sunk"
       />
       <span
         aria-hidden
         data-rail-fill
-        className="absolute bottom-0 right-[5px] top-0 w-[2px] origin-top rounded-full bg-accent"
+        className="absolute bottom-0 right-[5px] top-0 w-[2px] origin-top cut-sm bg-accent"
       />
       <span
         aria-hidden
@@ -111,7 +111,7 @@ export function ChapterRail() {
               href={`#${c.id}`}
               aria-current={active === c.id ? "true" : undefined}
               className={cn(
-                "rounded-full bg-raised px-3 py-1 text-[length:var(--text-small)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-visible:opacity-100",
+                "cut-sm bg-raised px-3 py-1 text-[length:var(--text-small)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-visible:opacity-100",
                 active === c.id && "opacity-100",
               )}
             >
@@ -120,7 +120,7 @@ export function ChapterRail() {
             <span
               aria-hidden
               className={cn(
-                "relative z-10 mr-[3px] size-[7px] rounded-full transition-all duration-300",
+                "relative z-10 mr-[3px] size-[7px] cut-sm transition-all duration-300",
                 active === c.id ? "scale-150 bg-accent" : "bg-mute",
               )}
             />

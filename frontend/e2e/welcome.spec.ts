@@ -58,7 +58,7 @@ test("every stage is still in the page for a screen reader", async ({ page }) =>
 
 test("touching a point in the example life shows what it connects to", async ({ page }) => {
   await page.goto("/welcome");
-  await page.getByRole("button", { name: "Meera" }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Meera" }).evaluate((el) => el.scrollIntoView({ block: "center" }));
   // the points drift gently, so a pointer can land a moment after it was aimed; press without waiting for them to hold still
   await page.getByRole("button", { name: "Meera" }).click({ force: true });
   await expect(page.locator("p[aria-live=polite]").filter({ hasText: "Your sister. She’s coming to visit" })).toBeVisible();

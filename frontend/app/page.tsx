@@ -35,7 +35,13 @@ function Talk() {
   const menu = useCommandMenu();
   const { reduced } = useReducedMotionSafe();
   const home = useHome();
-  const { messages, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessages();
+  const {
+    messages,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useMessages();
   const stream = useChatStream();
   const voice = useVoice();
   const errands = usePendingTools().data ?? [];
@@ -80,7 +86,10 @@ function Talk() {
     });
 
   // Nova speaks first, when it has something worth saying: a live push, else what's queued.
-  const openingItem = mergeProactiveItems(polled ?? [], live).find((i) => !dismissed.includes(i.item_id)) ?? null;
+  const openingItem =
+    mergeProactiveItems(polled ?? [], live).find(
+      (i) => !dismissed.includes(i.item_id),
+    ) ?? null;
   const openingId = openingItem?.item_id;
   useEffect(() => {
     if (openingId) markProactiveDelivered(openingId).catch(() => undefined);
@@ -89,7 +98,10 @@ function Talk() {
   const onSend = async () => {
     const text = value.trim();
     if (!text || streaming) return;
-    const signals = { ...typing.current.snapshot(text), ...(openingItem ? { is_reply_to_proactive: true } : {}) };
+    const signals = {
+      ...typing.current.snapshot(text),
+      ...(openingItem ? { is_reply_to_proactive: true } : {}),
+    };
     if (openingItem) setDismissed((d) => [...d, openingItem.item_id]);
     setValue("");
     setPending(text);
@@ -98,7 +110,8 @@ function Talk() {
     if (result.sessionId) setSessionId(result.sessionId);
     if (result.phase === "error") return; // leave the turn and the plain-language error visible
 
-    if (readAloud && result.text) voice.speak(result.text, result.meta?.conversation_mode ?? "casual");
+    if (readAloud && result.text)
+      voice.speak(result.text, result.meta?.conversation_mode ?? "casual");
 
     // The stream carries no echoes or ids; refetch so the persisted turn lands, then drop overlays.
     await qc.invalidateQueries({ queryKey: ["messages"] });
@@ -130,8 +143,18 @@ function Talk() {
       for (let i = 0; i < 30; i++) {
         const el = document.getElementById(`msg-${id}`);
         if (el) {
-          el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
-          if (!reduced) el.animate([{ backgroundColor: "var(--sunk)" }, { backgroundColor: "transparent" }], { duration: 2200 });
+          el.scrollIntoView({
+            behavior: reduced ? "auto" : "smooth",
+            block: "center",
+          });
+          if (!reduced)
+            el.animate(
+              [
+                { backgroundColor: "var(--sunk)" },
+                { backgroundColor: "transparent" },
+              ],
+              { duration: 2200 },
+            );
           return;
         }
         if (!hasNextPage) return;
@@ -139,7 +162,7 @@ function Talk() {
         await new Promise((r) => setTimeout(r, 60));
       }
     },
-    [hasNextPage, fetchNextPage, reduced]
+    [hasNextPage, fetchNextPage, reduced],
   );
   useEffect(() => {
     if (!target || jumped.current === target || messages.length === 0) return;
@@ -147,14 +170,18 @@ function Talk() {
     jump(target).then(() => router.replace("/", { scroll: false }));
   }, [target, messages.length, jump, router]);
 
-  const empty = !isLoading && messages.length === 0 && !pending && stream.state.phase === "idle";
+  const empty =
+    !isLoading &&
+    messages.length === 0 &&
+    !pending &&
+    stream.state.phase === "idle";
 
   return (
     <div className="relative mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-5 sm:px-8">
       <button
         onClick={menu.open}
         aria-label="Search the conversation"
-        className="absolute right-5 top-5 z-10 grid size-11 place-items-center rounded-full bg-sunk text-ink-soft hover:text-ink sm:right-8"
+        className="absolute right-5 top-5 z-10 grid size-11 place-items-center cut-sm bg-sunk text-ink-soft hover:text-ink sm:right-8"
       >
         <Search size={18} />
       </button>
@@ -165,14 +192,20 @@ function Talk() {
           <Skeleton lines={4} className="pl-14" />
         ) : empty ? (
           <div className="flex min-h-[48vh] flex-col justify-center gap-6">
-            <h1 className="text-[length:var(--text-display)]">Say the first thing.</h1>
+            <h1 className="text-[length:var(--text-display)]">
+              Say the first thing.
+            </h1>
             <p className="read max-w-xl text-ink-soft">
-              Nova remembers what you share, and builds on it over the weeks and years. There’s no wrong way to begin — or pick one of these.
+              Nova remembers what you share, and builds on it over the weeks and
+              years. There’s no wrong way to begin — or pick one of these.
             </p>
             <ul className="flex flex-col items-start gap-2">
               {STARTERS.map((s) => (
                 <li key={s}>
-                  <button onClick={() => setValue(s)} className="read min-h-11 rounded-full bg-sunk px-6 text-left hover:bg-raised">
+                  <button
+                    onClick={() => setValue(s)}
+                    className="read min-h-11 cut-sm bg-sunk px-6 text-left hover:bg-raised"
+                  >
                     {s}
                   </button>
                 </li>
@@ -185,7 +218,9 @@ function Talk() {
             pendingUser={pending}
             streaming={stream.state}
             opening={openingItem?.message ?? null}
-            onDismissOpening={() => openingItem && setDismissed((d) => [...d, openingItem.item_id])}
+            onDismissOpening={() =>
+              openingItem && setDismissed((d) => [...d, openingItem.item_id])
+            }
             hasOlder={Boolean(hasNextPage)}
             loadingOlder={isFetchingNextPage}
             onLoadOlder={() => fetchNextPage()}

@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
@@ -14,7 +23,13 @@ import { cn } from "@/lib/cn";
 const Ctx = createContext<{ open: () => void }>({ open: () => {} });
 export const useCommandMenu = () => useContext(Ctx);
 
-type Row = { key: string; title: string; hint: string; go: () => void; group: string };
+type Row = {
+  key: string;
+  title: string;
+  hint: string;
+  go: () => void;
+  group: string;
+};
 
 function useDebounced<T>(value: T, ms = 250): T {
   const [v, setV] = useState(value);
@@ -77,8 +92,19 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
 
   const rows: Row[] = useMemo(() => {
     const lower = q.trim().toLowerCase();
-    const pages = ALL_NAV.filter((p) => !lower || p.label.toLowerCase().includes(lower) || p.about.toLowerCase().includes(lower)).map(
-      (p): Row => ({ key: `p-${p.href}`, title: p.label, hint: p.about, group: "Go to", go: () => router.push(p.href) })
+    const pages = ALL_NAV.filter(
+      (p) =>
+        !lower ||
+        p.label.toLowerCase().includes(lower) ||
+        p.about.toLowerCase().includes(lower),
+    ).map(
+      (p): Row => ({
+        key: `p-${p.href}`,
+        title: p.label,
+        hint: p.about,
+        group: "Go to",
+        go: () => router.push(p.href),
+      }),
     );
     const said = (words.data ?? []).map(
       (m): Row => ({
@@ -87,7 +113,7 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
         hint: `${m.role === "nova" ? "Nova said" : "You said"} · ${humanDay(m.created_at)}`,
         group: "In your conversation — your exact words",
         go: () => router.push(`/?m=${m.message_id}`),
-      })
+      }),
     );
     const felt = (meaning.data ?? []).map(
       (m): Row => ({
@@ -96,7 +122,7 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
         hint: `Nova remembers · ${relativeTime(m.created_at)}`,
         group: "In Nova’s memory — by meaning",
         go: () => router.push(`/memory?open=${m.memory_id}`),
-      })
+      }),
     );
     return [...pages, ...said, ...felt];
   }, [q, words.data, meaning.data, router]);
@@ -142,14 +168,18 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
               role="dialog"
               aria-modal="true"
               aria-label="Jump to"
-              className="floating relative w-full max-w-2xl overflow-hidden rounded-[1.75rem]"
+              className="floating relative w-full max-w-2xl overflow-hidden rounded-[3px]"
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={t(springs.settle)}
             >
               <div className="flex items-center gap-3 bg-sunk px-6 py-4">
-                <Search size={20} className="shrink-0 text-ink-soft" aria-hidden />
+                <Search
+                  size={20}
+                  className="shrink-0 text-ink-soft"
+                  aria-hidden
+                />
                 <input
                   ref={input}
                   value={q}
@@ -161,15 +191,22 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
                   role="combobox"
                   aria-expanded="true"
                   aria-controls={listId}
-                  aria-activedescendant={rows[safeCursor] ? `${listId}-${safeCursor}` : undefined}
+                  aria-activedescendant={
+                    rows[safeCursor] ? `${listId}-${safeCursor}` : undefined
+                  }
                   placeholder="Go somewhere, or look for a moment…"
                   className="min-h-9 w-full bg-transparent text-[length:var(--text-read)] outline-none placeholder:text-mute"
                 />
               </div>
-              <ul id={listId} role="listbox" className="max-h-[52vh] overflow-y-auto px-3 py-3">
+              <ul
+                id={listId}
+                role="listbox"
+                className="max-h-[52vh] overflow-y-auto px-3 py-3"
+              >
                 {rows.length === 0 && (
                   <li className="px-4 py-8 text-center text-ink-soft">
-                    Nothing matches “{q}”. Try a few other words, or describe the moment: “the night I couldn’t sleep”.
+                    Nothing matches “{q}”. Try a few other words, or describe
+                    the moment: “the night I couldn’t sleep”.
                   </li>
                 )}
                 {rows.map((r, i) => {
@@ -177,7 +214,11 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
                   lastGroup = r.group;
                   return (
                     <li key={r.key} role="presentation">
-                      {header && <p className="px-4 pb-1 pt-3 text-[length:var(--text-small)] text-mute">{r.group}</p>}
+                      {header && (
+                        <p className="px-4 pb-1 pt-3 text-[length:var(--text-small)] text-mute">
+                          {r.group}
+                        </p>
+                      )}
                       <button
                         id={`${listId}-${i}`}
                         role="option"
@@ -185,15 +226,23 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
                         onMouseEnter={() => setCursor(i)}
                         onClick={() => choose(r)}
                         className={cn(
-                          "flex w-full items-center justify-between gap-4 rounded-2xl px-4 py-3 text-left",
-                          i === safeCursor ? "bg-sunk" : "bg-transparent"
+                          "flex w-full items-center justify-between gap-4 cut px-4 py-3 text-left",
+                          i === safeCursor ? "bg-sunk" : "bg-transparent",
                         )}
                       >
                         <span className="min-w-0">
                           <span className="block truncate">{r.title}</span>
-                          <span className="block truncate text-[length:var(--text-small)] text-ink-soft">{r.hint}</span>
+                          <span className="block truncate text-[length:var(--text-small)] text-ink-soft">
+                            {r.hint}
+                          </span>
                         </span>
-                        {i === safeCursor && <CornerDownLeft size={16} className="shrink-0 text-ink-soft" aria-hidden />}
+                        {i === safeCursor && (
+                          <CornerDownLeft
+                            size={16}
+                            className="shrink-0 text-ink-soft"
+                            aria-hidden
+                          />
+                        )}
                       </button>
                     </li>
                   );

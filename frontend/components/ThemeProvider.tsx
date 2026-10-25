@@ -79,7 +79,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.setAttribute("data-light", next);
   }, []);
 
-  const value = useMemo(() => ({ mode, light, setMode }), [mode, light, setMode]);
+  const value = useMemo(
+    () => ({ mode, light, setMode }),
+    [mode, light, setMode],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

@@ -14,7 +14,10 @@ import {
 } from "@/lib/api/client";
 
 export function useGoals(status?: string) {
-  return useQuery({ queryKey: ["goals", status ?? "active"], queryFn: () => getGoals(status) });
+  return useQuery({
+    queryKey: ["goals", status ?? "active"],
+    queryFn: () => getGoals(status),
+  });
 }
 
 export function useCreateGoal() {
@@ -29,8 +32,10 @@ export function useCreateGoal() {
 export function useUpdateGoal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; patch: { status?: string; progress_score?: number } }) =>
-      updateGoal(v.id, v.patch),
+    mutationFn: (v: {
+      id: string;
+      patch: { status?: string; progress_score?: number };
+    }) => updateGoal(v.id, v.patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["goals"] });
       qc.invalidateQueries({ queryKey: ["goal"] });
@@ -64,5 +69,9 @@ export function useSessions() {
 }
 
 export function useGoal(id: string) {
-  return useQuery({ queryKey: ["goal", id], queryFn: () => getGoal(id), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ["goal", id],
+    queryFn: () => getGoal(id),
+    enabled: Boolean(id),
+  });
 }

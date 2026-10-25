@@ -15,7 +15,9 @@ export function HeroFilm({ className }: { className?: string }) {
   useEffect(() => {
     const v = ref.current;
     if (!v || reduced) return;
-    const io = new IntersectionObserver(([e]) => (e.isIntersecting ? v.play().catch(() => undefined) : v.pause()));
+    const io = new IntersectionObserver(([e]) =>
+      e.isIntersecting ? v.play().catch(() => undefined) : v.pause(),
+    );
     io.observe(v);
     return () => io.disconnect();
   }, [reduced]);
@@ -25,9 +27,27 @@ export function HeroFilm({ className }: { className?: string }) {
     return <img src="/film/hero-poster.jpg" alt="" className={className} />;
   }
   return (
-    <video ref={ref} aria-hidden poster="/film/hero-poster.jpg" autoPlay muted loop playsInline preload="auto" className={className}>
-      <source src="/film/hero-sm.webm" media="(max-width: 767px)" type="video/webm" />
-      <source src="/film/hero-sm.mp4" media="(max-width: 767px)" type="video/mp4" />
+    <video
+      ref={ref}
+      aria-hidden
+      poster="/film/hero-poster.jpg"
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      className={className}
+    >
+      <source
+        src="/film/hero-sm.webm"
+        media="(max-width: 767px)"
+        type="video/webm"
+      />
+      <source
+        src="/film/hero-sm.mp4"
+        media="(max-width: 767px)"
+        type="video/mp4"
+      />
       <source src="/film/hero.webm" type="video/webm" />
       <source src="/film/hero.mp4" type="video/mp4" />
     </video>

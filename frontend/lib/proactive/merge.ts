@@ -14,7 +14,7 @@ export type ShownProactiveItem = {
  */
 export function mergeProactiveItems(
   polled: ProactiveItem[],
-  streamed: ProactiveStreamItem[]
+  streamed: ProactiveStreamItem[],
 ): ShownProactiveItem[] {
   const byId = new Map<string, ShownProactiveItem>();
   for (const p of polled) {
@@ -23,5 +23,7 @@ export function mergeProactiveItems(
   for (const s of streamed) {
     byId.set(s.item_id, s);
   }
-  return Array.from(byId.values()).sort((a, b) => b.current_priority - a.current_priority);
+  return Array.from(byId.values()).sort(
+    (a, b) => b.current_priority - a.current_priority,
+  );
 }

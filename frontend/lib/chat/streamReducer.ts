@@ -20,9 +20,16 @@ export type StreamState = {
   error?: string;
 };
 
-export const initialStreamState: StreamState = { phase: "idle", text: "", echoes: [] };
+export const initialStreamState: StreamState = {
+  phase: "idle",
+  text: "",
+  echoes: [],
+};
 
-export function streamReducer(state: StreamState, frame: StreamFrame): StreamState {
+export function streamReducer(
+  state: StreamState,
+  frame: StreamFrame,
+): StreamState {
   switch (frame.type) {
     case "meta":
       return {
@@ -33,7 +40,11 @@ export function streamReducer(state: StreamState, frame: StreamFrame): StreamSta
         sessionId: frame.data.session_id,
       };
     case "token":
-      return { ...state, phase: "streaming", text: state.text + frame.data.token };
+      return {
+        ...state,
+        phase: "streaming",
+        text: state.text + frame.data.token,
+      };
     case "done":
       return {
         ...state,
@@ -75,7 +86,10 @@ function parseFrame(block: string): StreamFrame | null {
     case "done":
       return { type: "done", data: data as ChatDone };
     case "error":
-      return { type: "error", data: data as { session_id?: string; message: string } };
+      return {
+        type: "error",
+        data: data as { session_id?: string; message: string },
+      };
     default:
       return null;
   }
@@ -88,7 +102,7 @@ function parseFrame(block: string): StreamFrame | null {
  */
 export function parseSSE(
   chunk: string,
-  buffer: string
+  buffer: string,
 ): { frames: StreamFrame[]; buffer: string } {
   const combined = buffer + chunk;
   const parts = combined.split("\n\n");

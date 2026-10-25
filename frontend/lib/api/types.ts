@@ -121,7 +121,11 @@ export type CalendarOut = {
 };
 
 /** GET /museum — "firsts" derived from the log + milestones + goals. */
-export type MuseumEntry = { label: string; content: string; when: string | null };
+export type MuseumEntry = {
+  label: string;
+  content: string;
+  when: string | null;
+};
 export type MuseumOut = { entries: MuseumEntry[] };
 
 /** GET/POST /goals (Layer 7). */
@@ -214,8 +218,15 @@ export type ProactiveStreamItem = {
 };
 
 /** GET /memory/audit (Layer 2). */
-export type SemanticMemory = { memory_id: string; statement: string; confidence: number };
-export type MemoryAuditOut = { episodic: MemoryOut[]; semantic: SemanticMemory[] };
+export type SemanticMemory = {
+  memory_id: string;
+  statement: string;
+  confidence: number;
+};
+export type MemoryAuditOut = {
+  episodic: MemoryOut[];
+  semantic: SemanticMemory[];
+};
 
 /** GET /memory/integrity — both tamper-evident hash chains. */
 export type IntegrityOut = {
@@ -283,7 +294,10 @@ export type SafetyEvent = {
 };
 
 /** GET /onboarding (Layer 13). */
-export type OnboardingOut = { cold_start_active: boolean; session_index: number };
+export type OnboardingOut = {
+  cold_start_active: boolean;
+  session_index: number;
+};
 
 /** GET /sessions. */
 export type SessionOut = { session_key: string; turn_count: number };
@@ -299,7 +313,7 @@ export type TranscribeOut = {
 export class ApiError extends Error {
   constructor(
     public status: number,
-    public detail: string
+    public detail: string,
   ) {
     super(detail);
     this.name = "ApiError";

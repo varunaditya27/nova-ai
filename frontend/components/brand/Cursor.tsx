@@ -27,7 +27,13 @@ export function Cursor() {
         ry(e.clientY);
         const hot = Boolean((e.target as Element | null)?.closest(HOT));
         gsap.to([d, r], { autoAlpha: 1, duration: 0.3, overwrite: "auto" });
-        gsap.to(r, { scale: hot ? 1.9 : 1, borderWidth: hot ? 1 : 1.5, duration: 0.5, ease: "power3.out", overwrite: "auto" });
+        gsap.to(r, {
+          scale: hot ? 1.9 : 1,
+          borderWidth: hot ? 1 : 1.5,
+          duration: 0.5,
+          ease: "power3.out",
+          overwrite: "auto",
+        });
         gsap.to(d, { scale: hot ? 0.4 : 1, duration: 0.3, overwrite: "auto" });
       };
       const gone = () => gsap.to([d, r], { autoAlpha: 0, duration: 0.3 });
@@ -41,9 +47,18 @@ export function Cursor() {
   });
 
   return (
-    <div aria-hidden className="pointer-events-none fixed left-0 top-0 z-[60] mix-blend-difference">
-      <div ref={dot} className="fixed left-0 top-0 size-1.5 rounded-full bg-white" />
-      <div ref={ring} className="fixed left-0 top-0 size-9 rounded-full border-[1.5px] border-white" />
+    <div
+      aria-hidden
+      className="pointer-events-none fixed left-0 top-0 z-[60] mix-blend-difference"
+    >
+      <div
+        ref={dot}
+        className="fixed left-0 top-0 size-1.5 rounded-full bg-white"
+      />
+      <div
+        ref={ring}
+        className="fixed left-0 top-0 size-7 rotate-45 border-[1.5px] border-white"
+      />
     </div>
   );
 }

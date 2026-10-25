@@ -39,7 +39,9 @@ export function Composer({
   onToggleReadAloud: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const dictation = useDictation((text) => onChange(value ? `${value} ${text}` : text));
+  const dictation = useDictation((text) =>
+    onChange(value ? `${value} ${text}` : text),
+  );
   const canSend = !disabled && value.trim().length > 0;
   // The hour is only known in the browser; start neutral so server and client first paint agree.
   const [placeholder, setPlaceholder] = useState("What’s on your mind?");
@@ -57,7 +59,7 @@ export function Composer({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="tone flex items-end gap-2 rounded-[1.75rem] px-5 py-3">
+      <div className="tone flex items-end gap-2 cut px-5 py-3">
         <label htmlFor="say" className="sr-only">
           Say something to Nova
         </label>
@@ -84,13 +86,22 @@ export function Composer({
             onPointerDown={dictation.start}
             onPointerUp={dictation.stop}
             onPointerLeave={dictation.stop}
-            aria-label={dictation.recording ? "Listening — let go to finish" : "Hold to talk"}
+            aria-label={
+              dictation.recording
+                ? "Listening — let go to finish"
+                : "Hold to talk"
+            }
             className={cn(
-              "grid size-11 shrink-0 place-items-center rounded-full transition-colors",
-              dictation.recording ? "bg-accent text-accent-ink" : "bg-sunk text-ink hover:bg-raised"
+              "grid size-11 shrink-0 place-items-center cut-sm transition-colors",
+              dictation.recording
+                ? "bg-accent text-accent-ink"
+                : "bg-sunk text-ink hover:bg-raised",
             )}
           >
-            <Mic size={18} className={dictation.transcribing ? "animate-pulse" : undefined} />
+            <Mic
+              size={18}
+              className={dictation.transcribing ? "animate-pulse" : undefined}
+            />
           </button>
         )}
         <button
@@ -99,15 +110,21 @@ export function Composer({
           disabled={!canSend}
           aria-label="Send"
           className={cn(
-            "grid size-11 shrink-0 place-items-center rounded-full transition-colors",
-            canSend ? "bg-accent text-accent-ink hover:brightness-110" : "bg-sunk text-mute"
+            "grid size-11 shrink-0 place-items-center cut-sm transition-colors",
+            canSend
+              ? "bg-accent text-accent-ink hover:brightness-110"
+              : "bg-sunk text-mute",
           )}
         >
           <ArrowUp size={20} />
         </button>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3">
-        <p id="say-hint" className="text-[length:var(--text-small)] text-mute" role="status">
+        <p
+          id="say-hint"
+          className="text-[length:var(--text-small)] text-mute"
+          role="status"
+        >
           {dictation.recording
             ? "Listening… let go when you’re done."
             : dictation.transcribing
@@ -117,9 +134,13 @@ export function Composer({
         <button
           onClick={onToggleReadAloud}
           aria-pressed={readAloud}
-          className="inline-flex min-h-9 items-center gap-2 rounded-full px-2 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
+          className="inline-flex min-h-9 items-center gap-2 cut-sm px-2 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
         >
-          {readAloud ? <Volume2 size={15} aria-hidden /> : <VolumeX size={15} aria-hidden />}
+          {readAloud ? (
+            <Volume2 size={15} aria-hidden />
+          ) : (
+            <VolumeX size={15} aria-hidden />
+          )}
           {readAloud ? "Nova reads replies aloud" : "Read replies aloud"}
         </button>
       </div>

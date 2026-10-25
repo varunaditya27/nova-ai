@@ -15,16 +15,26 @@ export function relativeTime(iso: string | null): string {
     ["minute", 60_000],
   ];
   for (const [unit, ms] of units) {
-    if (abs >= ms || unit === "minute") return rtf.format(Math.round(diff / ms), unit);
+    if (abs >= ms || unit === "minute")
+      return rtf.format(Math.round(diff / ms), unit);
   }
   return "just now";
 }
 
 const WEEKDAY = new Intl.DateTimeFormat("en", { weekday: "long" });
-const LONG_DATE = new Intl.DateTimeFormat("en", { day: "numeric", month: "long" });
-const LONG_DATE_YEAR = new Intl.DateTimeFormat("en", { day: "numeric", month: "long", year: "numeric" });
+const LONG_DATE = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "long",
+});
+const LONG_DATE_YEAR = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
 
-export function partOfDay(date: Date): "morning" | "afternoon" | "evening" | "night" {
+export function partOfDay(
+  date: Date,
+): "morning" | "afternoon" | "evening" | "night" {
   const h = date.getHours();
   if (h >= 5 && h < 12) return "morning";
   if (h >= 12 && h < 17) return "afternoon";
@@ -82,8 +92,14 @@ export function greetingFor(date: Date): string {
   return "Still up";
 }
 
-const DAY_MONTH = new Intl.DateTimeFormat("en", { day: "numeric", month: "long" });
-const DAY_MONTH_SHORT = new Intl.DateTimeFormat("en", { day: "numeric", month: "short" });
+const DAY_MONTH = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "long",
+});
+const DAY_MONTH_SHORT = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  month: "short",
+});
 
 /** "12–18 October" when within one month, "29 Sep – 5 Oct" across two. */
 export function weekRange(start: string | null, end: string | null): string {

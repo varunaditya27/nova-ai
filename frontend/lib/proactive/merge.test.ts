@@ -14,9 +14,16 @@ function polled(overrides: Partial<ProactiveItem> = {}): ProactiveItem {
   };
 }
 
-function streamed(overrides: Partial<ProactiveStreamItem> = {}): ProactiveStreamItem {
-  return { item_id: "p1", item_type: "goal_check_in", message: "a real message",
-          current_priority: 0.5, ...overrides };
+function streamed(
+  overrides: Partial<ProactiveStreamItem> = {},
+): ProactiveStreamItem {
+  return {
+    item_id: "p1",
+    item_type: "goal_check_in",
+    message: "a real message",
+    current_priority: 0.5,
+    ...overrides,
+  };
 }
 
 describe("mergeProactiveItems", () => {
@@ -34,7 +41,7 @@ describe("mergeProactiveItems", () => {
   it("dedupes by item_id, preferring the streamed version on overlap", () => {
     const out = mergeProactiveItems(
       [polled({ item_id: "p1", message: "polled text" })],
-      [streamed({ item_id: "p1", message: "streamed text" })]
+      [streamed({ item_id: "p1", message: "streamed text" })],
     );
     expect(out).toHaveLength(1);
     expect(out[0].message).toBe("streamed text");
@@ -42,9 +49,11 @@ describe("mergeProactiveItems", () => {
 
   it("sorts by current_priority, highest first", () => {
     const out = mergeProactiveItems(
-      [polled({ item_id: "low", current_priority: 0.2 }),
-       polled({ item_id: "high", current_priority: 0.9 })],
-      []
+      [
+        polled({ item_id: "low", current_priority: 0.2 }),
+        polled({ item_id: "high", current_priority: 0.9 }),
+      ],
+      [],
     );
     expect(out.map((i) => i.item_id)).toEqual(["high", "low"]);
   });
@@ -52,7 +61,7 @@ describe("mergeProactiveItems", () => {
   it("merges disjoint polled and streamed items", () => {
     const out = mergeProactiveItems(
       [polled({ item_id: "a" })],
-      [streamed({ item_id: "b" })]
+      [streamed({ item_id: "b" })],
     );
     expect(out.map((i) => i.item_id).sort()).toEqual(["a", "b"]);
   });

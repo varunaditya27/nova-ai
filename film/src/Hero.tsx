@@ -12,8 +12,8 @@ const TAU = Math.PI * 2;
 const CX = 1210; // the subject sits right of centre, leaving the left of the frame for type
 const CY = 540;
 const DAY = [0, 0.25, 0.5, 0.75, 1];
-const SKY_A = ["#5a2342", "#12525a", "#5b2f55", "#0b2a35", "#5a2342"];
-const SKY_B = ["#26112a", "#0a2e34", "#25142c", "#041419", "#26112a"];
+const SKY_A = ["#8a1f66", "#0a6f78", "#8a2f7c", "#0b3a5a", "#8a1f66"];
+const SKY_B = ["#33104a", "#06404a", "#36124f", "#041f35", "#33104a"];
 const SUN_COL = ["#ffb26b", "#ffe2a1", "#ff9a7a", "#cfe6ff", "#ffb26b"];
 
 const rnd = (i: number, k: number) => Math.abs((Math.sin(i * 127.1 + k * 311.7) * 43758.5453) % 1);
@@ -73,7 +73,7 @@ export const Hero = () => {
       <AbsoluteFill style={{ transform: `translate(${cam.x}px, ${cam.y}px) rotate(${cam.r}deg) scale(${cam.s})`, transformOrigin: `${CX}px ${CY}px` }}>
         {/* nebula: ambient colour that drifts, so the dark is never flat */}
         {[0, 1, 2].map((i) => {
-          const hue = ["rgba(255,120,170,0.34)", "rgba(40,190,180,0.26)", "rgba(255,170,90,0.2)"][i];
+          const hue = ["rgba(255,90,170,0.5)", "rgba(30,210,200,0.4)", "rgba(255,160,60,0.32)"][i];
           const ox = [-260, 330, 60][i] + 70 * Math.sin(t * TAU + i * 2.1);
           const oy = [-170, 150, 260][i] + 50 * Math.cos(t * TAU + i);
           return <div key={i} style={{ position: "absolute", left: CX + ox - 560, top: CY + oy - 560, width: 1120, height: 1120, borderRadius: "50%", background: `radial-gradient(circle, ${hue}, transparent 62%)`, filter: "blur(36px)", mixBlendMode: "screen", opacity: 0.8 }} />;
