@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✦ Nova AI
+# Nova AI
 
 ### *A longitudinal cognitive architecture for human-like artificial companionship.*
 
@@ -27,7 +27,7 @@
 
 ---
 
-# ✦ What Nova Actually Is
+# What Nova Actually Is
 
 Most conversational AI systems are architecturally stateless.
 
@@ -56,7 +56,7 @@ It is attempting something more concrete and measurable:
 
 ---
 
-# ✦ Why This Project Exists
+# Why This Project Exists
 
 Modern AI is optimized for:
 
@@ -104,7 +104,7 @@ That is the philosophy behind Nova.
 
 ---
 
-# ✦ The 13-Layer Cognitive Architecture
+# The 13-Layer Cognitive Architecture
 
 ```mermaid
 flowchart TD
@@ -147,7 +147,7 @@ flowchart TD
 
 ---
 
-# ✦ Core Cognitive Systems
+# Core Cognitive Systems
 
 ## 🧠 Layer 1 — Input Perception
 
@@ -406,7 +406,7 @@ The system slowly transitions from generic interaction to deep personalization o
 
 ---
 
-# ✦ Infrastructure Stack
+# Infrastructure Stack
 
 ```mermaid
 graph TB
@@ -444,7 +444,7 @@ graph TB
 
 ---
 
-# ✦ Research Dimensions
+# Research Dimensions
 
 Nova is also a research platform.
 
@@ -468,7 +468,7 @@ Potential publication directions include:
 
 ---
 
-# ✦ Long-Term Vision
+# Long-Term Vision
 
 The long-term vision is not:
 
@@ -490,7 +490,21 @@ Nova is moving toward:
 
 ---
 
-# ✦ Repository Structure
+# The Web App
+
+Nova has a web front door in `frontend/`: Next.js 16, React 19, Tailwind v4. It is built around one idea, that Nova **keeps** things, and it looks and sounds like it.
+
+* **A journal, not a gadget.** The mark is a bookplate stamp with a dog-eared corner and an italic "n". Corners fold on buttons, cards and fields; meters are marks on a ruler; the cursor is an ink pen. No pills, no sparkles, no orbs. Palette is maroon, teal and green on warm paper, in four lights (dawn, day, dusk, night) that follow the user's real hour.
+* **A character.** Nova speaks in the first person from a single voice file (`frontend/lib/voice.ts`). Its stamp has moods (breathes, pulses while thinking, hops when happy, dozes off, startles awake, looks lost on a 404) and leans toward your pointer. Every page, empty state, loading line, error and toast has Nova's voice, plus a handwritten margin note.
+* **A cinematic front page.** `/welcome` opens with a Remotion film (`film/`) and a GSAP/Lenis scroll score: a pinned "how it grows" scene where the room moves from dawn to night, a horizontal reel of the real screens, an interactive memory constellation and a tamper-evidence demo. Reduced-motion users get a still film and a static layout.
+* **Plain language everywhere.** Enum values, ISO timestamps and decimals never reach the screen.
+* **Tested.** vitest for the logic (copy tables, cursor physics, voice), and Playwright with axe accessibility checks on every page in all four lights.
+
+Where to read more: [`frontend/BRAND.md`](frontend/BRAND.md) (identity, voice rules, rejected directions), [`frontend/PRODUCT_SURFACE.md`](frontend/PRODUCT_SURFACE.md) (routes to endpoints), [`frontend/README.md`](frontend/README.md) (run and test), [`film/README.md`](film/README.md) (rendering the films).
+
+---
+
+# Repository Structure
 
 ```bash
 nova-ai/
@@ -519,13 +533,14 @@ nova-ai/
 ├── docs/
 ├── scripts/
 ├── tests/
-├── frontend/               # Next.js web app — see frontend/README.md and PRODUCT_SURFACE.md
+├── frontend/               # Next.js web app — see BRAND.md, PRODUCT_SURFACE.md, README.md
+├── film/                   # Remotion source for the /welcome films (rendered into frontend/public/film)
 └── docker/                 # docker-compose.yml + per-service Dockerfiles
 ```
 
 ---
 
-# ✦ Quick Start
+# Quick Start
 
 ## Clone Repository
 
@@ -554,20 +569,31 @@ docker compose up -d
 uvicorn api.main:app --reload
 ```
 
+## Run the Web App
+
+```bash
+cd frontend
+npm install
+npm run dev            # http://localhost:3000, talks to the API on :8000
+```
+
 ## Run Tests
 
 ```bash
-pytest
+pytest                                  # backend
+cd frontend && npm test                 # web logic (vitest)
+cd frontend && npm run test:e2e         # browser + accessibility (needs the live stack)
 ```
 
 ---
 
-# ✦ Documentation
+# Documentation
 
 - **[`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)** — complete HTTP API reference (40+ routes +
   schemas). Start here for frontend integration. Live schema at `GET /openapi.json`, explorer at `/docs`.
 - **[`docs/NOVA_AI_MASTER_ARCHITECTURE.md`](docs/NOVA_AI_MASTER_ARCHITECTURE.md)** — canonical top-level
   architecture (read first).
+- **[`frontend/BRAND.md`](frontend/BRAND.md)** — the web app's identity, voice and motion rules.
 - **`CLAUDE.md`** — how the code is wired together, for contributors.
 
 Each layer also has its own dedicated architecture document inside `docs/`.
@@ -593,7 +619,7 @@ This repository is simultaneously:
 
 ---
 
-# ✦ Final Thought
+# Final Thought
 
 Modern AI can:
 
