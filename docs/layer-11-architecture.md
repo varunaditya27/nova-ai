@@ -1,4 +1,4 @@
-# Layer 11 — Safety & Crisis Architecture
+# Layer 11 — Safety & Crisis
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

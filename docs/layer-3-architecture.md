@@ -1,4 +1,4 @@
-# Layer 3 — Emotion, Intent & Reasoning
+# Layer 3 — Emotion & Reasoning
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

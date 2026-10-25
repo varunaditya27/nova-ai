@@ -1,4 +1,4 @@
-# Layer 13 — Onboarding & Cold Start Architecture
+# Layer 13 — Onboarding & Cold Start
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

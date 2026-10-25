@@ -11,7 +11,7 @@ until ollama list >/dev/null 2>&1; do
   sleep 1
 done
 
-for model in qwen2.5:7b gemma3:4b nomic-embed-text; do
+for model in qwen2.5:7b gemma2:2b nomic-embed-text; do
   echo "[ollama-entrypoint] pulling ${model}..."
   ollama pull "${model}" || echo "[ollama-entrypoint] WARN: failed to pull ${model}"
 done

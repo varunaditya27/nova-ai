@@ -300,7 +300,7 @@ Topology lives in `docker/docker-compose.yml` (compose file + per-service Docker
 ```
 postgres → port 5432 (relational store; loopback-bound)
 chroma   → port 8001→8000 (vector store; loopback-bound)
-ollama   → port 11434 (local LLM inference; pulls qwen2.5:7b, gemma3:4b, nomic-embed-text on first start)
+ollama   → port 11434 (local LLM inference; pulls qwen2.5:7b, gemma2:2b, nomic-embed-text on first start)
 kokoro   → port 8880 (TTS)
 backend  → port 8000 (FastAPI; profile `app`)
 ```

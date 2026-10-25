@@ -28,3 +28,6 @@ nova-data/
 # Nova films (Remotion source)
 film/node_modules/
 film/out/
+
+# Packaging
+*.egg-info/

@@ -1,4 +1,4 @@
-# Layer 4 — Persona, Personality & Response Generation
+# Layer 4 — Persona & Generation
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

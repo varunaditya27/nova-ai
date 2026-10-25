@@ -1,39 +1,40 @@
-# Nova web app
+# Nova AI — Web App
 
-Next.js 16 (App Router, Turbopack) · React 19 · Tailwind v4 · TanStack Query · motion. The screens and
-the endpoints behind each are in [`PRODUCT_SURFACE.md`](PRODUCT_SURFACE.md).
+Next.js 16 (App Router, Turbopack) · React 19 · Tailwind v4 · TanStack Query · motion · GSAP. Fifteen
+routes, one permanent conversation and a set of lenses over the same data. Which screen uses which endpoint:
+[`PRODUCT_SURFACE.md`](PRODUCT_SURFACE.md). Identity, voice and motion rules: [`BRAND.md`](BRAND.md).
 
 ## Run
 
+Needs Node 20+ and the backend on `:8000` (see the [root README](../README.md#quick-start)).
+
 ```bash
-# backend on :8000 first (see the root README), then:
 npm install
 npm run dev          # http://localhost:3000
 ```
 
-`NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`) points at the API.
+`NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`) points at the API. The first visit lands on `/welcome`.
 
 ## Check
 
 ```bash
 npx tsc --noEmit            # types
 npm run lint                # eslint
-npm test                    # vitest (unit)
-npm run test:e2e            # Playwright against the running stack, incl. axe accessibility checks
+npm test                    # vitest: copy tables, cursor physics, voice (61 tests)
+npm run test:e2e            # Playwright against the running stack, including axe checks (95 tests)
 ```
 
-Playwright needs the backend and a Postgres-backed database up. If the installed browser differs from
-Playwright's expected version, set `PW_CHROMIUM=/path/to/chromium`.
-
-## The landing page's film
-
-`../film` is a small Remotion project that renders the opening shot into `public/film/`. See `../film/README.md`.
+Playwright needs the backend and its Postgres up. If the installed browser differs from the version
+Playwright expects, set `PW_CHROMIUM=/path/to/chromium`.
 
 ## Layout
 
-- `app/` — one folder per route; `globals.css` holds the four light themes as tokens.
-- `components/ui` (Page, Sheet, Tabs, States, Ember), `shell` (nav, command menu), `talk`, `memory`,
-  `story`, `errands` — feature components.
-- `lib/` — API client + types, TanStack hooks, and the plain-language mapping tables (`people.ts`,
-  `goals.ts`, `care.ts`, `upkeep.ts`, `errands.ts`, `style.ts`, `time.ts`), each with a vitest file.
-- `e2e/` — Playwright specs.
+| Path | Holds |
+|---|---|
+| `app/` | One folder per route. `globals.css` holds the four light themes (dawn, day, dusk, night) as tokens, plus the fold, ruler and handwriting utilities. |
+| `components/ui` | The design system: `Page`, `Sheet`, `Tabs`, `Button`, `States` (empty, loading, trouble), `Mark` (the stamp and its moods). |
+| `components/brand` | Shared brand layer mounted by the shell: pen cursor, smooth scroll, margin notes (`Margin`), grain, motion helpers. |
+| `components/shell`, `talk`, `memory`, `story`, `errands`, `goals`, `welcome` | Feature components. |
+| `lib/` | API client and types, TanStack hooks, `voice.ts` (every line Nova says), `companion/` (mood, pointer lean), `cursor/` (pure cursor logic) and the plain-language mapping tables (`people.ts`, `goals.ts`, `care.ts`, `upkeep.ts`, `errands.ts`, `style.ts`, `time.ts`), each with a vitest file. |
+| `e2e/` | Playwright specs: pages, navigation, accessibility in four lights, welcome scroll score, cursor, character. |
+| `public/film/` | The rendered films for `/welcome`; source and render script in [`../film`](../film). |

@@ -1,4 +1,4 @@
-# Layer 12 — Privacy & Data Infrastructure
+# Layer 12 — Privacy & Data
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

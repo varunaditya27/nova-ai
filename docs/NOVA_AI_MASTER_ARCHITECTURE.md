@@ -1,9 +1,9 @@
 # Nova AI — Master Architecture & Single Source of Truth
 
 > **Status:** All 13 cognitive layers implemented, tested, documented, and integrated through a
-> live conversation orchestrator. **1657 tests passing** (run with `.venv/bin/pytest`).
-> **130 layer modules (~19.6k LOC) + 6 pipeline modules**, pure
-> Python standard library, dependency-injected throughout.
+> live conversation orchestrator. **1657 backend tests passing** (run with `.venv/bin/pytest`),
+> plus a web app with its own unit and browser tests. **130 layer modules (~19.6k LOC) + 6 pipeline
+> modules**, pure Python standard library, dependency-injected throughout.
 >
 > **Scope of this document.** This is the authoritative, top-level map of the entire system: what
 > Nova is, how a single conversation turn flows through all 13 layers, what each layer owns, the
@@ -77,17 +77,17 @@ Three commitments shape the whole system:
 |---|---|---|---:|---|
 | 1 | Input Perception | `backend/layer1_input/` | 9 | Temporal context, implicit behavioral signals, multimodal + voice prosody normalization |
 | 2 | Memory | `backend/layer2_memory/` | 16 | STM + Episodic/Semantic/Identity + UWM; competitive recall, forgetting, audit |
-| 3 | Reasoning | `backend/layer3_reasoning/` | 9 | Emotion + intent (shared call), background state, mismatch, empathy, mode resolution |
+| 3 | Emotion & Reasoning | `backend/layer3_reasoning/` | 9 | Emotion + intent (shared call), background state, mismatch, empathy, mode resolution |
 | 4 | Persona & Generation | `backend/layer4_persona/` | 9 | Persona/relationship state, tone, drift; Agent 4a Planner + Agent 4b Refiner |
-| 5 | Relationship Intelligence | `backend/layer5_relationship/` | 8 | Social graph, interpersonal events, pattern recognition, coaching injection |
-| 6 | Proactivity | `backend/layer6_proactivity/` | 9 | Proactive queue, timing/delivery gates, message generation, response tracking |
+| 5 | Social Intelligence | `backend/layer5_relationship/` | 8 | Social graph, interpersonal events, pattern recognition, coaching injection |
+| 6 | Proactive Engagement | `backend/layer6_proactivity/` | 9 | Proactive queue, timing/delivery gates, message generation, response tracking |
 | 7 | Goals & Accountability | `backend/layer7_goals/` | 8 | Goal extraction, lifecycle, progress, accountability, decomposition → L6 |
 | 8 | Tools & Actions | `backend/layer8_tools/` | 13 | Tool manager, confirmation gate (AUTO/SOFT/HARD), param resolver, plugins |
-| 9 | Output Delivery | `backend/layer9_output/` | 14 | Format adaptation, micro-interactions, voice (Kokoro/SSML), streaming |
-| 10 | Longitudinal | `backend/layer10_longitudinal/` | 9 | Life narrative, weekly summaries, progress/pattern, retrospective, life calendar |
+| 9 | Output & Interaction | `backend/layer9_output/` | 14 | Format adaptation, micro-interactions, voice (Kokoro/SSML), streaming |
+| 10 | Longitudinal Life | `backend/layer10_longitudinal/` | 9 | Life narrative, weekly summaries, progress/pattern, retrospective, life calendar |
 | 11 | Safety & Crisis | `backend/layer11_safety/` | 9 | Ethical guardrails (SC-1), crisis detection (SC-2), escalation (SC-3), dependency (SC-4) |
 | 12 | Privacy & Data | `backend/layer12_privacy/` | 9 | On-device encryption, integrity, selective deletion, audit, zero-knowledge sync |
-| 13 | Onboarding / Cold Start | `backend/layer13_onboarding/` | 8 | Progressive elicitation, cold-start defaults, feature pacing, graduation |
+| 13 | Onboarding & Cold Start | `backend/layer13_onboarding/` | 8 | Progressive elicitation, cold-start defaults, feature pacing, graduation |
 | — | Pipeline | `backend/pipeline/` | 6 | Pure orchestration: sequences all layers + enforces invariants |
 
 The pipeline is **pure orchestration with zero business logic** — every layer step is injected as
@@ -189,7 +189,7 @@ Modules: `arbiter`, `stm`, `memory_store`, `semantic_memory`, `identity`, `recal
 - **Write separation:** all writes go through the State Updater *after* the turn; Layer 2 is
   read-only during inference. The **audit trail** is an append-only SHA-256 hash chain.
 
-### Layer 3 — Reasoning · `build_emotion_intent_packet`
+### Layer 3 — Emotion & Reasoning · `build_emotion_intent_packet`
 Modules: `emotion_classifier`, `intent_classifier`, `background_state`, `mismatch_detector`,
 `empathy_hypothesis`, `mode_resolver`, `packet_builder`, `schemas`.
 - Emotion + intent share **one** fast-model call (<150 ms). Resolves one of 8 conversation modes
@@ -199,7 +199,7 @@ Modules: `emotion_classifier`, `intent_classifier`, `background_state`, `mismatc
   without waiting for the full packet.
 - **No raw scores to the LLM** — valence/arousal/recall floats become plain-language directives.
 
-### Layer 4 — Persona & Two-Stage Generation · `generate_semantic_draft`
+### Layer 4 — Persona & Generation · `generate_semantic_draft`
 Modules: `persona_resolver`, `relationship_manager`, `tone_calibrator`, `drift_detector`,
 `semantic_planner` (Agent 4a), `emotion_refiner` (Agent 4b), `packet_builder`, `schemas`.
 - **Agent 4a (Semantic Planner):** factually complete content; adds *no* emotional language;
@@ -208,13 +208,13 @@ Modules: `persona_resolver`, `relationship_manager`, `tone_calibrator`, `drift_d
   when all 5 neutral conditions hold; post-refinement factual preservation is checked via embedding
   cosine similarity on key claims.
 
-### Layer 5 — Relationship Intelligence · `build_social_intelligence_packet`
+### Layer 5 — Social Intelligence · `build_social_intelligence_packet`
 Modules: `social_graph`, `event_tracker`, `pattern_recognizer`, `coaching_detector`,
 `coaching_modifier`, `packet_builder`, `schemas`.
 - Tracks the user's social graph and interpersonal events, recognizes social patterns, and injects
   *coaching opportunities* (framed as observation, never verdict).
 
-### Layer 6 — Proactivity · `run_proactive_cycle`
+### Layer 6 — Proactive Engagement · `run_proactive_cycle`
 Modules: `engine`, `queue_manager`, `initiative_classifier`, `timing_gate`, `message_generator`,
 `response_tracker`, `intake`, `schemas`.
 - Background outreach independent of user turns (scheduler ~30 min). Timing/delivery gates (DND,
@@ -236,7 +236,7 @@ Modules: `tool_manager`, `confirmation_gate`, `parameter_resolver`, `action_reco
   `(tool, operation, params, user_id)`, single-use, ownership-checked; execution is fail-closed;
   the action recorder is append-only. **Crisis/safety is *not* here — it is Layer 11.**
 
-### Layer 9 — Output Delivery · `deliver`
+### Layer 9 — Output & Interaction · `deliver`
 Modules: `interaction_orchestrator`, `format_adapter`, `length_calibrator`, `user_format_profile`,
 `thinking_pause`, `self_edit_simulator`, `stream_typing_overlay`, `micro_interaction_engine`,
 `voice_synthesizer`, `tts_backends/{base,kokoro}`, `schemas`.
@@ -244,7 +244,7 @@ Modules: `interaction_orchestrator`, `format_adapter`, `length_calibrator`, `use
   simulation, thinking pauses, self-editing), and voice synthesis (Kokoro TTS via SSML).
 - `deliver(crisis_mode_active=True)` forces pure prose and suppresses all micro-interactions.
 
-### Layer 10 — Longitudinal · `assemble_context_packet`
+### Layer 10 — Longitudinal Life · `assemble_context_packet`
 Modules: `engine`, `life_narrative_engine`, `narrative_arc`, `weekly_summary`, `progress_tracker`,
 `retrospective`, `life_calendar`, `schemas`.
 - Life Narrative Engine, Weekly Summary, Progress & Pattern tracker (patterns require ≥3
@@ -275,7 +275,7 @@ Modules: `privacy_agent`, `encryption_manager` (SC-1), `integrity_verifier` (SC-
 - **Zero-knowledge sync:** deltas are encrypted on-device; the server stores opaque ciphertext it
   cannot read. Crisis-session-logging consent is non-revocable.
 
-### Layer 13 — Onboarding / Cold Start · `ColdStartEngine`
+### Layer 13 — Onboarding & Cold Start · `ColdStartEngine`
 Modules: `cold_start_engine`, `passive_elicitation`, `active_elicitation_queue`,
 `context_constructor`, `graduation_evaluator`, `feature_pacing`, `schemas`.
 - A **temporary overlay** active from a new user's first message until graduation, then it
@@ -347,7 +347,7 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 | Background jobs | APScheduler (`background/scheduler.py`) — consolidation 2h, proactive 30m, patterns weekly, integrity daily, longitudinal Sunday |
 
 Docker services (`docker/docker-compose.yml`): `postgres` :5432, `chroma` :8001→8000, `ollama`
-:11434, `kokoro` :8880, and `backend` :8000 (profile `app`) on `nova-network`. All published ports
+:11434 (pulls `qwen2.5:7b`, `gemma2:2b`, `nomic-embed-text` on first start), `kokoro` :8880, `stt` :8881, and `backend` :8000 (profile `app`) on `nova-network`. All published ports
 bind to `127.0.0.1`; backend runs non-root and waits for postgres/chroma/ollama healthy. The `infra`
 extra in `pyproject.toml` carries the third-party deps; the base install stays pure-stdlib so the
 offline suite is unaffected.
@@ -377,44 +377,42 @@ configs parse and are correctly namespaced.
 ## 10. Testing & Verification
 
 ```bash
-# Everything (offline, no services needed)
-/usr/bin/python3.11 -m pytest tests/ -q          # 1120 passed
-
-# Unit only (per-component behaviour)
-/usr/bin/python3.11 -m pytest tests/unit/ -q     # 1057
-
-# Integration only (cross-layer + orchestration + consistency guards)
-/usr/bin/python3.11 -m pytest tests/integration/ -q   # 63
+.venv/bin/pytest -q                      # everything: 1657 passed, 1 skipped, offline, no services needed
+.venv/bin/pytest tests/unit -q           # per-component behaviour (1583 tests, 172 files)
+.venv/bin/pytest tests/integration -q    # cross-layer, orchestration, consistency guards (63)
+.venv/bin/pytest tests/integration_infra -q   # real Postgres/Chroma/Ollama adapters (12; skip when unreachable)
 ```
 
-**Test inventory (1120 total):**
-- **1057 unit tests** across 111 files — one or more per sub-component of every layer.
-- **Integration tests** (`tests/integration/`):
-  - `test_full_turn_system1.py` — casual turn → System 1, 4b skipped, layer order, confabulation guard.
-  - `test_full_turn_system2.py` — emotional/complex turn → System 2, 4a + 4b run.
-  - `test_safety_override.py` — crisis veto, OR-semantics, safety-never-blocked, post-gen guardrail rewrite.
-  - `test_cold_start_graduation.py` — cold-start overlay wiring, incl. the **real** `ColdStartEngine`.
-  - `test_memory_consolidation.py` — **real** Layer 2 FCE (decay → cluster → semantic extraction).
-  - `test_sync_multidevice.py` — **real** Layer 12 zero-knowledge sync + Merkle integrity.
-  - `test_layer_consistency.py` — 42 parametrized guards: every layer imports, exposes its entry
-    point, has a parseable namespaced config; pipeline/API import; `PipelineSteps` exposes every hook.
+**Integration tests** (`tests/integration/`):
+- `test_full_turn_system1.py` — casual turn → System 1, 4b skipped, layer order, confabulation guard.
+- `test_full_turn_system2.py` — emotional/complex turn → System 2, 4a + 4b run.
+- `test_safety_override.py` — crisis veto, OR-semantics, safety-never-blocked, post-gen guardrail rewrite.
+- `test_cold_start_graduation.py` — cold-start overlay wiring, incl. the **real** `ColdStartEngine`.
+- `test_memory_consolidation.py` — **real** Layer 2 FCE (decay → cluster → semantic extraction).
+- `test_sync_multidevice.py` — **real** Layer 12 zero-knowledge sync + Merkle integrity.
+- `test_layer_consistency.py` — parametrized guards: every layer imports, exposes its entry point, has a
+  parseable namespaced config; pipeline/API import; `PipelineSteps` exposes every hook.
 
 The consistency guard is the standing defense against integration drift: rename an export, drop a
 module, or break a config namespace and exactly one guard fails with a precise message.
+
+**Web app** (`frontend/`): `npm test` (vitest, logic and copy tables), `npx tsc --noEmit`, `npm run lint`,
+and `npm run test:e2e` (Playwright against the live stack, including axe accessibility checks on every
+page in all four lights). See [`frontend/README.md`](../frontend/README.md).
 
 ---
 
 ## 11. Build, Run & Operate
 
 ```bash
-docker compose up -d                    # Ollama, Kokoro, backing services
-uvicorn api.main:app --reload           # dev API server
-pytest                                  # full suite
-python scripts/seed_db.py               # sample data
-python scripts/eval_recall.py           # memory recall evaluation
-python scripts/export_audit.py          # export audit trail
-python scripts/calibrate_weights.py     # recall-weight calibration
+cp docker/.env.example docker/.env
+docker compose -f docker/docker-compose.yml up -d    # postgres, chroma, ollama (pulls models), kokoro, stt
+bash scripts/run_local.sh                            # migrations, then the API on :8000 against those services
+cd frontend && npm install && npm run dev            # the web app on :3000
+.venv/bin/pytest                                     # full backend suite
 ```
+
+Step-by-step instructions with prerequisites live in the root [`README.md`](../README.md).
 
 ---
 
@@ -424,17 +422,20 @@ python scripts/calibrate_weights.py     # recall-weight calibration
 backend/
   layer1_input/ … layer13_onboarding/   # the 13 cognitive layers (130 modules)
   pipeline/                             # conversation_orchestrator, system1/2, state_updater, proactive
-api/                                    # FastAPI app, routes, middleware
+api/                                    # FastAPI app: routes, streaming, assembly (layer hooks), state
+infra/                                  # LLM clients, Postgres + Chroma adapters, session cache
+background/                             # APScheduler jobs
+migrations/                             # Alembic schema migrations
 config/                                 # defaults.yaml + layer1..13.yaml
 docs/
   NOVA_AI_MASTER_ARCHITECTURE.md        # ← this file (single source of truth)
   layer-1-architecture.md … layer-13-architecture.md   # per-layer specs (+ as-built sections)
-tests/
-  unit/                                 # 1057 tests, 111 files
-  integration/                          # full-turn, safety, cold-start, consolidation, sync, consistency
-scripts/                                # seed, eval, audit export, calibration
-background/                             # APScheduler jobs
-infra/                                  # session cache, client adapters
+  API_REFERENCE.md, POLISH_BACKLOG.md, PENDING_WORK.md, diagrams/, superpowers/
+tests/                                  # unit/, integration/, integration_infra/
+scripts/                                # run_local.sh
+frontend/                               # Next.js web app (see frontend/README.md)
+film/                                   # Remotion source for the /welcome films
+docker/                                 # docker-compose.yml + per-service Dockerfiles
 ```
 
 ---
@@ -451,11 +452,12 @@ infra/                                  # session cache, client adapters
 | 10 | #11 | Longitudinal: narrative, weekly summary, progress, retrospective, life calendar |
 | 11 | #12 | Safety & crisis: guardrails, 3-tier detection, escalation veto, dependency monitor |
 | 12 | #13 | Privacy: stdlib AEAD, Merkle integrity, surgical deletion, zero-knowledge sync |
-| 13 | #14 | Onboarding / Cold Start: progressive elicitation, feature pacing, silent graduation |
+| 13 | #14 | Onboarding & Cold Start: progressive elicitation, feature pacing, silent graduation |
 | Integration | (this work) | Live conversation orchestrator wiring all 13 layers; full-turn/safety/cold-start/consolidation/sync integration tests; cross-layer consistency guards |
 
 **Current state:** all 13 layers implemented, tested, documented; pipeline wired and verified;
-**1120 tests green**; `main` is the single source of truth.
+**1657 backend tests green**; `main` is the single source of truth. The "Delivery provenance" table above records the
+layer build-out; the audit and web-app work that followed is logged in [`POLISH_BACKLOG.md`](POLISH_BACKLOG.md).
 
 ---
 

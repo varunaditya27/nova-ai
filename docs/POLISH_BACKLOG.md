@@ -1,4 +1,4 @@
-# Polish Backlog
+# Nova AI — Polish Backlog
 
 Running log of follow-up work surfaced while auditing each layer, one phase at a time (see
 CLAUDE.md's "Polish phases" pointer). Each phase reads its layer's code end-to-end, verifies it

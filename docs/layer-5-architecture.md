@@ -1,4 +1,4 @@
-# Layer 5 — Social Intelligence & Coaching
+# Layer 5 — Social Intelligence
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

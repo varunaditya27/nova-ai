@@ -1,4 +1,4 @@
-# Nova — Product Surface (screens → API)
+# Nova AI — Product Surface
 
 Every screen of the web app and the backend endpoints that feed it. All endpoints the app uses are
 live; the routes are the single source of truth in `lib/nav.ts`. Full schemas:
@@ -12,9 +12,10 @@ page is a separate lens over the same data. No "new chat", no folders.
 **Design direction:** *the light follows your real day.* `data-light` (dawn / day / dusk / night) is
 stamped on `<html>` from the local hour (`components/ThemeProvider.tsx`, no-flash inline script, manual
 override in the sidebar). Flat tone steps instead of lines or shadows (shadows only on floating
-sheets/menus/toasts), two typefaces (Young Serif display, Literata body), five type sizes, accent
-rani-pink, marigold reserved for moments that mattered. No chat bubbles. Copy is plain language: no
-enum values, ISO timestamps, or decimals reach the screen (mapping tables in `lib/*.ts`, each tested).
+sheets, menus and toasts), three typefaces (Libre Baskerville display, Literata body, IBM Plex Mono for
+labels; Caveat only for Nova's margin notes), maroon accent with teal, green and amber for meaning. No chat
+bubbles. Copy is plain language: no enum values, ISO timestamps, or decimals reach the screen (mapping
+tables in `lib/*.ts`, each tested).
 
 ## Routes → endpoints
 
@@ -55,7 +56,7 @@ transitions only at hand-offs, desktop choreography simplifies on small screens)
 
 | Act | Behaviour |
 |---|---|
-| Title sequence | Once per visit: the star ignites, the name appears, the curtain lifts. The hero waits for it. |
+| Title sequence | Once per visit: the stamp is pressed, the name is set and "hello." is written, then the page peels away toward its folded corner. The hero waits for it. |
 | Opening | Camera pushes in and the copy lifts away as you leave (counter-motion); a pool of light follows the pointer. |
 | Ribbon | The four verbs drift; scrolling speeds it up and leans it. |
 | The proof | Marks accumulate on a ruler as you scroll; the reply is read word by word. |
@@ -64,7 +65,7 @@ transitions only at hand-offs, desktop choreography simplifies on small screens)
 | How it connects | Section opens from a card to full width; edges draw; points react to touch. |
 | What it does | **Pinned, horizontal reel** of six moving pictures of real screens. Stacked on phones. |
 | Privacy | Opens like the section above; try-it tamper chain. |
-| Chapter rail | Right edge, wide screens: a sun rides a line as you scroll and marks the chapter you are in; it doubles as a contents list. |
+| Chapter rail | Right edge, wide screens: a marker rides a ruler as you scroll and shows the chapter you are in; it doubles as a contents list. |
 
 Tooling: GSAP (ScrollTrigger, SplitText), Lenis smooth scroll (off for reduced motion), `motion/react`, Remotion (film only). `prefers-reduced-motion`:
 no smooth scroll, no pinning, no scrubbing, still film, content simply sits in its final state.

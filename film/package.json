@@ -6,7 +6,8 @@
   "scripts": {
     "studio": "remotion studio",
     "still": "remotion still src/index.ts Hero --frame=150 --output=../frontend/public/film/hero-poster.jpg",
-    "render": "remotion render src/index.ts Hero ../frontend/public/film/hero.mp4"
+    "render": "remotion render src/index.ts Hero ../frontend/public/film/hero.mp4",
+    "render:all": "bash render.sh"
   },
   "dependencies": {
     "@fontsource/libre-baskerville": "5.3.0",

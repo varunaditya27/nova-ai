@@ -1,4 +1,4 @@
-# Layer 8 — Tool Use & Actions
+# Layer 8 — Tools & Actions
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

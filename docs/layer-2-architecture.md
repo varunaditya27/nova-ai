@@ -1,4 +1,4 @@
-# Layer 2 — Cognition & Memory
+# Layer 2 — Memory
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

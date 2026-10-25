@@ -1,4 +1,4 @@
-# Pending Work
+# Nova AI — Pending Work
 
 A durable, layer-by-layer snapshot of everything still open after the 13-layer polish pass
 (`docs/POLISH_BACKLOG.md`) completed on 2026-08-09. Unlike `POLISH_BACKLOG.md` — which is the

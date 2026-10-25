@@ -1,4 +1,4 @@
-# Layer 6 — Proactive Engagement Engine
+# Layer 6 — Proactive Engagement
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

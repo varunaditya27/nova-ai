@@ -1,21 +1,30 @@
-# Nova films
+# Nova AI — Films
 
-Remotion source for the landing page's opening shot (`Hero`, 1920×1080, 30 fps, 10 s, seamless loop).
-Everything moves a whole number of cycles per loop, so the last frame meets the first.
+Remotion source for the two films on the `/welcome` page. Both are drawn in code from the brand palette
+and the stamp mark, so they stay on-brand when the identity changes.
+
+| Composition | Size | What it is | Ships as |
+|---|---|---|---|
+| `Hero` | 1920×1080, 30 fps, 10 s | A day passing over one life: an orrery of days around the stamp. Everything moves a whole number of cycles, so the last frame meets the first (seamless loop). | `hero.mp4` / `hero.webm`, `hero-sm.*` (960×540, phones), `hero-poster.jpg` (reduced motion) |
+| `Growth` | 1000×1000, 120 frames | The relationship growing around the stamp. Not played: the "how it grows" scene scrubs through its frames as you scroll. | `growth/000.webp` … `119.webp` |
+
+## Render
 
 ```bash
+cd film
 npm install
-npm run studio                       # preview
-CH=/path/to/chrome npm run render    # → frames; then grade with ffmpeg (below)
+npm run studio                     # live preview of both compositions
+CH=/path/to/chromium npm run render:all
 ```
 
-The raw render is graded in ffmpeg (halation, a light chromatic split, vignette, grain). Grading is done in
-RGB (`format=gbrp`) so the screen blend does not shift colour:
+`render:all` runs [`render.sh`](render.sh): it renders both compositions, converts the Growth frames to WebP,
+grades the Hero film in ffmpeg (halation, a light chromatic split, vignette, grain) and encodes MP4 and WebM.
+It needs `ffmpeg` with libwebp and libvpx-vp9, and a Chrome or Chromium binary in `CH`.
 
-```bash
-GRADE="[0:v]format=gbrp,split=2[a][b];[b]gblur=sigma=30,curves=all='0/0 0.6/0.12 1/1'[g];[a][g]blend=all_mode=screen:all_opacity=0.45[h];[h]rgbashift=rh=-2:bh=2,vignette=angle=PI/2.3,noise=alls=6:allf=t,eq=contrast=1.03:brightness=0.01:saturation=1.08"
-ffmpeg -i hero-raw.mp4 -filter_complex "$GRADE,format=yuv420p" -c:v libx264 -preset slow -crf 24 -movflags +faststart -an ../frontend/public/film/hero.mp4
-```
+Grading is done in RGB (`format=gbrp`) before the screen blend; in YUV the blend shifts colour.
 
-Outputs live in `../frontend/public/film/` (`hero.mp4`/`hero.webm`, `hero-sm.*` at 960×540, `hero-poster.jpg`).
-Remotion is free for individuals and teams of up to three; see https://remotion.dev/license.
+Outputs land in `../frontend/public/film/` and are committed, so the web app works without rendering.
+
+## Licence
+
+Remotion is free for individuals and teams of up to three; see <https://remotion.dev/license>.

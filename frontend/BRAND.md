@@ -1,4 +1,4 @@
-# Nova — brand
+# Nova AI — Brand
 
 ## Product truth
 Nova is a companion that **keeps** things: what you said, what mattered, how you've changed. It is not a chatbot and not an assistant. The identity has to feel like something kept over years — a journal, an archive — and never like a gadget.

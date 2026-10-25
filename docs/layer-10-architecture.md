@@ -1,4 +1,4 @@
-# Layer 10 — Longitudinal Life Layer
+# Layer 10 — Longitudinal Life
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

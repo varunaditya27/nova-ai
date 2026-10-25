@@ -7,7 +7,7 @@ name = "nova-ai"
 version = "0.1.0"
 description = "13-layer cognitive architecture for long-term human-AI companionship"
 requires-python = ">=3.11"
-dependencies = []            # base install is pure-stdlib; the 1120 offline tests need nothing here
+dependencies = []            # base install is pure-stdlib; the offline test suite needs nothing here
 
 [project.optional-dependencies]
 infra = [

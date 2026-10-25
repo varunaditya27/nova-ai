@@ -1,4 +1,4 @@
-# Layer 9 — Output Delivery & Interaction Orchestration
+# Layer 9 — Output & Interaction
 ## NovaAI Architecture | Complete Technical Specification
 
 ---

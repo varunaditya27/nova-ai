@@ -1,4 +1,4 @@
-# Layer 7 — Goals & Accountability Engine
+# Layer 7 — Goals & Accountability
 ## NovaAI Architecture | Complete Technical Specification
 
 ---
