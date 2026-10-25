@@ -59,7 +59,7 @@ export function Composer({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="tone flex items-end gap-2 cut px-5 py-3">
+      <div className="tone flex items-end gap-2 fold px-5 py-3">
         <label htmlFor="say" className="sr-only">
           Say something to Nova
         </label>
@@ -92,7 +92,7 @@ export function Composer({
                 : "Hold to talk"
             }
             className={cn(
-              "grid size-11 shrink-0 place-items-center cut-sm transition-colors",
+              "grid size-11 shrink-0 place-items-center transition-colors",
               dictation.recording
                 ? "bg-accent text-accent-ink"
                 : "bg-sunk text-ink hover:bg-raised",
@@ -110,7 +110,7 @@ export function Composer({
           disabled={!canSend}
           aria-label="Send"
           className={cn(
-            "grid size-11 shrink-0 place-items-center cut-sm transition-colors",
+            "grid size-11 shrink-0 place-items-center fold-sm transition-colors",
             canSend
               ? "bg-accent text-accent-ink hover:brightness-110"
               : "bg-sunk text-mute",
@@ -134,7 +134,7 @@ export function Composer({
         <button
           onClick={onToggleReadAloud}
           aria-pressed={readAloud}
-          className="inline-flex min-h-9 items-center gap-2 cut-sm px-2 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
+          className="inline-flex min-h-9 items-center gap-2 px-2 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
         >
           {readAloud ? (
             <Volume2 size={15} aria-hidden />

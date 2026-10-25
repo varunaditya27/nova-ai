@@ -24,10 +24,10 @@ function sureness(confidence: number): string {
 
 function Entry({ m, onOpen }: { m: MemoryOut; onOpen: (id: string) => void }) {
   return (
-    <li>
+    <li className="rule-top">
       <button
         onClick={() => onOpen(m.memory_id)}
-        className="group block w-full cut px-5 py-4 text-left transition-colors hover:bg-surface"
+        className="group block w-full px-5 py-4 text-left transition-colors hover:bg-surface"
       >
         <p className="read">{m.summary}</p>
         <p className="mt-1 text-[length:var(--text-small)] text-ink-soft">
@@ -70,7 +70,10 @@ function Ask({ onOpen }: { onOpen: (id: string) => void }) {
   });
   return (
     <section aria-labelledby="ask" className="mb-12">
-      <h2 id="ask" className="mb-3 text-[length:var(--text-read)]">
+      <h2
+        id="ask"
+        className="rule-top pt-4 mb-3 text-[length:var(--text-read)]"
+      >
         Ask Nova what it remembers
       </h2>
       <form
@@ -78,7 +81,7 @@ function Ask({ onOpen }: { onOpen: (id: string) => void }) {
           e.preventDefault();
           setAsked(text.trim());
         }}
-        className="tone flex items-center gap-3 cut-sm px-5 py-2"
+        className="tone flex items-center gap-3 fold-sm px-5 py-2"
       >
         <Search size={18} aria-hidden className="text-ink-soft" />
         <label htmlFor="ask-input" className="sr-only">
@@ -94,7 +97,7 @@ function Ask({ onOpen }: { onOpen: (id: string) => void }) {
         <button
           type="submit"
           disabled={!text.trim()}
-          className="min-h-11 cut-sm bg-accent px-6 text-accent-ink disabled:opacity-50"
+          className="min-h-11 fold-sm bg-accent px-6 text-accent-ink disabled:opacity-50"
         >
           Ask
         </button>
@@ -192,7 +195,7 @@ function MemoryPage() {
       ) : (
         <ul className="flex max-w-3xl flex-col gap-6">
           {learned.map((s) => (
-            <li key={s.memory_id}>
+            <li key={s.memory_id} className="rule-top pt-5">
               <p className="read">{s.statement}</p>
               <p className="text-[length:var(--text-small)] text-ink-soft">
                 {sureness(s.confidence)}

@@ -29,9 +29,9 @@ export function TamperChain() {
                 whileTap={{ scale: 0.95 }}
                 animate={{ rotate: edited ? [0, -3, 3, -2, 0] : 0 }}
                 className={cn(
-                  "min-h-14 w-full cut px-5 text-left sm:w-auto sm:min-w-[7.5rem]",
+                  "min-h-14 w-full fold px-5 text-left sm:w-auto sm:min-w-[7.5rem]",
                   edited
-                    ? "bg-[#ff8a80] text-[#10302e]"
+                    ? "bg-[#ff8a80] text-accent-ink"
                     : broken
                       ? "bg-[color-mix(in_srgb,var(--ground)_20%,var(--ink))] text-[#ff8a80]"
                       : "bg-[color-mix(in_srgb,var(--ground)_20%,var(--ink))]",
@@ -55,7 +55,7 @@ export function TamperChain() {
                   className="hidden h-[3px] min-w-6 flex-1 sm:block"
                 >
                   <motion.span
-                    className="block h-full cut-sm"
+                    className="block h-full fold-sm"
                     animate={{
                       backgroundColor:
                         changed !== null && i >= changed

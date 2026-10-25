@@ -120,7 +120,8 @@ export function Hero() {
       id="top"
       ref={root}
       data-light="night"
-      className="relative isolate flex min-h-dvh items-end overflow-hidden bg-[#06151a] px-5 pb-16 pt-32 text-ink sm:px-8 sm:pb-24 lg:px-12"
+      data-cursor="film"
+      className="relative isolate flex min-h-dvh items-end overflow-hidden bg-[#151210] px-5 pb-16 pt-32 text-ink sm:px-8 sm:pb-24 lg:px-12"
     >
       <div
         data-hero-film
@@ -135,19 +136,19 @@ export function Hero() {
       <div
         aria-hidden
         data-hero-bar
-        className="absolute inset-x-0 top-0 z-10 h-[11vh] origin-top scale-y-0 bg-[#02090c]"
+        className="absolute inset-x-0 top-0 z-10 h-[11vh] origin-top scale-y-0 bg-[#0c0a09]"
       />
       <div
         aria-hidden
         data-hero-bar
-        className="absolute inset-x-0 bottom-0 z-10 h-[11vh] origin-bottom scale-y-0 bg-[#02090c]"
+        className="absolute inset-x-0 bottom-0 z-10 h-[11vh] origin-bottom scale-y-0 bg-[#0c0a09]"
       />
       <div
         aria-hidden
         className="absolute inset-0 -z-10"
         style={{
           background:
-            "linear-gradient(90deg, rgb(6 21 26 / 0.78) 0%, rgb(6 21 26 / 0.35) 48%, transparent 75%)",
+            "linear-gradient(90deg, rgb(21 18 16 / 0.78) 0%, rgb(21 18 16 / 0.35) 48%, transparent 75%)",
         }}
       />
       <div
@@ -162,7 +163,7 @@ export function Hero() {
         aria-hidden
         className="absolute inset-x-0 bottom-0 -z-10 h-1/2"
         style={{
-          background: "linear-gradient(to top, #06151a 5%, transparent)",
+          background: "linear-gradient(to top, #151210 5%, transparent)",
         }}
       />
 

@@ -16,7 +16,7 @@ const CHAPTERS = [
 ];
 
 /**
- * Where you are in the page: a thin line down the right edge with a sun that rides it as you scroll,
+ * Where you are in the page: a thin ruler down the right edge with a marker that rides it as you scroll,
  * and a stop for each chapter. It is the page's contents list and its progress bar in one, so a long
  * scroll never feels lost. Shown once the opening shot has passed, on wide screens.
  */
@@ -51,7 +51,7 @@ export function ChapterRail() {
           },
         });
         gsap.set(root.current, { autoAlpha: 0 });
-        const sun = gsap.to("[data-rail-sun]", {
+        const marker = gsap.to("[data-rail-marker]", {
           top: "100%",
           ease: "none",
           scrollTrigger: {
@@ -76,7 +76,7 @@ export function ChapterRail() {
           },
         );
         return () =>
-          [track, sun.scrollTrigger, fill.scrollTrigger].forEach((t) =>
+          [track, marker.scrollTrigger, fill.scrollTrigger].forEach((t) =>
             t?.kill(),
           );
       });
@@ -92,17 +92,17 @@ export function ChapterRail() {
     >
       <span
         aria-hidden
-        className="absolute bottom-0 right-[5px] top-0 w-[2px] cut-sm bg-sunk"
+        className="absolute bottom-0 right-[5px] top-0 w-[2px] bg-sunk"
       />
       <span
         aria-hidden
         data-rail-fill
-        className="absolute bottom-0 right-[5px] top-0 w-[2px] origin-top cut-sm bg-accent"
+        className="absolute bottom-0 right-[5px] top-0 w-[2px] origin-top bg-accent"
       />
       <span
         aria-hidden
-        data-rail-sun
-        className="absolute right-0 top-0 size-3 -translate-y-1/2 rounded-full bg-earned shadow-[0_0_18px_4px_var(--earned)]"
+        data-rail-marker
+        className="absolute right-0 top-0 h-[3px] w-3 -translate-y-1/2 bg-earned"
       />
       <ul className="relative flex h-full flex-col justify-between">
         {CHAPTERS.map((c) => (
@@ -111,7 +111,7 @@ export function ChapterRail() {
               href={`#${c.id}`}
               aria-current={active === c.id ? "true" : undefined}
               className={cn(
-                "cut-sm bg-raised px-3 py-1 text-[length:var(--text-small)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-visible:opacity-100",
+                "fold-sm bg-raised px-3 py-1 text-[length:var(--text-small)] opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus-visible:opacity-100",
                 active === c.id && "opacity-100",
               )}
             >
@@ -120,7 +120,7 @@ export function ChapterRail() {
             <span
               aria-hidden
               className={cn(
-                "relative z-10 mr-[3px] size-[7px] cut-sm transition-all duration-300",
+                "relative z-10 mr-[3px] size-[7px] transition-all duration-300",
                 active === c.id ? "scale-150 bg-accent" : "bg-mute",
               )}
             />

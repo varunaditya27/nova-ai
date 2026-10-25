@@ -75,7 +75,7 @@ export default function GoalDetail() {
       actions={
         <Link
           href="/goals"
-          className="inline-flex min-h-11 items-center gap-2 cut-sm bg-sunk px-5 hover:bg-raised"
+          className="inline-flex min-h-11 items-center gap-2 fold-sm bg-sunk px-5 hover:bg-raised"
         >
           <ArrowLeft size={16} aria-hidden /> All goals
         </Link>
@@ -84,7 +84,10 @@ export default function GoalDetail() {
       {g.description && <p className="read mb-10 max-w-2xl">{g.description}</p>}
 
       <section aria-labelledby="progress" className="mb-14 max-w-2xl">
-        <h2 id="progress" className="mb-4 text-[length:var(--text-read)]">
+        <h2
+          id="progress"
+          className="rule-top pt-4 mb-4 text-[length:var(--text-read)]"
+        >
           How far along
         </h2>
         <Meter value={shown} earned={done} label={`Progress on ${g.title}`} />
@@ -116,7 +119,10 @@ export default function GoalDetail() {
 
       <div className="grid gap-14 lg:grid-cols-2">
         <section aria-labelledby="steps">
-          <h2 id="steps" className="mb-5 text-[length:var(--text-read)]">
+          <h2
+            id="steps"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+          >
             The steps on the way
           </h2>
           {g.milestones.length === 0 ? (
@@ -128,7 +134,7 @@ export default function GoalDetail() {
             <ol className="relative flex flex-col gap-6 pl-9">
               <span
                 aria-hidden
-                className="absolute bottom-2 left-[7px] top-2 w-[3px] cut-sm bg-sunk"
+                className="absolute bottom-2 left-[7px] top-2 w-[3px] bg-sunk"
               />
               {g.milestones.map((m) => {
                 const reached = m.status === "reached";
@@ -137,7 +143,7 @@ export default function GoalDetail() {
                     <span
                       aria-hidden
                       className={cn(
-                        "absolute -left-9 top-1.5 size-[17px] cut-sm",
+                        "absolute -left-9 top-1.5 size-[17px]",
                         reached ? "bg-earned" : "bg-ink-soft",
                       )}
                     />
@@ -156,7 +162,10 @@ export default function GoalDetail() {
         </section>
 
         <section aria-labelledby="habits">
-          <h2 id="habits" className="mb-5 text-[length:var(--text-read)]">
+          <h2
+            id="habits"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+          >
             Habits that help
           </h2>
           {g.habits.length === 0 ? (
@@ -187,7 +196,7 @@ export default function GoalDetail() {
                       <span
                         key={i}
                         className={cn(
-                          "size-3.5 rounded-full",
+                          "size-3.5 ",
                           i < h.current_streak ? "bg-accent" : "bg-sunk",
                         )}
                       />

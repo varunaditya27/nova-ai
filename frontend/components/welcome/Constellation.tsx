@@ -200,9 +200,9 @@ export function Constellation() {
                   onClick={() => setActive(n.id)}
                   aria-pressed={on}
                   className={cn(
-                    "float-soft flex min-h-11 items-center gap-2.5 whitespace-nowrap cut-sm px-5 transition-colors duration-300",
+                    "float-soft flex min-h-11 items-center gap-2.5 whitespace-nowrap fold-sm px-5 transition-colors duration-300",
                     on
-                      ? "bg-earned text-[#10302e]"
+                      ? "bg-earned text-accent-ink"
                       : "bg-[color-mix(in_srgb,var(--ground)_20%,var(--ink))] hover:bg-[color-mix(in_srgb,var(--ground)_32%,var(--ink))]",
                   )}
                   style={{ animationDelay: `${i * -1.3}s` }}
@@ -210,11 +210,11 @@ export function Constellation() {
                   <span
                     aria-hidden
                     className={cn(
-                      "size-3 rounded-full",
+                      "size-3 ",
                       n.id === "you"
                         ? "bg-accent"
                         : on
-                          ? "bg-[#10302e]"
+                          ? "bg-accent-ink"
                           : "bg-earned",
                     )}
                   />

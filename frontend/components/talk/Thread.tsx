@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { HandHelping } from "lucide-react";
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { Button } from "@/components/ui/Button";
 import { groupSittings } from "@/lib/chat/sittings";
 import type { StreamState } from "@/lib/chat/streamReducer";
@@ -23,11 +23,8 @@ function clock(iso: string | null): string {
 /** Nova's name on a reply, sitting on the thread. */
 function NovaMark({ thinking = false }: { thinking?: boolean }) {
   return (
-    <span
-      className="absolute left-0 top-0.5 grid size-7 place-items-center cut-sm bg-ground text-accent"
-      aria-hidden
-    >
-      <Ember size={18} state={thinking ? "thinking" : "still"} />
+    <span className="absolute left-0 top-0.5" aria-hidden>
+      <Mark size={26} state={thinking ? "thinking" : "still"} />
     </span>
   );
 }
@@ -157,7 +154,7 @@ export function Thread({
       {/* The thread: one continuous line the whole conversation hangs on. */}
       <span
         aria-hidden
-        className="absolute bottom-0 left-[13px] top-2 w-[3px] cut-sm bg-sunk"
+        className="absolute bottom-0 left-[13px] top-2 w-[3px] bg-sunk"
       />
 
       {hasOlder && (
@@ -181,7 +178,7 @@ export function Thread({
               <p className="relative py-4 pl-10 italic text-mute sm:pl-14">
                 <span
                   aria-hidden
-                  className="absolute left-[6px] top-1/2 size-[10px] -translate-y-1/2 rounded-full bg-ground ring-[3px] ring-sunk"
+                  className="absolute left-[6px] top-1/2 size-[10px] -translate-y-1/2  bg-ground ring-[3px] ring-sunk"
                 />
                 {s.passage}
               </p>
@@ -189,7 +186,7 @@ export function Thread({
             <h2 className="relative pl-10 font-body text-[length:var(--text-small)] font-normal tracking-normal text-ink-soft sm:pl-14">
               <span
                 aria-hidden
-                className="absolute left-[3px] top-1/2 size-4 -translate-y-1/2 rounded-full bg-accent"
+                className="absolute left-[3px] top-1/2 size-4 -translate-y-1/2  bg-accent"
               />
               {s.heading}
             </h2>
@@ -245,7 +242,7 @@ export function Thread({
             <p className="read max-w-[62ch] whitespace-pre-wrap">{opening}</p>
             <button
               onClick={onDismissOpening}
-              className="mt-3 min-h-9 cut-sm bg-sunk px-4 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
+              className="mt-3 min-h-9 fold-sm bg-sunk px-4 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
             >
               Not now
             </button>

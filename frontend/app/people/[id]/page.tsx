@@ -58,7 +58,7 @@ export default function Person() {
       actions={
         <Link
           href="/people"
-          className="inline-flex min-h-11 items-center gap-2 cut-sm bg-sunk px-5 hover:bg-raised"
+          className="inline-flex min-h-11 items-center gap-2 fold-sm bg-sunk px-5 hover:bg-raised"
         >
           <ArrowLeft size={16} aria-hidden /> All people
         </Link>
@@ -78,7 +78,10 @@ export default function Person() {
 
       <div className="grid gap-14 lg:grid-cols-2">
         <section aria-labelledby="events">
-          <h2 id="events" className="mb-5 text-[length:var(--text-read)]">
+          <h2
+            id="events"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+          >
             What’s happened
           </h2>
           {events.length === 0 ? (
@@ -101,7 +104,10 @@ export default function Person() {
         </section>
 
         <section aria-labelledby="noticed">
-          <h2 id="noticed" className="mb-5 text-[length:var(--text-read)]">
+          <h2
+            id="noticed"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+          >
             What Nova has noticed
           </h2>
           {patterns.length === 0 ? (

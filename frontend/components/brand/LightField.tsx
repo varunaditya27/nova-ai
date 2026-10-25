@@ -17,7 +17,7 @@ void main(){
   float f=fbm(p*2.4+q*1.9+vec2(t*2.,-t));
   vec2 m=(u_m-.5)*vec2(u_res.x/u_res.y,1.);
   float pool=exp(-dot(p-m,p-m)*6.);
-  vec3 rose=vec3(1.,.22,.55),amber=vec3(1.,.66,.18),teal=vec3(.08,.86,.8);
+  vec3 rose=vec3(.93,.2,.2),amber=vec3(1.,.66,.18),teal=vec3(.0,.6,.74);
   vec3 col=mix(mix(rose,amber,smoothstep(.25,.72,f)),teal,smoothstep(.5,.95,q.x));
   float a=(smoothstep(.38,.88,f)*.5+pool*.55)*smoothstep(1.15,.15,length(p));
   gl_FragColor=vec4(col*a,a);

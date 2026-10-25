@@ -37,7 +37,7 @@ export function MobileNav() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-0.5 cut text-[length:var(--text-small)]",
+                "flex min-h-14 flex-col items-center justify-center gap-0.5 text-[length:var(--text-small)]",
                 active ? "bg-raised text-ink" : "text-ink-soft",
               )}
             >
@@ -53,7 +53,7 @@ export function MobileNav() {
         <button
           onClick={() => setMore(true)}
           className={cn(
-            "relative flex min-h-14 flex-col items-center justify-center gap-0.5 cut text-[length:var(--text-small)]",
+            "relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[length:var(--text-small)]",
             inMore ? "bg-raised text-ink" : "text-ink-soft",
           )}
         >
@@ -66,7 +66,7 @@ export function MobileNav() {
           {errands > 0 && (
             <span
               aria-label={`${errands} errands waiting`}
-              className="absolute right-4 top-2 size-2.5 rounded-full bg-accent"
+              className="absolute right-4 top-2 size-2.5  bg-accent"
             />
           )}
         </button>
@@ -78,7 +78,7 @@ export function MobileNav() {
             setMore(false);
             menu.open();
           }}
-          className="mb-5 min-h-11 cut-sm bg-sunk px-5 text-left text-ink-soft"
+          className="mb-5 min-h-11 fold-sm bg-sunk px-5 text-left text-ink-soft"
         >
           Jump to a page, or search…
         </button>
@@ -100,7 +100,7 @@ export function MobileNav() {
                         isActive(pathname, item.href) ? "page" : undefined
                       }
                       className={cn(
-                        "block cut px-3 py-2.5",
+                        "block px-3 py-2.5",
                         isActive(pathname, item.href)
                           ? "bg-sunk"
                           : "hover:bg-sunk",
@@ -117,7 +117,7 @@ export function MobileNav() {
             </div>
           ))}
         </nav>
-        <div className="mt-8 flex flex-col gap-4 cut bg-sunk p-4">
+        <div className="mt-8 flex flex-col gap-4 fold bg-sunk p-4">
           <Pulse />
           <Controls />
         </div>

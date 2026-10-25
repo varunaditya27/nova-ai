@@ -86,11 +86,11 @@ export function ThreadProof() {
         <span
           aria-hidden
           data-line
-          className="absolute bottom-0 left-[7px] top-0 w-[3px] origin-top cut-sm bg-accent lg:bottom-auto lg:left-0 lg:right-0 lg:top-[7px] lg:h-[3px] lg:w-full lg:origin-left"
+          className="absolute bottom-0 left-[7px] top-0 w-[3px] origin-top fold-sm bg-accent lg:bottom-auto lg:left-0 lg:right-0 lg:top-[7px] lg:h-[3px] lg:w-full lg:origin-left"
         />
         <span
           aria-hidden
-          className="absolute bottom-0 left-[7px] top-0 -z-10 w-[3px] cut-sm bg-sunk lg:bottom-auto lg:left-0 lg:right-0 lg:top-[7px] lg:h-[3px] lg:w-full"
+          className="absolute bottom-0 left-[7px] top-0 -z-10 w-[3px] fold-sm bg-sunk lg:bottom-auto lg:left-0 lg:right-0 lg:top-[7px] lg:h-[3px] lg:w-full"
         />
         <ol className="grid gap-10 pl-10 lg:grid-cols-4 lg:gap-8 lg:pl-0">
           {BEATS.map((b, i) => (
@@ -98,7 +98,7 @@ export function ThreadProof() {
               <span
                 aria-hidden
                 data-knot
-                className="absolute -left-10 top-1 size-[17px] cut-sm bg-accent lg:-top-12 lg:left-0 lg:size-[17px]"
+                className="absolute -left-10 top-1 size-[17px] fold-sm bg-accent lg:-top-12 lg:left-0 lg:size-[17px]"
               />
               <p className="text-[length:var(--text-small)] text-mute">
                 {b.who}
@@ -109,11 +109,7 @@ export function ThreadProof() {
                   className="mt-3 grid max-w-[11rem] grid-cols-7 gap-1.5"
                 >
                   {Array.from({ length: 21 }, (_, d) => (
-                    <span
-                      key={d}
-                      data-day
-                      className="size-4 rounded-full bg-earned"
-                    />
+                    <span key={d} data-day className="size-4  bg-earned" />
                   ))}
                 </div>
               ) : (

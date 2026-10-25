@@ -57,6 +57,16 @@ function Talk() {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const streaming = stream.state.phase === "streaming";
 
+  // Nova's cursor turns into handwriting while a reply is being written.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (streaming) root.dataset.busy = "true";
+    else delete root.dataset.busy;
+    return () => {
+      delete root.dataset.busy;
+    };
+  }, [streaming]);
+
   // First visit ever: the front door comes first.
   useEffect(() => {
     if (!home.data || home.data.message_count > 0) return;
@@ -181,7 +191,7 @@ function Talk() {
       <button
         onClick={menu.open}
         aria-label="Search the conversation"
-        className="absolute right-5 top-5 z-10 grid size-11 place-items-center cut-sm bg-sunk text-ink-soft hover:text-ink sm:right-8"
+        className="absolute right-5 top-5 z-10 grid size-11 place-items-center fold-sm bg-sunk text-ink-soft hover:text-ink sm:right-8"
       >
         <Search size={18} />
       </button>
@@ -204,7 +214,7 @@ function Talk() {
                 <li key={s}>
                   <button
                     onClick={() => setValue(s)}
-                    className="read min-h-11 cut-sm bg-sunk px-6 text-left hover:bg-raised"
+                    className="read min-h-11 fold-sm bg-sunk px-6 text-left hover:bg-raised"
                   >
                     {s}
                   </button>

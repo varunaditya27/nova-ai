@@ -1,3 +1,4 @@
+import { Stamp, useBrandFont } from "./Stamp";
 import { AbsoluteFill, Easing, interpolate, interpolateColors, useCurrentFrame } from "remotion";
 
 /**
@@ -12,8 +13,8 @@ const TAU = Math.PI * 2;
 const C = 500;
 const N = 26;
 const KEYS = [0, 0.33, 0.66, 1];
-const SKY_A = ["#4a1d3c", "#14585e", "#4b2650", "#0a2230"];
-const SKY_B = ["#1d0f26", "#082e33", "#1c1230", "#03111a"];
+const SKY_A = ["#8a1f2e", "#0b6a82", "#9a4a12", "#14323f"];
+const SKY_B = ["#2a0e12", "#06303c", "#2c140c", "#0c0a09"];
 const SUN = ["#ffb347", "#ffe2a1", "#ff9a7a", "#cfe6ff"];
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 const out = Easing.bezier(0.16, 1, 0.3, 1);
@@ -37,9 +38,10 @@ const EDGES = NODES.map((n, i) => {
 const STARS = Array.from({ length: 90 }, (_, i) => ({ x: rnd(i, 1) * 1000, y: rnd(i, 2) * 1000, r: 0.8 + rnd(i, 3) * 1.8, ph: rnd(i, 4) * TAU }));
 
 export const Growth = () => {
+  useBrandFont();
   const f = useCurrentFrame();
   const p = f / (GROWTH.frames - 1);
-  const cam = interpolate(Easing.inOut(Easing.cubic)(p), [0, 1], [2.3, 1]);
+  const cam = interpolate(Easing.inOut(Easing.cubic)(p), [0, 1], [2.4, 1.32]);
   const rot = interpolate(p, [0, 1], [0, 22]);
   const skyA = interpolateColors(p, KEYS, SKY_A);
   const skyB = interpolateColors(p, KEYS, SKY_B);
@@ -55,7 +57,7 @@ export const Growth = () => {
     <AbsoluteFill style={{ background: `radial-gradient(100% 100% at 50% 50%, ${skyA} 0%, ${skyB} 62%, #02090c 100%)`, overflow: "hidden" }}>
       <svg viewBox="0 0 1000 1000" width="100%" height="100%" style={{ transform: `scale(${cam}) rotate(${rot}deg)`, transformOrigin: "50% 50%" }}>
         <defs>
-          <radialGradient id="g-bloom"><stop offset="0" stopColor="#ff8faf" stopOpacity="0.9" /><stop offset="0.5" stopColor="#ff6fa0" stopOpacity="0.2" /><stop offset="1" stopColor="#ff6fa0" stopOpacity="0" /></radialGradient>
+          <radialGradient id="g-bloom"><stop offset="0" stopColor="#f87171" stopOpacity="0.9" /><stop offset="0.5" stopColor="#ef4444" stopOpacity="0.2" /><stop offset="1" stopColor="#ef4444" stopOpacity="0" /></radialGradient>
           <radialGradient id="g-sun"><stop offset="0" stopColor={sun} stopOpacity="0.9" /><stop offset="0.25" stopColor={sun} stopOpacity="0.35" /><stop offset="1" stopColor={sun} stopOpacity="0" /></radialGradient>
           <filter id="g-soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="9" /></filter>
         </defs>
@@ -70,12 +72,12 @@ export const Growth = () => {
         {Array.from({ length: 26 }, (_, k) => {
           const a = (TAU * k) / 26 - Math.PI / 2;
           const on = k < weeks;
-          return <line key={k} x1={C + 452 * Math.cos(a)} y1={C + 452 * Math.sin(a)} x2={C + 470 * Math.cos(a)} y2={C + 470 * Math.sin(a)} stroke={on ? "#ffd7a1" : "#f6dfe6"} strokeOpacity={on ? 0.95 : 0.12} strokeWidth={on ? 3 : 2} strokeLinecap="round" />;
+          return <line key={k} x1={C + 452 * Math.cos(a)} y1={C + 452 * Math.sin(a)} x2={C + 470 * Math.cos(a)} y2={C + 470 * Math.sin(a)} stroke={on ? "#fbbf24" : "#f6dfe6"} strokeOpacity={on ? 0.95 : 0.12} strokeWidth={on ? 3 : 2} strokeLinecap="round" />;
         })}
         {Array.from({ length: 52 }, (_, k) => {
           const a = (TAU * k) / 52 - Math.PI / 2;
           const on = k < weeks2;
-          return <line key={k} x1={C + 478 * Math.cos(a)} y1={C + 478 * Math.sin(a)} x2={C + 490 * Math.cos(a)} y2={C + 490 * Math.sin(a)} stroke={on ? "#ff8faf" : "#f6dfe6"} strokeOpacity={on ? 0.9 : 0.08} strokeWidth={on ? 2.5 : 1.5} strokeLinecap="round" />;
+          return <line key={k} x1={C + 478 * Math.cos(a)} y1={C + 478 * Math.sin(a)} x2={C + 490 * Math.cos(a)} y2={C + 490 * Math.sin(a)} stroke={on ? "#f87171" : "#f6dfe6"} strokeOpacity={on ? 0.9 : 0.08} strokeWidth={on ? 2.5 : 1.5} strokeLinecap="round" />;
         })}
 
         {NODES.map((n, i) => {
@@ -83,7 +85,7 @@ export const Growth = () => {
           if (from === null) return null;
           const q = out(clamp((p - n.at) / 0.06));
           const a = NODES[from];
-          return <line key={i} x1={a.x} y1={a.y} x2={a.x + (n.x - a.x) * q} y2={a.y + (n.y - a.y) * q} stroke="#ffb3c8" strokeOpacity={0.55} strokeWidth={2} strokeLinecap="round" />;
+          return <line key={i} x1={a.x} y1={a.y} x2={a.x + (n.x - a.x) * q} y2={a.y + (n.y - a.y) * q} stroke="#fca5a5" strokeOpacity={0.55} strokeWidth={2} strokeLinecap="round" />;
         })}
 
         <circle cx={sx} cy={sy} r={220} fill="url(#g-sun)" />
@@ -99,18 +101,18 @@ export const Growth = () => {
             <g key={i}>
               <circle cx={n.x} cy={n.y} r={10 + 90 * e} fill="none" stroke="#ffe2a1" strokeWidth={2} strokeOpacity={0.7 * (1 - e)} />
               <circle cx={n.x} cy={n.y} r={26 + 34 * lit} fill={sun} opacity={0.35 * lit} filter="url(#g-soft)" />
-              <circle cx={n.x} cy={n.y} r={(9 + 5 * lit) * e} fill="#ff8faf" />
+              <circle cx={n.x} cy={n.y} r={(9 + 5 * lit) * e} fill="#f87171" />
               <circle cx={n.x} cy={n.y} r={(3.6 + 3 * lit) * e} fill="#fff4f7" />
             </g>
           );
         })}
 
         <circle cx={C} cy={C} r={170 * (1 + 0.04 * Math.sin(p * TAU * 4))} fill="url(#g-bloom)" />
-        <g transform={`translate(${C} ${C}) rotate(${90 * p}) scale(${120 / 24}) translate(-12 -12)`}>
-          <path fill="#ffd0de" d="M12 0C12.9 7.2 16.8 11.1 24 12 16.8 12.9 12.9 16.8 12 24 11.1 16.8 7.2 12.9 0 12 7.2 11.1 11.1 7.2 12 0Z" />
-        </g>
         <circle cx={C} cy={C} r={18} fill="#fff" opacity={0.85} filter="url(#g-soft)" />
       </svg>
+      <div style={{ position: "absolute", left: C - 80, top: C - 80, transform: `scale(${(1.32 / cam) * 1}) rotate(${-rot}deg)` }}>
+        <Stamp size={160} />
+      </div>
     </AbsoluteFill>
   );
 };

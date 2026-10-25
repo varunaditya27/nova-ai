@@ -7,7 +7,7 @@ import {
   useScroll,
   useSpring,
 } from "motion/react";
-import { Ember } from "@/components/ui/Ember";
+import { Lockup } from "@/components/ui/Mark";
 import { Button } from "@/components/ui/Button";
 import { useBegin } from "./useBegin";
 
@@ -36,11 +36,8 @@ export function Header() {
       className={`fixed inset-x-0 top-0 z-40 px-5 text-ink transition-colors duration-500 sm:px-8 lg:px-12 ${over ? "bg-transparent" : "bg-ground"}`}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6">
-        <a
-          href="#top"
-          className="flex items-center gap-2.5 font-display text-2xl"
-        >
-          <Ember size={26} state="idle" className="text-accent" /> Nova
+        <a href="#top" aria-label="Nova">
+          <Lockup className="text-[1.7rem]" />
         </a>
         <nav
           aria-label="On this page"

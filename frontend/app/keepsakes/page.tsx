@@ -73,7 +73,9 @@ function Saved() {
     <div className="flex flex-col gap-14">
       {folders.map(([name, items]) => (
         <section key={name} aria-label={name}>
-          <h2 className="mb-5 text-[length:var(--text-read)]">{name}</h2>
+          <h2 className="rule-top pt-4 mb-5 text-[length:var(--text-read)]">
+            {name}
+          </h2>
           <ul className="flex max-w-3xl flex-col gap-8">
             {items.map((m) => (
               <li key={m.message_id}>
@@ -126,7 +128,7 @@ function Moments() {
       {items.map((m) => (
         <li key={m.message_id}>
           <p className="mb-3 inline-flex items-center gap-2 text-[length:var(--text-read)]">
-            <span aria-hidden className="size-3 rounded-full bg-earned" />
+            <span aria-hidden className="size-3  bg-earned" />
             {m.milestone_label || "A moment that mattered"}
           </p>
           <blockquote className="font-display text-[length:var(--text-title)] leading-[1.15]">

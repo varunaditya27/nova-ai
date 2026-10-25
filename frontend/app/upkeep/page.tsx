@@ -39,7 +39,7 @@ export default function Upkeep() {
           return (
             <li
               key={c.name}
-              className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-start sm:gap-8"
+              className="rule-top grid gap-3 pt-5 sm:grid-cols-[1fr_auto] sm:items-start sm:gap-8"
             >
               <div>
                 <h2 className="text-[length:var(--text-read)]">{c.title}</h2>

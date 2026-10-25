@@ -1076,5 +1076,12 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   pinned scenes (the room moves dawn → night; a horizontal reel of moving screens), chapter rail, depth parallax, interactive
   constellation and tamper-evidence demos. Motion follows the Premium archetype (no overshoot); reduced motion gets a still film
   and static layout. Skills used: motion-design, gsap-web, remotion-markup, accessible-animation guidance.
+- **[done, 2026-10-25] Brand identity rethought ("kept", see `frontend/BRAND.md`).** The star mark, aurora blobs,
+  pill buttons and spiral/thread motifs were rejected as generic. New system: bookplate stamp mark, dog-eared
+  `.fold` corner on buttons/cards/fields only, ruler-mark meters, Libre Baskerville + IBM Plex Mono, the supplied
+  maroon/teal/green palette on warm paper (four lights), a title sequence that stamps then peels the page toward
+  its folded corner, Remotion films re-rendered with the stamp, and an ink-pen cursor (`components/brand/NovaCursor.tsx`,
+  pure logic in `lib/cursor/`, handwriting while Nova writes via `html[data-busy]`, switchable in the sidebar).
+  Also fixed: pinned "how it grows" panels used `visibility:hidden` and dropped stages 2-4 from the accessibility tree.
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).

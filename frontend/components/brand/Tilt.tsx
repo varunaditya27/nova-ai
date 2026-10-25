@@ -61,7 +61,7 @@ export function Tilt({
       {children}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 cut opacity-[var(--lo,0)] transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 fold opacity-[var(--lo,0)] transition-opacity duration-500"
         style={{
           background:
             "radial-gradient(420px circle at var(--lx,50%) var(--ly,50%), rgb(255 255 255 / 0.28), transparent 60%)",

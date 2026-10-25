@@ -1,10 +1,10 @@
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { ButtonLink } from "@/components/ui/Button";
 
 export default function NotFound() {
   return (
     <div className="mx-auto flex min-h-[70dvh] max-w-2xl flex-col items-start justify-center gap-5 px-6">
-      <Ember size={36} className="text-mute" />
+      <Mark size={44} quiet />
       <h1 className="text-[length:var(--text-title)]">
         There’s nothing at this address.
       </h1>

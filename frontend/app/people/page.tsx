@@ -36,10 +36,10 @@ export default function People() {
       ) : (
         <ul className="flex flex-col">
           {people.map((p) => (
-            <li key={p.person_id}>
+            <li key={p.person_id} className="rule-top">
               <Link
                 href={`/people/${p.person_id}`}
-                className="group grid grid-cols-[auto_1fr_auto] items-center gap-5 cut px-4 py-5 transition-colors hover:bg-surface"
+                className="group grid grid-cols-[auto_1fr_auto] items-center gap-5 px-4 py-5 transition-colors hover:bg-surface"
               >
                 <Avatar name={p.display_name} size={60} />
                 <span className="min-w-0">

@@ -8,10 +8,10 @@ test.beforeEach(async ({ page }) => {
 test("the title sequence plays once, then the curtain is gone", async ({ page }) => {
   await page.addInitScript(() => sessionStorage.removeItem("nova-intro"));
   await page.goto("/welcome");
-  await expect(page.getByText("Nova", { exact: true }).first()).toBeVisible();
-  await expect(page.locator("[data-intro-star]")).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByText("nova", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("[data-intro-mark]")).toBeHidden({ timeout: 10_000 });
   await page.reload();
-  await expect(page.locator("[data-intro-star]")).toBeHidden();
+  await expect(page.locator("[data-intro-mark]")).toBeHidden();
 });
 
 test("the welcome page explains Nova and begins the conversation", async ({ page }) => {

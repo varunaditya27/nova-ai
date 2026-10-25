@@ -34,7 +34,10 @@ export default function Errands() {
       intro="Things Nova can do for you. It always asks before changing anything, and most things can be undone."
     >
       <section aria-labelledby="waiting" className="mb-16">
-        <h2 id="waiting" className="mb-5 text-[length:var(--text-read)]">
+        <h2
+          id="waiting"
+          className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+        >
           Waiting for your OK
         </h2>
         {pending.isLoading ? (
@@ -69,7 +72,10 @@ export default function Errands() {
       </section>
 
       <section aria-labelledby="done">
-        <h2 id="done" className="mb-5 text-[length:var(--text-read)]">
+        <h2
+          id="done"
+          className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
+        >
           What Nova has done for you
         </h2>
         {history.isLoading ? (
@@ -89,7 +95,7 @@ export default function Errands() {
             {done.map((a) => {
               const worked = a.outcome === "success" || a.outcome === "ok";
               return (
-                <li key={a.action_id} className="grid gap-1">
+                <li key={a.action_id} className="rule-top grid gap-1 pt-5">
                   <p className="text-[length:var(--text-small)] text-ink-soft">
                     {toolName(a.tool_name)} · Nova helped you{" "}
                     {operationPhrase(a.operation)}

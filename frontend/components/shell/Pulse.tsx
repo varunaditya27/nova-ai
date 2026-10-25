@@ -1,6 +1,6 @@
 "use client";
 
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { useAwake } from "@/lib/hooks/useHealth";
 
 /** Whether Nova can be reached right now — in plain words, so a failure never reads as a mystery. */
@@ -15,11 +15,7 @@ export function Pulse() {
       className="flex items-start gap-2 text-[length:var(--text-small)] text-ink-soft"
       role="status"
     >
-      <Ember
-        size={14}
-        state={awake ? "idle" : "still"}
-        className={awake ? "mt-1 text-accent" : "mt-1 text-mute"}
-      />
+      <Mark size={16} quiet={!awake} className="mt-0.5" />
       <span>
         {awake
           ? "Nova is here"

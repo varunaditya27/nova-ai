@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
 
 const KEY = "nova-intro";
@@ -15,7 +15,7 @@ export function introWillPlay(): boolean {
   }
 }
 
-/** A short title sequence: the star ignites on black, the name appears, and the curtain lifts onto the page. Once per visit. */
+/** A short title sequence: the stamp is pressed onto the page, the name is set beside it, and the page peels away toward its folded corner. Once per visit. */
 export function Intro() {
   const root = useRef<HTMLDivElement>(null);
 
@@ -37,35 +37,34 @@ export function Intro() {
         el.style.display = "none";
       },
     });
-    tl.from("[data-intro-star]", {
-      scale: 0,
-      rotate: -180,
-      duration: 1.1,
-      ease: "power4.out",
+    tl.from("[data-intro-mark]", {
+      scale: 1.35,
+      autoAlpha: 0,
+      duration: 0.5,
+      ease: "power4.in",
     })
-      .from(
-        "[data-intro-glow]",
-        { scale: 0.2, autoAlpha: 0, duration: 1.4, ease: "power2.out" },
-        0,
-      )
+      .to("[data-intro-mark]", { y: 2, duration: 0.08, yoyo: true, repeat: 1 })
       .from(
         "[data-intro-name] span",
-        { yPercent: 110, stagger: 0.07, duration: 0.8, ease: "power4.out" },
-        0.55,
+        { yPercent: 115, stagger: 0.07, duration: 0.8, ease: "power4.out" },
+        "-=0.1",
       )
-      .to({}, { duration: 0.35 })
-      .to("[data-intro-name]", {
+      .to({}, { duration: 0.5 })
+      .to("[data-intro-content]", {
         autoAlpha: 0,
         y: -12,
         duration: 0.4,
         ease: "power2.in",
       })
       .to(
-        "[data-intro-star]",
-        { scale: 0.18, duration: 0.5, ease: "power3.in" },
-        "<",
-      )
-      .to(el, { yPercent: -100, duration: 1, ease: "expo.inOut" }, "-=0.1");
+        el,
+        {
+          clipPath: "polygon(100% 0%, 100% 0%, 100% 100%, 0% 0%)",
+          duration: 1,
+          ease: "expo.inOut",
+        },
+        "-=0.1",
+      );
   });
 
   return (
@@ -73,25 +72,18 @@ export function Intro() {
       ref={root}
       data-light="night"
       aria-hidden
-      className="fixed inset-0 z-[70] grid place-items-center bg-[#050f12] text-[#e6f1ea]"
+      className="fixed inset-0 z-[70] grid place-items-center bg-ground text-ink"
+      style={{ clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)" }}
     >
-      <span
-        data-intro-glow
-        className="absolute size-[60vmin] rounded-full"
-        style={{
-          background:
-            "radial-gradient(circle, rgb(255 143 175 / 0.35), transparent 65%)",
-        }}
-      />
-      <div className="relative flex flex-col items-center gap-6">
-        <span data-intro-star className="text-[#ff8faf]">
-          <Ember size={96} />
+      <div data-intro-content className="relative flex flex-col items-center gap-6">
+        <span data-intro-mark>
+          <Mark size={120} />
         </span>
         <p
           data-intro-name
-          className="flex overflow-hidden font-display text-5xl"
+          className="flex overflow-hidden font-display text-5xl tracking-[-0.02em]"
         >
-          {"Nova".split("").map((c, i) => (
+          {"nova".split("").map((c, i) => (
             <span key={i} className="inline-block">
               {c}
             </span>

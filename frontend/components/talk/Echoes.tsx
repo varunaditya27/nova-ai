@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import type { Echo } from "@/lib/api/types";
 
 /**
@@ -18,9 +18,9 @@ export function Echoes({ echoes }: { echoes: Echo[] }) {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="inline-flex min-h-9 items-center gap-2 cut-sm bg-sunk px-4 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
+        className="inline-flex min-h-9 items-center gap-2 bg-sunk px-4 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
       >
-        <Ember size={12} className="text-accent" />
+        <Mark size={14} />
         Nova remembered {n === 1 ? "something" : `${n} things`} for this
         <ChevronDown
           size={14}

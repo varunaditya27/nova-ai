@@ -104,7 +104,7 @@ export default function Today() {
 
       {h.cold_start_active && (
         <motion.section variants={rise} className="tone max-w-3xl px-7 py-6">
-          <h2 className="text-[length:var(--text-read)]">
+          <h2 className="rule-top pt-4 text-[length:var(--text-read)]">
             Nova is still getting to know you
           </h2>
           <p className="mt-2 text-ink-soft">
@@ -122,7 +122,7 @@ export default function Today() {
         <section aria-labelledby="mind" className="lg:col-span-7">
           <h2
             id="mind"
-            className="mb-4 text-[length:var(--text-read)] text-ink-soft"
+            className="rule-top pt-4 mb-4 text-[length:var(--text-read)] text-ink-soft"
           >
             On Nova’s mind
           </h2>
@@ -151,7 +151,7 @@ export default function Today() {
         >
           <h2
             id="left-off"
-            className="mb-3 text-[length:var(--text-read)] text-ink-soft"
+            className="rule-top pt-4 mb-3 text-[length:var(--text-read)] text-ink-soft"
           >
             Where we are in your story
           </h2>
@@ -179,7 +179,7 @@ export default function Today() {
         <section aria-labelledby="coming">
           <h2
             id="coming"
-            className="mb-4 text-[length:var(--text-read)] text-ink-soft"
+            className="rule-top pt-4 mb-4 text-[length:var(--text-read)] text-ink-soft"
           >
             Coming up
           </h2>
@@ -213,7 +213,7 @@ export default function Today() {
         <section aria-labelledby="motion">
           <h2
             id="motion"
-            className="mb-4 text-[length:var(--text-read)] text-ink-soft"
+            className="rule-top pt-4 mb-4 text-[length:var(--text-read)] text-ink-soft"
           >
             Goals in motion
           </h2>
@@ -247,7 +247,7 @@ export default function Today() {
         <motion.section variants={rise} aria-labelledby="people">
           <h2
             id="people"
-            className="mb-5 text-[length:var(--text-read)] text-ink-soft"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-read)] text-ink-soft"
           >
             The people you talk about most
           </h2>
@@ -279,7 +279,7 @@ export default function Today() {
       >
         <h2
           id="us"
-          className="mb-3 text-[length:var(--text-read)] text-ink-soft"
+          className="rule-top pt-4 mb-3 text-[length:var(--text-read)] text-ink-soft"
         >
           How we’re doing
         </h2>

@@ -7,7 +7,7 @@ live; the routes are the single source of truth in `lib/nav.ts`. Full schemas:
 **Product spine:** one permanent conversation (Talk) that never accumulates widgets; every other
 page is a separate lens over the same data. No "new chat", no folders.
 
-**Shape language: the star-cut.** Nothing is a pill or a soft rounded box. Every button, card, field and nav item is a plain rectangle with the four concave points of Nova's star bitten out of its corners (`.cut-sm` / `.cut` / `.cut-lg` in `app/globals.css`, drawn with a CSS mask so the cut is exact at any size and focus rings sit inside it). Circles are reserved for the knots of the thread. Editorial structure comes from rules, numbered chapters (`01 · The proof`) and one oversized display face. Buttons fill with ink from the left on hover; tabs are underlined, not pills. Shared brand layer (smooth scroll, grain, cursor) lives in `components/brand/` and is mounted by `AppShell` for every page.
+**Identity: "kept" (full rationale in `frontend/BRAND.md`).** The brand is a journal: a bookplate stamp (`Mark`), a dog-eared corner (`.fold`/`.fold-sm`/`.fold-lg`, a clip-path with a folded flap) on buttons, cards and fields only, ruler-mark meters (`.ruler`), mono timestamps (`.stamp-text`) and an ink-pen cursor. Nothing is a pill. Editorial structure comes from rules, numbered chapters (`01 · The proof`) and Libre Baskerville display type. Buttons fill with ink from the left on hover; tabs are underlined. Shared brand layer (smooth scroll, grain, pen cursor with a sidebar on/off switch) lives in `components/brand/` and is mounted by `AppShell`.
 
 **Design direction:** *the light follows your real day.* `data-light` (dawn / day / dusk / night) is
 stamped on `<html>` from the local hour (`components/ThemeProvider.tsx`, no-flash inline script, manual
@@ -58,7 +58,7 @@ transitions only at hand-offs, desktop choreography simplifies on small screens)
 | Title sequence | Once per visit: the star ignites, the name appears, the curtain lifts. The hero waits for it. |
 | Opening | Camera pushes in and the copy lifts away as you leave (counter-motion); a pool of light follows the pointer. |
 | Ribbon | The four verbs drift; scrolling speeds it up and leans it. |
-| The proof | One thread draws as you scroll; the reply is read word by word. |
+| The proof | Marks accumulate on a ruler as you scroll; the reply is read word by word. |
 | The difference | Words come up in turn; the two cards move at different speeds (depth). |
 | How it grows | **Pinned.** Scroll moves through four stages and the room's light goes dawn → night. Stacked on phones. |
 | How it connects | Section opens from a card to full width; edges draw; points react to touch. |

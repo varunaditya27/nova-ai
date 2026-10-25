@@ -19,7 +19,10 @@ export default function Care() {
     >
       <div className="grid gap-16 lg:grid-cols-[1fr_1.1fr]">
         <section aria-labelledby="now" className="tone self-start px-7 py-8">
-          <h2 id="now" className="text-[length:var(--text-title)]">
+          <h2
+            id="now"
+            className="rule-top pt-4 text-[length:var(--text-title)]"
+          >
             If you need someone right now
           </h2>
           <p className="read mt-3 text-ink-soft">
@@ -33,7 +36,7 @@ export default function Care() {
                   href={`tel:${h.tel}`}
                   className="group inline-flex min-h-11 items-center gap-3"
                 >
-                  <span className="grid size-11 place-items-center cut-sm bg-accent text-accent-ink">
+                  <span className="grid size-11 place-items-center bg-accent text-accent-ink">
                     <Phone size={18} aria-hidden />
                   </span>
                   <span>
@@ -51,7 +54,10 @@ export default function Care() {
         </section>
 
         <section aria-labelledby="times">
-          <h2 id="times" className="mb-6 text-[length:var(--text-title)]">
+          <h2
+            id="times"
+            className="rule-top pt-4 mb-6 text-[length:var(--text-title)]"
+          >
             Times Nova checked in on you
           </h2>
           {q.isLoading ? (

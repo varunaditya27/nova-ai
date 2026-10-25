@@ -226,7 +226,7 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
                         onMouseEnter={() => setCursor(i)}
                         onClick={() => choose(r)}
                         className={cn(
-                          "flex w-full items-center justify-between gap-4 cut px-4 py-3 text-left",
+                          "flex w-full items-center justify-between gap-4 px-4 py-3 text-left",
                           i === safeCursor ? "bg-sunk" : "bg-transparent",
                         )}
                       >

@@ -24,9 +24,9 @@ function Track({
       role="img"
       aria-label={`${label}: ${Math.round(at * 100)} percent of the way from ${left} to ${right}`}
     >
-      <div className="relative h-3 rounded-[2px] bg-sunk">
+      <div className="ruler relative h-3 bg-sunk">
         <span
-          className="absolute top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 cut-sm bg-accent"
+          className="absolute top-1/2 size-6 -translate-x-1/2 -translate-y-1/2 bg-accent"
           style={{ left: `${Math.round(at * 100)}%` }}
         />
       </div>
@@ -81,7 +81,7 @@ export default function Us() {
               key={s.id}
               aria-current={i === idx ? "step" : undefined}
               className={cn(
-                "cut px-4 py-4",
+                "fold px-4 py-4",
                 i === idx
                   ? "bg-accent text-accent-ink"
                   : i < idx
@@ -111,7 +111,10 @@ export default function Us() {
 
       <div className="grid gap-16 lg:grid-cols-2">
         <section aria-labelledby="bond">
-          <h2 id="bond" className="mb-6 text-[length:var(--text-title)]">
+          <h2
+            id="bond"
+            className="rule-top pt-4 mb-6 text-[length:var(--text-title)]"
+          >
             How close it feels
           </h2>
           <div className="flex flex-col gap-8">
@@ -144,7 +147,10 @@ export default function Us() {
         </section>
 
         <section aria-labelledby="style">
-          <h2 id="style" className="mb-2 text-[length:var(--text-title)]">
+          <h2
+            id="style"
+            className="rule-top pt-4 mb-2 text-[length:var(--text-title)]"
+          >
             How you like to talk
           </h2>
           <p className="mb-7 text-ink-soft">
@@ -169,7 +175,10 @@ export default function Us() {
 
       {convos.length > 0 && (
         <section aria-labelledby="convos" className="mt-20">
-          <h2 id="convos" className="mb-3 text-[length:var(--text-title)]">
+          <h2
+            id="convos"
+            className="rule-top pt-4 mb-3 text-[length:var(--text-title)]"
+          >
             Our conversations
           </h2>
           <p className="mb-6 text-ink-soft">

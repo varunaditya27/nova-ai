@@ -11,7 +11,7 @@ import type { MessageOut } from "@/lib/api/types";
 const CATEGORIES = ["Advice", "Funny", "Hard days", "Ideas"];
 
 const chip =
-  "inline-flex min-h-9 items-center gap-1.5 cut-sm px-3.5 text-[length:var(--text-small)] text-ink-soft transition-colors hover:bg-sunk hover:text-ink";
+  "inline-flex min-h-9 items-center gap-1.5 px-3.5 text-[length:var(--text-small)] text-ink-soft transition-colors hover:bg-sunk hover:text-ink";
 
 /**
  * What you can do with one message: keep it, mark it as a moment that mattered, copy it, hear it.
@@ -85,7 +85,9 @@ export function MessageActions({
               aria-hidden
             />
             Saved
-            {message.bookmark_category ? ` · ${message.bookmark_category}` : ""}{" "}
+            {message.bookmark_category
+              ? ` · ${message.bookmark_category}`
+              : ""}{" "}
             — remove
           </button>
         ) : (
@@ -149,7 +151,7 @@ export function MessageActions({
             <button
               key={c}
               onClick={() => keep(c)}
-              className="min-h-9 cut-sm bg-sunk px-4 text-[length:var(--text-small)] hover:bg-raised"
+              className="min-h-9 bg-sunk px-4 text-[length:var(--text-small)] hover:bg-raised"
             >
               {c}
             </button>
@@ -166,7 +168,7 @@ export function MessageActions({
               onChange={(e) => setCustom(e.target.value)}
               aria-label="Your own name for this folder"
               placeholder="or your own…"
-              className="min-h-9 w-36 cut-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
+              className="min-h-9 w-36 fold-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
             />
           </form>
           <button
@@ -197,11 +199,11 @@ export function MessageActions({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="e.g. Got into RVCE"
-            className="min-h-9 min-w-48 flex-1 cut-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
+            className="min-h-9 min-w-48 flex-1 fold-sm bg-sunk px-4 text-[length:var(--text-small)] outline-none placeholder:text-mute"
           />
           <button
             type="submit"
-            className="min-h-9 cut-sm bg-accent px-5 text-[length:var(--text-small)] text-accent-ink"
+            className="min-h-9 fold-sm bg-accent px-5 text-[length:var(--text-small)] text-accent-ink"
           >
             Keep it
           </button>

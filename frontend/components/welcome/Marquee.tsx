@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { gsap, MOTION_OK, ScrollTrigger, useGSAP } from "@/lib/gsap";
 
 const WORDS = ["Remembers", "Notices", "Follows through", "Keeps your story"];
@@ -53,7 +53,7 @@ export function Marquee() {
           WORDS.map((w, i) => (
             <span key={`${set}-${w}`} className="flex items-center gap-10">
               <span className={i % 2 ? "outline-text" : undefined}>{w}</span>
-              <Ember size={56} className="shrink-0 text-accent" />
+              <Mark size={56} className="shrink-0" />
             </span>
           )),
         )}

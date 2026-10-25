@@ -65,7 +65,7 @@ export function Growth() {
         el.dataset.pinned = "true";
         setPinned(true);
         const panels = gsap.utils.toArray<HTMLElement>("[data-stage]");
-        gsap.set(panels.slice(1), { autoAlpha: 0 });
+        gsap.set(panels.slice(1), { opacity: 0 });
 
         const tl = gsap.timeline({
           defaults: { ease: "power2.inOut" },
@@ -87,12 +87,12 @@ export function Growth() {
           if (i === 0) return;
           tl.to(
             panels[i - 1],
-            { autoAlpha: 0, y: -28, duration: 0.45 },
+            { opacity: 0, y: -28, duration: 0.45 },
             i - 0.55,
           ).fromTo(
             p,
-            { autoAlpha: 0, y: 32 },
-            { autoAlpha: 1, y: 0, duration: 0.55 },
+            { opacity: 0, y: 32 },
+            { opacity: 1, y: 0, duration: 0.55 },
             i - 0.35,
           );
         });
@@ -133,7 +133,7 @@ export function Growth() {
               aria-hidden
               className="hidden lg:col-span-5 lg:group-data-[pinned=true]:block"
             >
-              <div className="aspect-square overflow-hidden cut bg-[#06151a]">
+              <div className="aspect-square overflow-hidden fold bg-[#151210]">
                 <ScrubFilm
                   ref={film}
                   frames={120}
@@ -164,7 +164,7 @@ export function Growth() {
                           <li key={k} className="relative pl-6">
                             <span
                               aria-hidden
-                              className="absolute left-0 top-[0.7em] size-2.5 rounded-full bg-accent"
+                              className="absolute left-0 top-[0.7em] size-2.5  bg-accent"
                             />
                             {k}
                           </li>

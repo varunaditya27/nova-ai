@@ -24,10 +24,10 @@ function Row({ g }: { g: Goal }) {
   const next = g.milestones.find((m) => m.status !== "reached");
   const habit = g.habits[0];
   return (
-    <li>
+    <li className="rule-top">
       <Link
         href={`/goals/${g.goal_id}`}
-        className="group block cut px-4 py-5 transition-colors hover:bg-surface"
+        className="group block px-4 py-5 transition-colors hover:bg-surface"
       >
         <div className="flex items-start justify-between gap-4">
           <p className="font-display text-[length:var(--text-title)] leading-tight">
@@ -110,7 +110,7 @@ export default function Goals() {
           e.preventDefault();
           add();
         }}
-        className="tone mb-10 flex max-w-2xl items-center gap-3 cut-sm px-5 py-2"
+        className="tone mb-10 flex max-w-2xl items-center gap-3 fold-sm px-5 py-2"
       >
         <label htmlFor="new-goal" className="sr-only">
           A goal to add
@@ -125,7 +125,7 @@ export default function Goals() {
         <button
           type="submit"
           disabled={!title.trim() || create.isPending}
-          className="min-h-11 cut-sm bg-accent px-6 text-accent-ink disabled:opacity-50"
+          className="min-h-11 fold-sm bg-accent px-6 text-accent-ink disabled:opacity-50"
         >
           Add goal
         </button>

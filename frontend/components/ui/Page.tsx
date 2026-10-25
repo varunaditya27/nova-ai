@@ -34,7 +34,7 @@ export function Page({
           <h1 className="text-[length:clamp(2.25rem,1.2rem+3vw,3.75rem)] leading-[1.02]">
             {title}
           </h1>
-          <span aria-hidden className="page-thread mt-5" />
+          <span aria-hidden className="page-rule mt-5" />
           {intro && <p className="read mt-5 text-ink-soft">{intro}</p>}
         </div>
         {actions && <div className="flex items-center gap-3">{actions}</div>}

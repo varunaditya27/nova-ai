@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ember } from "@/components/ui/Ember";
+import { Mark } from "@/components/ui/Mark";
 import { useLight, type Light } from "@/components/ThemeProvider";
 import { cn } from "@/lib/cn";
 import { Section, Reveal, SectionHead } from "./Section";
@@ -74,7 +74,7 @@ export function LightDemo() {
                 aria-checked={active === l.value}
                 onClick={() => setPicked(l.value)}
                 className={cn(
-                  "flex min-h-14 flex-col items-start justify-center cut px-5 text-left transition-colors duration-200",
+                  "flex min-h-14 flex-col items-start justify-center fold px-5 text-left transition-colors duration-200",
                   active === l.value
                     ? "bg-ink text-ground"
                     : "bg-sunk hover:bg-raised",
@@ -97,24 +97,23 @@ export function LightDemo() {
         <Reveal className="lg:col-span-7">
           <div
             data-light={active}
-            className="cut bg-surface px-7 py-9 text-ink transition-colors duration-700 sm:px-10"
+            className="fold bg-surface px-7 py-9 text-ink transition-colors duration-700 sm:px-10"
             aria-label={`A sample conversation in the ${current.label.toLowerCase()} light`}
             role="group"
           >
             <p className="flex items-center gap-2.5 font-display text-2xl">
-              <Ember size={24} state="idle" className="text-accent" />{" "}
-              {current.greeting}
+              <Mark size={26} /> {current.greeting}
             </p>
             <div className="mt-8 flex flex-col gap-5">
-              <div className="ml-auto max-w-[85%] cut bg-sunk px-5 py-3">
+              <div className="ml-auto max-w-[85%] fold bg-sunk px-5 py-3">
                 Can we talk about my week?
               </div>
               <p className="read max-w-[90%]">Of course. {current.line}</p>
               <div className="flex gap-3">
-                <span className="inline-flex min-h-11 items-center cut-sm bg-accent px-6 font-medium text-accent-ink">
+                <span className="inline-flex min-h-11 items-center fold-sm bg-accent px-6 font-medium text-accent-ink">
                   Go ahead
                 </span>
-                <span className="inline-flex min-h-11 items-center cut-sm bg-sunk px-6">
+                <span className="inline-flex min-h-11 items-center fold-sm bg-sunk px-6">
                   Not now
                 </span>
               </div>

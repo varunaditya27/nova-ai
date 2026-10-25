@@ -70,7 +70,7 @@ function DaySheet({
           <Link
             href={`/?m=${messages[0].message_id}`}
             onClick={onClose}
-            className="mt-8 inline-flex min-h-11 items-center self-start cut-sm bg-accent px-6 text-accent-ink"
+            className="mt-8 inline-flex min-h-11 items-center self-start fold-sm bg-accent px-6 text-accent-ink"
           >
             Open this day in the conversation
           </Link>
@@ -113,14 +113,14 @@ export function Days() {
   return (
     <div className="max-w-3xl">
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="text-[length:var(--text-title)]">
+        <h2 className="rule-top pt-4 text-[length:var(--text-title)]">
           {MONTH.format(new Date(Date.UTC(cursor.year, cursor.month, 1)))}
         </h2>
         <div className="flex gap-2">
           <button
             aria-label="Previous month"
             onClick={() => step(-1)}
-            className="grid size-11 place-items-center cut-sm bg-sunk hover:bg-raised"
+            className="grid size-11 place-items-center bg-sunk hover:bg-raised"
           >
             <ChevronLeft size={20} />
           </button>
@@ -128,7 +128,7 @@ export function Days() {
             aria-label="Next month"
             disabled={isCurrent}
             onClick={() => step(1)}
-            className="grid size-11 place-items-center cut-sm bg-sunk hover:bg-raised disabled:opacity-40"
+            className="grid size-11 place-items-center bg-sunk hover:bg-raised disabled:opacity-40"
           >
             <ChevronRight size={20} />
           </button>
@@ -173,7 +173,7 @@ export function Days() {
                   onClick={() => setOpen(d.date)}
                   aria-label={`${DAY_LONG.format(new Date(`${d.date}T12:00:00Z`))}: ${d.count === 0 ? "nothing said" : `${d.count} ${d.count === 1 ? "message" : "messages"}`}`}
                   className={cn(
-                    "grid aspect-square place-items-center cut text-[length:var(--text-small)] transition-transform",
+                    "grid aspect-square place-items-center text-[length:var(--text-small)] transition-transform",
                     d.count > 0 && "hover:-translate-y-0.5",
                   )}
                   style={tone}

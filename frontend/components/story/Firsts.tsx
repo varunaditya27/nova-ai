@@ -33,7 +33,7 @@ export function Firsts() {
         >
           <div>
             <p className="inline-flex items-center gap-2 text-[length:var(--text-read)]">
-              <span aria-hidden className="size-3 rounded-full bg-earned" />
+              <span aria-hidden className="size-3  bg-earned" />
               {e.label}
             </p>
             {e.when && (

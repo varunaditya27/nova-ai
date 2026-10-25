@@ -9,6 +9,7 @@
     "render": "remotion render src/index.ts Hero ../frontend/public/film/hero.mp4"
   },
   "dependencies": {
+    "@fontsource/libre-baskerville": "5.3.0",
     "@remotion/cli": "4.0.538",
     "@remotion/effects": "4.0.538",
     "@remotion/motion-blur": "4.0.538",

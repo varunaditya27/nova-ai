@@ -29,7 +29,7 @@ export function Chapters() {
     <ol className="relative flex flex-col gap-14">
       <span
         aria-hidden
-        className="absolute bottom-2 left-[7px] top-3 w-[3px] cut-sm bg-sunk"
+        className="absolute bottom-2 left-[7px] top-3 w-[3px] bg-sunk"
       />
       {chapters.map((c, i) => (
         <li
@@ -38,7 +38,7 @@ export function Chapters() {
         >
           <span
             aria-hidden
-            className={`absolute left-0 top-2 size-[17px] cut-sm ${i === 0 ? "bg-accent" : "bg-ink-soft"}`}
+            className={`absolute left-0 top-2 size-[17px] ${i === 0 ? "bg-accent" : "bg-ink-soft"}`}
           />
           <div>
             <p className="text-ink-soft">

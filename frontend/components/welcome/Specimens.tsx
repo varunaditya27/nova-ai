@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
  * detail, and a slow settle.
  */
 const small = "text-[length:var(--text-small)] text-ink-soft";
-const fakeButton = "inline-flex min-h-11 items-center cut-sm px-6 font-medium";
+const fakeButton = "inline-flex min-h-11 items-center fold-sm px-6 font-medium";
 
 /** Runs `step(n)` every `ms` while the picture is on screen; stays on the final state for reduced motion. */
 function useLoop(
@@ -115,7 +115,7 @@ export function CareSpecimen() {
           <motion.span
             key={d}
             animate={{ scale: n === d ? 1.25 : 1, opacity: n === d ? 1 : 0.35 }}
-            className="size-2 rounded-full bg-accent"
+            className="size-2  bg-accent"
           />
         ))}
       </div>
@@ -130,11 +130,11 @@ export function GoalSpecimen() {
   return (
     <Frame frame={ref}>
       <p className="read">Finish the Data Structures course</p>
-      <div className="h-2.5 w-full overflow-hidden rounded-[2px] bg-sunk">
+      <div className="ruler h-3 w-full overflow-hidden bg-sunk">
         <motion.div
           animate={{ width: `${fill * 100}%` }}
           transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          className="h-full cut-sm bg-accent"
+          className="h-full fold-sm bg-accent"
         />
       </div>
       <ul className="flex flex-col gap-2">
@@ -146,7 +146,7 @@ export function GoalSpecimen() {
                 backgroundColor: done[i] ? "var(--earned)" : "var(--sunk)",
               }}
               transition={{ duration: 0.5 }}
-              className="size-4 rounded-full"
+              className="size-4 "
             />
             <span className={done[i] ? "text-ink-soft" : undefined}>{m}</span>
           </li>
@@ -201,7 +201,7 @@ export function PeopleSpecimen() {
       <div className="flex items-center gap-4">
         <motion.span
           animate={{ scale: n === 0 ? [0.8, 1.08, 1] : 1 }}
-          className="grid size-12 place-items-center cut-sm bg-accent font-display text-xl text-accent-ink"
+          className="grid size-12 place-items-center fold-sm bg-accent font-display text-xl text-accent-ink"
         >
           M
         </motion.span>
@@ -248,7 +248,7 @@ export function ErrandSpecimen() {
           animate={{
             scale: n === 1 ? 0.93 : 1,
             backgroundColor: done ? "var(--earned)" : "var(--accent)",
-            color: done ? "#10302e" : "var(--accent-ink)",
+            color: done ? "var(--accent-ink)" : "var(--accent-ink)",
           }}
           transition={{ duration: 0.2 }}
           className={fakeButton}

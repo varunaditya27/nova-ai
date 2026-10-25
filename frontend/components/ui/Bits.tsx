@@ -22,14 +22,11 @@ export function Meter({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={pct}
-      className={cn(
-        "h-2.5 w-full overflow-hidden rounded-[2px] bg-sunk",
-        className,
-      )}
+      className={cn("ruler h-3 w-full overflow-hidden bg-sunk", className)}
     >
       <div
         className={cn(
-          "h-full cut-sm transition-[width] duration-700",
+          "h-full transition-[width] duration-700",
           earned ? "bg-earned" : "bg-accent",
         )}
         style={{ width: `${pct}%` }}
@@ -40,7 +37,7 @@ export function Meter({
 
 const TONES = [
   "bg-accent text-accent-ink",
-  "bg-earned text-[#10302e]",
+  "bg-earned text-accent-ink",
   "bg-ink text-ground",
   "bg-sunk text-ink",
 ] as const;
@@ -71,7 +68,7 @@ export function Avatar({
     <span
       aria-hidden
       className={cn(
-        "grid shrink-0 place-items-center cut-sm font-display",
+        "grid shrink-0 place-items-center fold-sm font-display",
         TONES[hash(name) % TONES.length],
         className,
       )}

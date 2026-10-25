@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
-import { Ember } from "@/components/ui/Ember";
+import { Lockup } from "@/components/ui/Mark";
 import { NAV, isActive } from "@/lib/nav";
 import { usePendingTools } from "@/lib/hooks/useTools";
 import { useAcoustics } from "@/lib/hooks/useAcoustics";
@@ -26,13 +26,12 @@ export function SideNav() {
         className="mb-4 flex items-center gap-3 px-2"
         aria-label="Nova — home"
       >
-        <Ember size={30} state="idle" className="text-accent" />
-        <span className="font-display text-3xl leading-none">Nova</span>
+        <Lockup className="text-[2rem]" />
       </Link>
 
       <button
         onClick={menu.open}
-        className="mb-4 flex min-h-10 items-center justify-between gap-2 cut-sm bg-sunk px-4 text-left text-ink-soft hover:text-ink"
+        className="mb-4 flex min-h-10 items-center justify-between gap-2 fold-sm bg-sunk px-4 text-left text-ink-soft hover:text-ink"
       >
         <span className="flex items-center gap-2">
           <Search size={16} aria-hidden /> Jump to…
@@ -60,7 +59,7 @@ export function SideNav() {
                       aria-current={active ? "page" : undefined}
                       onClick={() => play("click")}
                       className={cn(
-                        "relative flex min-h-10 items-center gap-3 cut-sm px-4 transition-colors duration-200",
+                        "relative flex min-h-10 items-center gap-3 px-4 transition-colors duration-200",
                         active
                           ? "bg-raised text-ink before:absolute before:inset-y-2 before:left-0 before:w-[3px] before:bg-accent"
                           : "text-ink-soft hover:bg-sunk hover:text-ink",
@@ -75,7 +74,7 @@ export function SideNav() {
                       {badge > 0 && (
                         <span
                           aria-label={`${badge} waiting for you`}
-                          className="grid min-w-6 place-items-center cut-sm bg-accent px-2 text-[length:var(--text-small)] text-accent-ink"
+                          className="grid min-w-6 place-items-center bg-accent px-2 text-[length:var(--text-small)] text-accent-ink"
                         >
                           {badge}
                         </span>
@@ -89,7 +88,7 @@ export function SideNav() {
         ))}
       </nav>
 
-      <div className="mt-3 flex flex-col gap-3 cut bg-sunk p-3">
+      <div className="mt-3 flex flex-col gap-3 fold bg-sunk p-3">
         <Pulse />
         <Controls />
       </div>

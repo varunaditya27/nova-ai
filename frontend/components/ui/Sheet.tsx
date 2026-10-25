@@ -70,7 +70,7 @@ export function Sheet({
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="grid size-11 shrink-0 place-items-center cut-sm bg-sunk text-ink hover:bg-surface"
+                className="grid size-11 shrink-0 place-items-center fold-sm bg-sunk text-ink hover:bg-surface"
               >
                 <X size={18} />
               </button>

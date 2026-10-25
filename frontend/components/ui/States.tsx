@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Ember } from "./Ember";
+import { Mark } from "./Mark";
 import { Button } from "./Button";
 import { cn } from "@/lib/cn";
 
@@ -24,7 +24,7 @@ export function Empty({
         className,
       )}
     >
-      <Ember size={30} state="idle" className="text-accent" />
+      <Mark size={36} />
       <h2 className="max-w-lg text-[length:var(--text-title)]">{title}</h2>
       {children && <p className="read max-w-xl text-ink-soft">{children}</p>}
       {action}
@@ -71,7 +71,7 @@ export function Skeleton({
       {Array.from({ length: lines }).map((_, i) => (
         <div
           key={i}
-          className="shimmer h-5 rounded-[2px] bg-sunk"
+          className="shimmer h-5 bg-sunk"
           style={{ width: `${88 - i * 14}%` }}
         />
       ))}

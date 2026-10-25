@@ -29,7 +29,7 @@ function Verdict({ ok, name }: { ok: boolean; name: string }) {
   return (
     <li className="flex items-start gap-3">
       <span
-        className={`mt-0.5 grid size-7 shrink-0 place-items-center cut-sm ${ok ? "bg-earned text-[#10302e]" : "bg-danger text-accent-ink"}`}
+        className={`mt-0.5 grid size-7 shrink-0 place-items-center ${ok ? "bg-leaf text-accent-ink" : "bg-danger text-accent-ink"}`}
       >
         {ok ? (
           <Check size={16} aria-hidden />
@@ -63,7 +63,7 @@ export default function Privacy() {
       <ul className="mb-20 grid gap-10 lg:grid-cols-3">
         {PROMISES.map((p) => (
           <li key={p.line}>
-            <h2 className="font-display text-[length:var(--text-title)] leading-[1.1]">
+            <h2 className="rule-top pt-4 font-display text-[length:var(--text-title)] leading-[1.1]">
               {p.line}
             </h2>
             <p className="read mt-3 text-ink-soft">{p.detail}</p>
@@ -73,7 +73,10 @@ export default function Privacy() {
 
       <div className="grid gap-16 lg:grid-cols-2">
         <section aria-labelledby="altered">
-          <h2 id="altered" className="mb-5 text-[length:var(--text-title)]">
+          <h2
+            id="altered"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-title)]"
+          >
             Has anything been altered?
           </h2>
           {integrity.isLoading ? (
@@ -117,7 +120,10 @@ export default function Privacy() {
         </section>
 
         <section aria-labelledby="devices">
-          <h2 id="devices" className="mb-5 text-[length:var(--text-title)]">
+          <h2
+            id="devices"
+            className="rule-top pt-4 mb-5 text-[length:var(--text-title)]"
+          >
             Your other devices
           </h2>
           <p className="read mb-5 text-ink-soft">
