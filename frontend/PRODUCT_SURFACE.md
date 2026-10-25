@@ -18,7 +18,7 @@ enum values, ISO timestamps, or decimals reach the screen (mapping tables in `li
 
 | Route | Screen | Endpoints |
 |---|---|---|
-| `/welcome` | First-run front door (shown once, until the first message) | `GET /home` |
+| `/welcome` | Product landing page: promise, how Nova grows over time, what it does (six example screens), a live light-of-the-day demo, privacy, limits, questions. Shown once on first run, reachable by address afterwards. No sidebar. | none (static; the first-run redirect on `/` reads `GET /home`) |
 | `/` | **Talk** — history, streamed replies, echoes, read-aloud, jump-to-message, Nova's opening line | `GET /home`, `GET /messages`, `POST /chat/stream` (direct to API), `POST /voice`, `POST /voice/transcribe`, `GET /proactive`, `GET /proactive/stream`, `POST /proactive/{id}/delivered`, `GET /tools/pending`, `POST /messages/{id}/bookmark\|milestone` (+`DELETE`) |
 | Search (Ctrl/⌘K) | Jump to a page, find exact words, or search by meaning | `GET /messages/search`, `GET /memory/search` |
 | `/today` | What's on Nova's mind, what's coming up | `GET /home`, `GET /proactive`, `GET /goals`, `GET /people` |

@@ -12,7 +12,7 @@
  * held in different rooms. Marigold (--earned) is reserved for moments that mattered.
  */
 :root,
-:root[data-light="day"] {
+[data-light="day"] {
   --ground: #e9f2ec;
   --surface: #f4f9f5;
   --sunk: #dbe8df;
@@ -27,7 +27,7 @@
   color-scheme: light;
 }
 
-:root[data-light="dawn"] {
+[data-light="dawn"] {
   --ground: #f5ece9;
   --surface: #fbf5f3;
   --sunk: #eaddd9;
@@ -42,7 +42,7 @@
   color-scheme: light;
 }
 
-:root[data-light="dusk"] {
+[data-light="dusk"] {
   --ground: #d3e3d9;
   --surface: #e0ece4;
   --sunk: #c2d7ca;
@@ -57,7 +57,7 @@
   color-scheme: light;
 }
 
-:root[data-light="night"] {
+[data-light="night"] {
   --ground: #0a2325;
   --surface: #0f2e30;
   --sunk: #07191b;
@@ -102,6 +102,7 @@
     font-size: 100%;
     text-rendering: optimizeLegibility;
     -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
   }
 
   body {
