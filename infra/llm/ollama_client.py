@@ -29,13 +29,13 @@ class OllamaClient(LLMClient):
 
     def complete(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
         resp = self._client.chat(
-            model=self._model, messages=self._messages(prompt, system),
+            model=self._model, messages=self._messages(prompt, system), think=False,
             options=self._options(temperature, max_tokens))
         return resp["message"]["content"]
 
     def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
         for part in self._client.chat(
-                model=self._model, messages=self._messages(prompt, system), stream=True,
+                model=self._model, messages=self._messages(prompt, system), stream=True, think=False,
                 options=self._options(temperature, max_tokens)):
             piece = part["message"]["content"]
             if piece:

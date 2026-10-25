@@ -255,8 +255,13 @@ export function NovaCursor() {
         Object.assign(pos, aim);
         Object.assign(lag, aim);
       } else {
-        [pos.x, vel.x] = dampStep(pos.x, vel.x, aim.x, rect ? 16 : 40, dt);
-        [pos.y, vel.y] = dampStep(pos.y, vel.y, aim.y, rect ? 16 : 40, dt);
+        // Plain assignments: Turbopack's minifier mangles destructuring into `vel.x` (a const object) and emits invalid JS.
+        const [sx, svx] = dampStep(pos.x, vel.x, aim.x, rect ? 16 : 40, dt);
+        pos.x = sx;
+        vel.x = svx;
+        const [sy, svy] = dampStep(pos.y, vel.y, aim.y, rect ? 16 : 40, dt);
+        pos.y = sy;
+        vel.y = svy;
         lag.x = dampStep(lag.x, 0, pos.x, 13, dt)[0];
         lag.y = dampStep(lag.y, 0, pos.y, 13, dt)[0];
       }

@@ -1,7 +1,7 @@
 name: nova-ai
 
 # Local/dev topology. Published ports bind to 127.0.0.1 only so services (Postgres with
-# dev credentials, and the unauthenticated Chroma/Ollama APIs) are never exposed on the LAN.
+# dev credentials, and the unauthenticated Chroma API) are never exposed on the LAN.
 # In production, override credentials via .env and place these behind an authenticated gateway
 # rather than publishing ports.
 
@@ -12,7 +12,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nova}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nova}
       POSTGRES_DB: ${POSTGRES_DB:-nova}
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:5480:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nova}"]
@@ -23,25 +23,12 @@ services:
 
   chroma:
     image: chromadb/chroma
-    ports: ["127.0.0.1:8001:8000"]
+    ports: ["127.0.0.1:8091:8000"]
     volumes: ["chromadata:/data"]
     healthcheck:
       # The chroma image has no curl/python/wget, but does ship bash; probe the port via /dev/tcp.
       test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8000"]
       interval: 10s
-      timeout: 5s
-      retries: 5
-    networks: [nova-network]
-
-  ollama:
-    build:
-      context: ..
-      dockerfile: docker/ollama.Dockerfile
-    ports: ["127.0.0.1:11434:11434"]
-    volumes: ["ollamamodels:/root/.ollama"]
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
       timeout: 5s
       retries: 5
     networks: [nova-network]
@@ -65,18 +52,18 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     profiles: ["app"]              # started only once api/ exists: `docker compose --profile app up`
-    ports: ["127.0.0.1:8000:8000"]
+    ports: ["127.0.0.1:8090:8000"]
     env_file: [.env]
+    # Ollama runs on the host (not in compose); host.docker.internal reaches it from the container.
+    extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on:
       postgres: { condition: service_healthy }
       chroma: { condition: service_healthy }
-      ollama: { condition: service_healthy }
     networks: [nova-network]
 
 volumes:
   pgdata:
   chromadata:
-  ollamamodels:
 
 networks:
   nova-network:

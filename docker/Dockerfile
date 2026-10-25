@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Nova AI backend — FastAPI app image.
 # Build from the repo root as context:  docker build -f docker/Dockerfile -t nova-ai:latest .
 # (docker-compose sets context: .. so paths below are repo-root relative.)
@@ -8,13 +9,10 @@ RUN useradd --create-home --uid 10001 nova
 
 WORKDIR /app
 
-# Install deps first for layer caching; only the infra extra is needed at runtime.
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir ".[infra,api]"
-
-# Copy source and hand ownership to the unprivileged user.
-COPY . .
-RUN chown -R nova:nova /app
+# setuptools needs the package directories to build, so the source is copied before install.
+# The pip cache mount keeps downloaded wheels across builds, so a source-only change does not re-download dependencies.
+COPY --chown=nova:nova . .
+RUN --mount=type=cache,target=/root/.cache/pip pip install ".[infra,api]"
 
 USER nova
 

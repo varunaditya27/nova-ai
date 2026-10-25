@@ -7,3 +7,11 @@ docs/
 .env
 **/.env
 nova-data/
+frontend/
+film/
+**/node_modules/
+**/.next/
+.pytest_cache/
+*.egg-info/
+build/
+dist/

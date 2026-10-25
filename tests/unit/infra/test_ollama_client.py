@@ -21,6 +21,7 @@ def test_complete_calls_chat_and_returns_text(mocker):
     assert kwargs["model"] == "qwen2.5:7b"
     assert kwargs["messages"][0] == {"role": "system", "content": "s"}
     assert kwargs["options"]["temperature"] == 0.5
+    assert kwargs["think"] is False
 
 
 def test_embed_returns_one_vector_per_text(mocker):

@@ -28,6 +28,7 @@ dev = [
     "nova-ai[infra,api]",
     "pytest>=7",
     "pytest-mock>=3",
+    "pytest-dotenv>=0.5",
 ]
 
 [tool.setuptools]
