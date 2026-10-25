@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { motion, useMotionValueEvent, useScroll, useSpring } from "motion/react";
 import { Ember } from "@/components/ui/Ember";
 import { Button } from "@/components/ui/Button";
 import { useBegin } from "./useBegin";
@@ -13,8 +15,12 @@ export const SECTIONS = [
 
 export function Header() {
   const begin = useBegin();
+  const { scrollY, scrollYProgress } = useScroll();
+  const [over, setOver] = useState(true);
+  useMotionValueEvent(scrollY, "change", (y) => setOver(y < window.innerHeight * 0.8));
+  const thread = useSpring(scrollYProgress, { stiffness: 140, damping: 30, mass: 0.6 });
   return (
-    <header className="sticky top-0 z-20 bg-ground px-5 sm:px-8 lg:px-12">
+    <header data-light={over ? "night" : undefined} className={`fixed inset-x-0 top-0 z-40 px-5 text-ink transition-colors duration-500 sm:px-8 lg:px-12 ${over ? "bg-transparent" : "bg-ground"}`}>
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6">
         <a href="#top" className="flex items-center gap-2.5 font-display text-2xl">
           <Ember size={26} state="idle" className="text-accent" /> Nova
@@ -30,6 +36,7 @@ export function Header() {
           Begin
         </Button>
       </div>
+      <motion.span aria-hidden style={{ scaleX: thread }} className="absolute inset-x-0 bottom-0 h-[3px] origin-left bg-accent" />
     </header>
   );
 }

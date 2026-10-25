@@ -1072,5 +1072,9 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   `is_reply_to_proactive` when the user answers Nova's opening line. Closes the "needs frontend
   instrumentation" half of the Layer 1 and Layer 3 `composite_prior` items above.
 - **[done, 2026-10-25] `/welcome` rebuilt as a full landing page** (`frontend/components/welcome/`): hero with a worked example, with/without-memory comparison, a four-stage "how it grows" explorer, six capability rows each with a picture of the real screen, an interactive time-of-day demo, privacy, limits, and an FAQ that states plainly that storage is not yet encrypted. Every claim was checked against the code. Axe reports zero violations in all four lights at 390 and 1440 px, with no horizontal overflow from 320 px up.
+- **[done, 2026-10-25] `/welcome` made cinematic:** Remotion-rendered opening film (`film/`), title sequence, scroll score with two
+  pinned scenes (the room moves dawn → night; a horizontal reel of moving screens), chapter rail, depth parallax, interactive
+  constellation and tamper-evidence demos. Motion follows the Premium archetype (no overshoot); reduced motion gets a still film
+  and static layout. Skills used: motion-design, gsap-web, remotion-markup, accessible-animation guidance.
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).

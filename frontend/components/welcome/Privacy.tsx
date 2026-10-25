@@ -1,4 +1,6 @@
 import { Section, Reveal } from "./Section";
+import { ScrubText } from "./ScrubText";
+import { TamperChain } from "./TamperChain";
 
 const POINTS = [
   { title: "It stays on your computer", body: "The model that talks with you runs on your own machine. Nothing you say is sent to an AI company." },
@@ -9,9 +11,9 @@ const POINTS = [
 
 export function Privacy() {
   return (
-    <Section id="private" tone="ink" label="Privacy">
+    <Section id="private" tone="ink" label="Privacy" reveal>
       <Reveal className="mb-14 max-w-3xl">
-        <h2 className="text-[length:var(--text-title)]">What you tell Nova is yours.</h2>
+        <ScrubText className="text-[length:var(--text-display)] leading-[0.98]">What you tell Nova is yours.</ScrubText>
         <p className="read mt-5 max-w-2xl opacity-85">
           Someone who remembers everything about you should be someone you can trust completely. So Nova is built to be private, not just to say so.
         </p>
@@ -26,6 +28,9 @@ export function Privacy() {
           </li>
         ))}
       </ul>
+      <Reveal>
+        <TamperChain />
+      </Reveal>
     </Section>
   );
 }

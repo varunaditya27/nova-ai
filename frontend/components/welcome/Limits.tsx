@@ -10,7 +10,7 @@ export function Limits() {
   return (
     <Section label="What Nova is not">
       <div className="grid gap-12 lg:grid-cols-12">
-        <Reveal className="lg:col-span-4">
+        <Reveal className="lg:sticky lg:top-32 lg:col-span-4 lg:self-start">
           <h2 className="text-[length:var(--text-title)]">What Nova is not.</h2>
         </Reveal>
         <ul className="flex flex-col gap-10 lg:col-span-7 lg:col-start-6">

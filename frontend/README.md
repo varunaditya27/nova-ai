@@ -25,6 +25,10 @@ npm run test:e2e            # Playwright against the running stack, incl. axe ac
 Playwright needs the backend and a Postgres-backed database up. If the installed browser differs from
 Playwright's expected version, set `PW_CHROMIUM=/path/to/chromium`.
 
+## The landing page's film
+
+`../film` is a small Remotion project that renders the opening shot into `public/film/`. See `../film/README.md`.
+
 ## Layout
 
 - `app/` — one folder per route; `globals.css` holds the four light themes as tokens.

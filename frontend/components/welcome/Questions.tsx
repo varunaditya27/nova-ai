@@ -15,7 +15,7 @@ export function Questions() {
   return (
     <Section id="questions" tone="sunk" label="Questions">
       <div className="grid gap-12 lg:grid-cols-12">
-        <Reveal className="lg:col-span-4">
+        <Reveal className="lg:sticky lg:top-32 lg:col-span-4 lg:self-start">
           <h2 className="text-[length:var(--text-title)]">Questions people ask.</h2>
         </Reveal>
         <Reveal className="lg:col-span-7 lg:col-start-6">

@@ -1,0 +1,24 @@
+{
+  "name": "nova-film",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Remotion source for Nova's landing-page films. Renders into ../frontend/public/film.",
+  "scripts": {
+    "studio": "remotion studio",
+    "still": "remotion still src/index.ts Hero --frame=150 --output=../frontend/public/film/hero-poster.jpg",
+    "render": "remotion render src/index.ts Hero ../frontend/public/film/hero.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.538",
+    "@remotion/effects": "4.0.538",
+    "@remotion/motion-blur": "4.0.538",
+    "@remotion/transitions": "4.0.538",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "remotion": "4.0.538"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -24,3 +24,7 @@ env/
 nova-data/
 *.db
 *.vdb
+
+# Nova films (Remotion source)
+film/node_modules/
+film/out/
