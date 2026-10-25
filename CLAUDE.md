@@ -303,6 +303,7 @@ chroma   → port 8001→8000 (vector store; loopback-bound)
 ollama   → port 11434 (local LLM inference; pulls qwen2.5:7b, gemma2:2b, nomic-embed-text on first start)
 kokoro   → port 8880 (TTS)
 backend  → port 8000 (FastAPI; profile `app`)
+frontend → port 3090→3000 (Next.js standalone server, `docker/frontend.Dockerfile`; profile `app`; reaches the backend as `http://backend:8000`, baked in at build because `rewrites()` is build-time)
 ```
 
 All published ports bind to `127.0.0.1` only (no LAN exposure of Postgres/Chroma/Ollama); the backend runs as a non-root user. `backend` depends on postgres/chroma/ollama being healthy before starting. All services on the `nova-network` bridge network.

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Nova AI backend — FastAPI app image.
-# Build from the repo root as context:  docker build -f docker/Dockerfile -t nova-ai:latest .
+# Build from the repo root as context:  docker build -f docker/backend.Dockerfile -t nova-ai:latest .
 # (docker-compose sets context: .. so paths below are repo-root relative.)
 FROM python:3.11-slim
 

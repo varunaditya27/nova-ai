@@ -50,7 +50,7 @@ services:
   backend:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/backend.Dockerfile
     profiles: ["app"]              # started only once api/ exists: `docker compose --profile app up`
     ports: ["127.0.0.1:8090:8000"]
     env_file: [.env]
@@ -59,6 +59,17 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       chroma: { condition: service_healthy }
+    networks: [nova-network]
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: http://backend:8000   # rewrites are fixed at build time; reached over nova-network
+    profiles: ["app"]
+    ports: ["127.0.0.1:3090:3000"]
+    depends_on: [backend]
     networks: [nova-network]
 
 volumes:

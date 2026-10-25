@@ -15,6 +15,16 @@ npm run dev          # http://localhost:3000
 
 `NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`) points at the API. The first visit lands on `/welcome`.
 
+### In Docker
+
+```bash
+# from the repo root; --no-deps leaves the running backend alone
+docker compose -f docker/docker-compose.yml --profile app build frontend
+docker compose -f docker/docker-compose.yml --profile app up -d --no-deps frontend   # http://127.0.0.1:3090
+```
+
+Run the same two commands after any frontend change to sync it into the container (the image is built from source, not mounted).
+
 ## Check
 
 ```bash

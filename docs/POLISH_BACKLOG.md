@@ -1097,5 +1097,8 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   503 once and works on the retry. Fix options: a longer timeout for the transcribe call, or a startup warm-up request.
 - **[open, 2026-10-25] `docker/ollama.Dockerfile` and `docker/ollama-entrypoint.sh` are unused:** compose has no `ollama` service since it
   moved to host Ollama (`host.docker.internal:11434`). Delete them or bring the service back; left alone pending a decision.
+- **[done, 2026-10-25] Frontend container:** `docker/frontend.Dockerfile` and a `frontend` service (profile `app`, port 3090).
+- **[done, 2026-10-25] `docker/Dockerfile` renamed `docker/backend.Dockerfile`** to match `kokoro.`, `stt.` and `frontend.Dockerfile`
+  (references in the compose file and the file's own comment updated).
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).
