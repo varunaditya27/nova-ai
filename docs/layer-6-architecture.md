@@ -1215,7 +1215,7 @@ has a real `generated_message` — deduplicated within the connection, never pus
 threadpool has no built-in client-disconnect detection, so an unbounded loop would pin a worker
 thread forever if the client vanished; instead the stream closes on its own and relies on
 `EventSource`'s native browser auto-reconnect (fine for a single-user local deployment — one
-connection at a time). Frontend: `frontend/app/proactive/page.tsx` + `lib/hooks/
+connection at a time). Frontend: Nova's opening line in Talk (`frontend/app/page.tsx`) and the Today page, fed by `lib/hooks/
 useProactiveStream.ts` (opens a native `EventSource` against the stream, bypassing the same-origin
 `/api/*` rewrite the JSON client uses since the dev proxy buffers SSE — same reasoning as
 `useChatStream` — and calls `POST /proactive/{id}/delivered` on receipt, closing the SC-5 loop

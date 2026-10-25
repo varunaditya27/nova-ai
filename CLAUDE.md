@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Nova AI is a **13-layer cognitive architecture** for long-term human-AI companionship. It is not a chatbot — it is a system designed to accumulate context, continuity, emotional understanding, and relational depth across years of interaction.
 
-**Implementation status:** all 13 layers implemented and wired through the conversation orchestrator (130 layer modules + 6 pipeline modules). **1647 tests passing** — run with `.venv/bin/pytest` (or any interpreter with the project's deps; `tests/unit/api/` needs SQLAlchemy on the path). 40+ routes live — see `docs/API_REFERENCE.md`. Layer code is pure-stdlib and dependency-injected; production swaps concrete backends behind the same interfaces.
+**Implementation status:** all 13 layers implemented and wired through the conversation orchestrator (130 layer modules + 6 pipeline modules). **1657 tests passing** — run with `.venv/bin/pytest` (or any interpreter with the project's deps; `tests/unit/api/` needs SQLAlchemy on the path). 40+ routes live — see `docs/API_REFERENCE.md`. Layer code is pure-stdlib and dependency-injected; production swaps concrete backends behind the same interfaces.
 
 **Docs hierarchy:** `docs/NOVA_AI_MASTER_ARCHITECTURE.md` is the canonical source of truth (read first) → `docs/layer-N-architecture.md` per layer (each ending in a "Live Wiring Status (current state)" section + a dated "Decision Log") → `docs/POLISH_BACKLOG.md` for open follow-ups found during the audit pass (source of truth; `docs/PENDING_WORK.md` is its generated filtered view). **When code and docs disagree, the code wins** — then fix the doc.
 
@@ -57,6 +57,10 @@ alembic upgrade head
 ```
 
 Configuration loads `config/defaults.yaml` first, then merges all thirteen `config/layerN.yaml` files, then an optional `config/local.yaml` overlay if one exists (`api/state.py::build_app_state`) — useful for local overrides that shouldn't live in defaults, though none ships by default since the platform is fully offline out of the box. Keys actually read by code — `llm.*`, `memory.*`, `onboarding.*`, `scheduler.*`, `system.timezone_offset_hours` (single-user deployment; see `backend/layer1_input/config.py`) — live under `defaults.yaml`. `config/layer1.yaml` is fully consumed (`Layer1Config.from_dict`, threaded through every `backend/layer1_input/` function as an optional `cfg` param — see `docs/layer-1-architecture.md`); `layer2.yaml`–`layer13.yaml` still merge in under their own `layerN:` key but aren't consumed yet (layer code still uses hardcoded constants) — wire each as its layer is revisited, not as one cross-cutting change. See `docs/POLISH_BACKLOG.md`.
+
+## Frontend (`frontend/`)
+
+Next.js 16 + React 19 + Tailwind v4 web app, rebuilt 2026-10-25 around "the light follows your real day" (dawn/day/dusk/night themes from the local hour). Routes → endpoints map and design rules: `frontend/PRODUCT_SURFACE.md`; run/test commands: `frontend/README.md`. Every user-visible string is plain language — enum values, ISO timestamps and decimals are translated by tested mapping tables in `frontend/lib/`. Checks: `npx tsc --noEmit`, `npm run lint`, `npm test` (vitest), `npm run test:e2e` (Playwright + axe, needs the live stack).
 
 ## Architecture: The 13-Layer Cognitive Pipeline
 
@@ -169,10 +173,10 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   via `make_goal_provider`) through the planner's `response_instruction` — both reach
   `build_planner_prompt`, honoring the "plain-language directives, no raw scores" invariant.
 - **Proactivity + Longitudinal + Admin** (`api/routes/{proactive,longitudinal,admin}.py`):
-  `GET /proactive` polls the Layer-6 outreach queue (top pending candidates; no push channel without
-  a frontend), `GET /longitudinal/summaries` + `GET /longitudinal/latest` read Layer-10 weekly
+  `GET /proactive` polls the Layer-6 outreach queue (top pending candidates) and `GET /proactive/stream` pushes new
+  ones over SSE, `GET /longitudinal/summaries` + `GET /longitudinal/latest` read Layer-10 weekly
   summaries, and `POST /admin/jobs/{name}` runs any background job on demand (single-user, no auth).
-  The nine jobs (`background/*.py`, registry in `background/scheduler.py`) are plain
+  The eleven jobs (`background/*.py`, registry in `background/scheduler.py`) are plain
   `run(app_state) -> dict` callables operating on the persisted stores: `integrity_check` (verify
   both hash chains), `memory_consolidation` (Layer-2 `decay_sweep`, **plus FCE cluster detection +
   LLM semantic extraction** once enough active episodes accumulate — `save_semantic`/`save_identity`
@@ -220,7 +224,7 @@ Postgres engine + `init_db` → Chroma store → `ConversationOrchestrator`). En
   replaying `/chat`. `GET /messages` (newest-first, `before` cursor) + `GET /messages/search`
   (keyword+date) + `GET /memory/search` (semantic/ANN); message **annotations**
   (`POST/DELETE /messages/{id}/bookmark|milestone`, `GET /bookmarks|/milestones`); and derived
-  **continuity lenses** `GET /home` (Digital Desk: greeting, current chapter, proactive, stage +
+  **continuity lenses** `GET /home` (Today page: name, current chapter, proactive, stage +
   weather), `GET /calendar` (per-day heatmap), `GET /museum` (firsts). **Echoes:** the memories Nova
   recalled each turn (Layer-2 `ScoredMemory`) are projected by `api/echoes.py` onto
   `ChatResponse.echoes` and each Nova `MessageOut.echoes`. Product/route map: `frontend/PRODUCT_SURFACE.md`.
@@ -287,7 +291,7 @@ full roadmap. **Full endpoint + schema reference: `docs/API_REFERENCE.md`.**
 - **Vector store**: **ChromaDB** (runs as its own service/container; `infra/vector_store/`) — embeddings via the Ollama `nomic-embed-text` embedding function, cosine space, collections `episodic`/`semantic`/`identity`. Supersedes the earlier hnswlib design. Note: the offline unit-test suite mocks a vector store; the real store is ChromaDB. See `docs/superpowers/specs/2026-07-04-infra-runtime-substrate-design.md`.
 - **LLM inference**: fully offline via Ollama, two config-driven model tiers (`config/defaults.yaml`, override with `NOVA_MAIN_MODEL`/`NOVA_MINI_MODEL` or `docker/.env`) — **main** (`qwen2.5:7b` default, 7-11B class: System 1 + System 2 generation, and — via the System 1 client — Layer 3 classification and Layer 1 narrative observation) and **mini** (`gemma2:2b` default, 1-2B class: Layer-8 tool-intent param extraction, `llm.intent`). Embeddings: `nomic-embed-text`. No cloud provider.
 - **TTS**: Kokoro (custom Docker image on port 8880, OpenAI-compatible API)
-- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection + social pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly), dependency monitor (weekly, Layer-11 SC-4), narrative arc synthesis (weekly, Layer-10 SC-1), life calendar (daily, Layer-10 SC-5), goal staleness sweep (weekly, Layer-7 SC-2), post-distress gap check (daily, Layer-6 SC-1). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS` (11 entries), run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}` (exposed on the `/admin` frontend page).
+- **Background Jobs**: APScheduler via `background/scheduler.py` — memory consolidation (every 2h), proactive checks (every 30min), pattern detection + social pattern detection (weekly), integrity checks (daily), longitudinal summaries (weekly), dependency monitor (weekly, Layer-11 SC-4), narrative arc synthesis (weekly, Layer-10 SC-1), life calendar (daily, Layer-10 SC-5), goal staleness sweep (weekly, Layer-7 SC-2), post-distress gap check (daily, Layer-6 SC-1). **Implemented + wired**: each job is a `run(app_state)` callable over the Postgres stores, registered in `scheduler.JOBS` (11 entries), run in-process **enabled by default via `config.scheduler.enabled: true`** (set false to opt out; APScheduler lazy-imported so the offline gate never needs it), and individually runnable via `POST /admin/jobs/{name}` (exposed on the `/upkeep` page).
 
 ### Docker Services
 

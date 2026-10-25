@@ -1,4 +1,4 @@
-"""Continuity routes — the Digital Desk, calendar heatmap, and museum of firsts (single-user).
+"""Continuity routes — the Today page, the day-by-day calendar, and the firsts (single-user).
 
 These are lenses derived over data other layers already produce (longitudinal narratives, goals,
 proactive queue, relationship state, the message log) — the chat is never touched.
@@ -13,6 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from api.dependencies import get_state
 from api.schemas import CalendarOut, HomeOut, MuseumEntryOut, MuseumOut
 from infra.db.goal_store import PostgresGoalStore
+from infra.db.initial_state_store import PostgresInitialStateStore
+from infra.db.memory_store import PostgresMemoryStore
 from infra.db.longitudinal_store import PostgresLongitudinalStore
 from infra.db.message_store import PostgresMessageStore
 from infra.db.onboarding_store import PostgresOnboardingStore
@@ -74,7 +76,13 @@ def home(state=Depends(get_state)):
         goals = PostgresGoalStore(sf, uid).load_by_status(_ACTIVE)
         proactive = PostgresProactiveQueue(sf, uid).load(statuses=["pending", "deferred"])
         proactive.sort(key=lambda i: getattr(i, "current_priority", 0.0), reverse=True)
-        top = getattr(proactive[0], "content_basis", None) if proactive else None
+        # Nova's real, gate-checked message — never `content_basis`, an internal fragment that was
+        # never something Nova said. None until the proactive job has generated one.
+        ready = [i for i in proactive if getattr(i, "generated_message", "")]
+        top = ready[0].generated_message if ready else None
+        known = PostgresInitialStateStore(sf, uid).load().user_handle
+        uwm = PostgresMemoryStore(sf).load_uwm(uid)
+        name = (uwm.profile.preferred_name if uwm is not None else None) or known
         cold = PostgresOnboardingStore(sf, uid, grad).state().get("cold_start_active", False)
     except Exception:
         raise HTTPException(status_code=503, detail="home temporarily unavailable")
@@ -83,7 +91,7 @@ def home(state=Depends(get_state)):
         relationship_stage=rel.stage, last_interaction_at=_iso(last_at),
         weather=_weather(last_at, now), active_goals=len(goals),
         top_proactive=(top[:200] if top else None), cold_start_active=bool(cold),
-        message_count=msgs.count())
+        message_count=msgs.count(), name=name)
 
 
 @router.get("/calendar", response_model=CalendarOut)

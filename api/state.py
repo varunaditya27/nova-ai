@@ -1100,7 +1100,7 @@ def make_session_last_delivered_provider(session_factory) -> Callable:
     """Layer 1 SC-2 latency signal source: when Nova last delivered a response in this session,
     read back from ``Session.last_delivered_at`` (stamped every turn by
     ``make_state_update_writer``). Real, server-side -- no client instrumentation needed, unlike
-    the rest of ``ClientMetadata`` (typing/deletion/burst, see docs/FRONTEND_TODO.md)."""
+    the rest of ``ClientMetadata`` (typing/deletion/burst, measured by the web client)."""
     def _provider(session_key: str):
         with session_scope(session_factory) as s:
             row = s.query(models.Session).filter_by(session_key=str(session_key or "default")) \

@@ -215,9 +215,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             except Exception:
                 logger.exception("session last-delivered lookup failed; latency signal degrades")
         # The rest of ClientMetadata (typing start, deletion, draft length, burst) has no
-        # server-side source -- it's real plumbing waiting on frontend instrumentation to actually
-        # populate `client_metadata` (see docs/FRONTEND_TODO.md). `{}` today (current client sends
-        # only message/session_id) reproduces today's neutral defaults exactly.
+        # server-side source: the web client measures it (frontend/lib/chat/typingSignals.ts).
+        # `{}` (a client that sends none) yields the neutral defaults.
         cm = client_metadata or {}
         real_client_metadata = ClientMetadata(
             session_id=session_id or str(uuid.uuid4()),

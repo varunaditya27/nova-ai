@@ -21,8 +21,7 @@ logger = logging.getLogger("nova.api")
 router = APIRouter(tags=["chat"])
 
 # Fields ChatRequest carries beyond message/session_id -- Layer 1 SC-2's real, additive client
-# signals (see api/schemas.py, docs/FRONTEND_TODO.md). No client sends non-default values for
-# these yet, so this dict is always {} in production today; the plumbing is real regardless.
+# signals (see api/schemas.py). The web client fills them in from `frontend/lib/chat/typingSignals.ts`.
 _CLIENT_METADATA_FIELDS = (
     "user_typing_started_at", "deletion_occurred", "deletion_count",
     "peak_draft_length_chars", "final_draft_length_chars", "is_burst", "burst_count",

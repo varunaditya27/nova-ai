@@ -1,52 +1,119 @@
 "use client";
 
 import { useState } from "react";
-import { PageShell } from "@/components/primitives/PageShell";
-import { CarvedButton } from "@/components/primitives/CarvedButton";
-import { GoalCard } from "@/components/goals/GoalCard";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Page } from "@/components/ui/Page";
+import { Tabs } from "@/components/ui/Tabs";
+import { Meter } from "@/components/ui/Bits";
+import { Empty, Skeleton, Trouble } from "@/components/ui/States";
 import { useCreateGoal, useGoals } from "@/lib/hooks/useNovaState";
+import { useToast } from "@/lib/hooks/useToast";
+import { habitCadence, isFinished, statusWords, streakWords } from "@/lib/goals";
+import { countdown } from "@/lib/time";
+import type { Goal } from "@/lib/api/types";
 
-/** Goals — some the user named, some Nova extracted from chat. Brass marks a finished one. */
+type Tab = "active" | "completed" | "abandoned";
+
+function Row({ g }: { g: Goal }) {
+  const next = g.milestones.find((m) => m.status !== "reached");
+  const habit = g.habits[0];
+  return (
+    <li>
+      <Link href={`/goals/${g.goal_id}`} className="group block rounded-3xl px-4 py-5 transition-colors hover:bg-surface">
+        <div className="flex items-start justify-between gap-4">
+          <p className="font-display text-[length:var(--text-title)] leading-tight">{g.title}</p>
+          <ArrowRight aria-hidden className="mt-2 shrink-0 text-ink-soft transition-transform group-hover:translate-x-1" />
+        </div>
+        <p className="mt-1 text-ink-soft">
+          {statusWords(g.status)}
+          {g.deadline ? ` · ${countdown(g.deadline)}${g.deadline_description ? ` (${g.deadline_description})` : ""}` : ""}
+        </p>
+        <Meter value={g.progress_score} earned={isFinished(g.status)} label={`Progress on ${g.title}`} className="mt-4 max-w-xl" />
+        {(next || habit) && (
+          <p className="mt-3 text-[length:var(--text-small)] text-ink-soft">
+            {next ? `Next step: ${next.title}${next.target_date ? ` · ${countdown(next.target_date)}` : ""}` : ""}
+            {next && habit ? " — " : ""}
+            {habit ? `${habit.title} ${habitCadence(habit.frequency)}: ${streakWords(habit.current_streak, habit.frequency)}` : ""}
+          </p>
+        )}
+      </Link>
+    </li>
+  );
+}
+
+/** Goals: what you're working toward. Nova notices them in conversation; you can also add one yourself. */
 export default function Goals() {
-  const { data, isLoading } = useGoals();
+  const [tab, setTab] = useState<Tab>("active");
+  const q = useGoals(tab === "active" ? undefined : tab);
   const create = useCreateGoal();
+  const { toast } = useToast();
   const [title, setTitle] = useState("");
 
   const add = () => {
     const t = title.trim();
     if (!t) return;
-    create.mutate({ title: t });
+    create.mutate(
+      { title: t },
+      { onSuccess: () => toast("Goal added", "Nova will keep track of it with you."), onError: () => toast("Couldn’t add that just now", "Please try again.") }
+    );
     setTitle("");
   };
 
   return (
-    <PageShell
-      title="What you're working toward"
-      description="Some you named, some Nova noticed. It keeps gentle track."
+    <Page
+      title="Goals"
+      intro="Mention a goal in conversation — “I want to finish my course by December” — and Nova adds it, breaks it into steps, and checks in. You can also add one here."
+      actions={
+        <Tabs
+          label="Which goals"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { value: "active", label: "In progress" },
+            { value: "completed", label: "Done" },
+            { value: "abandoned", label: "Set aside" },
+          ]}
+        />
+      }
     >
-      <div className="mb-8 flex gap-2">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          add();
+        }}
+        className="tone mb-10 flex max-w-2xl items-center gap-3 rounded-full px-5 py-2"
+      >
+        <label htmlFor="new-goal" className="sr-only">
+          A goal to add
+        </label>
         <input
+          id="new-goal"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()}
-          placeholder="Name a goal…"
-          className="flex-1 rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint"
+          placeholder="Add a goal yourself…"
+          className="min-h-11 flex-1 bg-transparent outline-none placeholder:text-mute"
         />
-        <CarvedButton onClick={add} disabled={!title.trim() || create.isPending}>
-          Add
-        </CarvedButton>
-      </div>
+        <button type="submit" disabled={!title.trim() || create.isPending} className="min-h-11 rounded-full bg-accent px-6 text-accent-ink disabled:opacity-50">
+          Add goal
+        </button>
+      </form>
 
-      {isLoading && <div className="h-20 rounded-md bg-hairline/30" />}
-      {data && data.length === 0 && (
-        <p className="text-ink-soft">Nothing yet. Name something you want — or just mention it in chat.</p>
+      {q.isLoading ? (
+        <Skeleton lines={4} />
+      ) : q.isError ? (
+        <Trouble what="Your goals couldn’t be loaded just now." onRetry={() => q.refetch()} />
+      ) : (q.data ?? []).length === 0 ? (
+        <Empty title={tab === "active" ? "No goals in progress." : tab === "completed" ? "Nothing finished yet." : "Nothing set aside."}>
+          {tab === "active"
+            ? "When you tell Nova about something you want to do, it appears here with its steps and any habits that will help."
+            : tab === "completed"
+              ? "Goals you finish are kept here, so you can look back at what you’ve done."
+              : "Goals you let go of rest here. There’s no shame in changing your mind."}
+        </Empty>
+      ) : (
+        <ul className="flex max-w-3xl flex-col">{q.data?.map((g) => <Row key={g.goal_id} g={g} />)}</ul>
       )}
-
-      <div className="flex flex-col gap-3">
-        {data?.map((g) => (
-          <GoalCard key={g.goal_id} goal={g} />
-        ))}
-      </div>
-    </PageShell>
+    </Page>
   );
 }

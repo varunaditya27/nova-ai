@@ -7,4 +7,4 @@
 #
 # CORS is configured directly in api/main.py (_cors_origins), not a separate middleware file.
 # Global exception handlers and rate limiting don't exist yet — single-user local dev posture;
-# see frontend/DEFERRED_WORK.md #9.
+# not needed for a single-user personal deployment.

@@ -28,8 +28,8 @@ Full detail: `docs/layer-1-architecture.md`.
 - **Implicit signals — partially `[done]` (2026-08-09).** `response_latency_ms` is real end to
   end via a new `Session.last_delivered_at` column; the rest of `ClientMetadata` (typing-start
   timestamp, deletion count, burst info) and all attachments are threaded end-to-end as additive,
-  optional fields but have no producer yet — needs frontend instrumentation, scoped in
-  `docs/FRONTEND_TODO.md`. SC-3/SC-4 (multimodal normalizer, voice prosody) remain correctly
+  optional fields but had no producer until 2026-10-25, when the web client began sending them
+  (`frontend/lib/chat/typingSignals.ts`). SC-3/SC-4 (multimodal normalizer, voice prosody) remain correctly
   unwired — no backend model exists anywhere in the codebase; this is a genuine future infra
   project (build LLaVA/Whisper/SpeechBrain backends), not a wiring gap.
 - **File-length cleanup — `[done]` (2026-08-10).** Split every Layer-1 source file over the
@@ -1058,3 +1058,18 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   supplies an LLM `crisis_flag` that the orchestrator ORs with the lexical layer; a second call
   would add seconds to every turn without real independence. Auth, rate limiting, multi-user and
   encryption-at-rest are out of scope for this single-user personal deployment.
+
+## Frontend rebuild (2026-10-25)
+
+- **[done, 2026-10-25] Whole web app redesigned and rebuilt from scratch.** The old UI (ivory/brass,
+  Fraunces, `/desk` `/chat` `/life` routes, marketing home) was deleted along with its tests and the
+  `DEFERRED_WORK.md` / `FRONTEND_TODO.md` notes. The new app has 14 routes, uses every read/write
+  endpoint meaningfully (map: `frontend/PRODUCT_SURFACE.md`), and passes tsc, eslint, 40 vitest tests
+  and the Playwright suite incl. axe accessibility checks on every page. All copy was audited for
+  plain language (no enum values, ISO timestamps or decimals on screen).
+- **[done, 2026-10-25] Layer 1 implicit signals now have a producer:** `frontend/lib/chat/typingSignals.ts`
+  sends typing-start, deletion, draft-length and burst data with each message, and
+  `is_reply_to_proactive` when the user answers Nova's opening line. Closes the "needs frontend
+  instrumentation" half of the Layer 1 and Layer 3 `composite_prior` items above.
+- **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
+  life-graph visualisation, WebSocket transport (SSE is live).

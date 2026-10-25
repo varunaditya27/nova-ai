@@ -996,16 +996,14 @@ tzinfo-stripping round-trip the same way `make_temporal_profile_provider::_as_ut
 refinement, not required) — so this signal moves for real on every turn. The rest of
 `ClientMetadata` (`user_typing_started_at`, `deletion_occurred`, `deletion_count`,
 `peak_draft_length_chars`, `final_draft_length_chars`, `is_burst`, `burst_count`,
-`is_reply_to_proactive`) is real, additive plumbing with no producer yet: it is threaded end to
+`is_reply_to_proactive`) is real, additive plumbing: it is threaded end to
 end (`api/schemas.py::ChatRequest`, all optional/backward-compatible → `api/routes/chat.py` →
 `ConversationOrchestrator.run_turn(client_metadata=...)` → `TurnContext.client_metadata` →
-`PipelineSteps.perceive(..., client_metadata=...)` → a real `ClientMetadata(...)`), but no client
-sends non-default values — that half is scoped in `docs/FRONTEND_TODO.md` as a deliberate
-backend-only-this-pass decision, not an oversight. A hand-computed check of
+`PipelineSteps.perceive(..., client_metadata=...)` → a real `ClientMetadata(...)`), and the web client now
+fills it in (`frontend/lib/chat/typingSignals.ts`, 2026-10-25). A hand-computed check of
 `compute_composite_prior`'s formula confirmed the latency signal alone cannot close Layer 3's
 `composite_prior > 0.6` gate (tops out ~0.50 even at the most extreme circadian band) — the
-deletion/burst fields are specifically needed for that, which is why `docs/FRONTEND_TODO.md`
-calls them out explicitly.
+deletion/burst fields are specifically needed for that, which is why the client now measures them.
 
 **SC-3/SC-4 — Multimodal Normalizer / Voice Prosody Extractor: correctly unwired.** No
 image/voice/document/prosody backend is implemented anywhere in this codebase —
@@ -1048,8 +1046,8 @@ cold-start fallback path) and into `api/state.py::make_temporal_profile_provider
 diverge — verified end-to-end: the same UTC timestamp produces `"evening"` with no offset and
 `"late_night"` with `+5.5`, consistently in both. The same UTC-vs-local bug pattern was found
 (by grepping for `.hour`/`.date()`/`weekday()` across `api/`/`background/`) and fixed in four
-other places that independently derive local-time meaning from a stored UTC timestamp: the
-Digital Desk's greeting (`api/routes/continuity.py::_greeting`); the calendar heatmap's day
+other places that independently derive local-time meaning from a stored UTC timestamp:
+the greeting (`api/routes/continuity.py::_greeting`); the calendar heatmap's day
 bucketing (`infra/db/message_store.py::day_activity`, rewritten to bucket in Python rather than
 `func.date(...)` since SQLite and Postgres share no portable fractional-hour SQL-side shift
 syntax); Layer 10's day-of-week pattern detector's date derivation (`background/_adapters.py::
@@ -1102,8 +1100,7 @@ silent surprise.
   13 passive elicitation) as notes for whoever wires them later.
 - **2026-08-09 (follow-up):** Made `response_latency_ms` real via a new `Session.
   last_delivered_at` column, with zero frontend change required. Threaded the rest of
-  `ClientMetadata` end to end as additive, backward-compatible plumbing with no producer yet
-  (scoped to `docs/FRONTEND_TODO.md`, deliberate backend-only decision — confirmed via the
+  `ClientMetadata` end to end as additive, backward-compatible plumbing (producer added 2026-10-25: the web client's `typingSignals.ts`; confirmed via the
   composite-prior formula that latency alone can't close Layer 3's crisis-adjacent gate; deletion
   /burst fields are what's needed). Confirmed SC-3/SC-4 stay correctly unwired (no backend exists
   anywhere in the codebase). Built narrative-thread detection (§3.5) end to end: `thread_extractor.py`,

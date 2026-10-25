@@ -11,6 +11,8 @@ export type TypingSignals = {
   final_draft_length_chars: number;
   is_burst: boolean;
   burst_count: number;
+  /** Set by the page, not the tracker: this message answers something Nova opened with. */
+  is_reply_to_proactive?: boolean;
 };
 
 const BURST_WINDOW_MS = 10_000;

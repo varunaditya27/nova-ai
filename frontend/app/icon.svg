@@ -1,7 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Nova mark: a point of light within an open aperture ring. Abstract — an eye/lens that
-       observes, a core that remembers. Brass, legible down to 16px. -->
-  <circle cx="16" cy="16" r="11" fill="none" stroke="#B08D57" stroke-width="1.7"
-          stroke-linecap="round" stroke-dasharray="60 9.3" transform="rotate(-96 16 16)"/>
-  <circle cx="16" cy="16" r="4.4" fill="#B08D57"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="#10302e"/><path fill="#ff8faf" d="M12 3.2c.55 4.4 3 6.85 7.4 7.4-4.4.55-6.85 3-7.4 7.4-.55-4.4-3-6.85-7.4-7.4 4.4-.55 6.85-3 7.4-7.4Z"/></svg>

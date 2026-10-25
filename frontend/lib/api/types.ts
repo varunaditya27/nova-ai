@@ -33,6 +33,7 @@ export type HomeOut = {
   top_proactive: string | null;
   cold_start_active: boolean;
   message_count: number;
+  name: string | null;
 };
 
 /** One persisted turn-half. GET /messages, /messages/search, bookmark/milestone mutations. */

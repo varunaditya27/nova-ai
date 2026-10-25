@@ -12,6 +12,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 const PROJECT_ROOT = path.resolve(__dirname);
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   turbopack: { root: PROJECT_ROOT },
   outputFileTracingRoot: PROJECT_ROOT,
   async rewrites() {

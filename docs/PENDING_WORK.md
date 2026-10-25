@@ -22,9 +22,9 @@ gap was found and why it wasn't fixed inline.
 - **[done, 2026-08-09]** Implicit signals — `ChatRequest` now carries the real additive fields
   (deletion/burst/draft-length/typing-start), wired through `perceive()` into a real
   `ClientMetadata`. `response_latency_ms` is real server-side (no frontend needed, via
-  `Session.last_delivered_at`); the rest await frontend instrumentation
-  (`docs/FRONTEND_TODO.md`) — `composite_prior`'s `>0.6` gate specifically needs deletion/burst
-  data, not just latency, to close (see Layer 3 below). SC-3/SC-4 (multimodal/voice) stay
+  `Session.last_delivered_at`); the rest is now sent by the web client
+  (`frontend/lib/chat/typingSignals.ts`, 2026-10-25), which also makes `composite_prior`'s `>0.6`
+  gate reachable (see Layer 3 below). SC-3/SC-4 (multimodal/voice) stay
   correctly unwired — no image/voice/document backend exists anywhere, a separate infra project.
   See `docs/layer-1-architecture.md`.
 - **`config/layerN.yaml` unread for layers 2–13.** Only Layer 1 and (as of 2026-08-09) Layer 11's
@@ -70,8 +70,7 @@ gap was found and why it wasn't fixed inline.
   `frontend/lib/chat/typingSignals.ts`.)* Original note: **`composite_prior`'s prior-adjustment branch is forwarded but still unreachable.** Layer 1's
   `implicit_intensity` is no longer a pinned constant (latency is real, 2026-08-09), but hand-
   computed the formula: latency alone maxes `composite_prior` around ~0.50, still below the `>0.6`
-  gate. Needs the deletion/burst client fields specifically (`docs/FRONTEND_TODO.md`), not just
-  latency. No Layer 3 code change needed once the frontend half closes.
+  gate. Needed the deletion/burst client fields, which the web client now sends. No Layer 3 code change.
 - *(`alert_fn` was investigated and deliberately left unwired — not a gap, a closed decision.)*
 - **`EmpathyHypothesis.secondary_feeling`/`secondary_need` never set** — real feature work
   (`secondary_need` has no spec'd derivation), not a wiring fix. See `docs/POLISH_BACKLOG.md`.
@@ -272,4 +271,4 @@ Re-verified 2026-08-09:
 
 ---
 
-*Generated 2026-08-09 from `docs/POLISH_BACKLOG.md`. Update alongside it as items close.*
+*Generated 2026-08-09 from `docs/POLISH_BACKLOG.md`; frontend-related items reconciled 2026-10-25. Update alongside it as items close.*

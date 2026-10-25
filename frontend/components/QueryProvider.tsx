@@ -2,9 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
-/** TanStack Query provider. 30s staleTime — Nova's state moves at human speed, not dashboard speed. */
+/** 30s staleTime — Nova's state moves at human speed, not dashboard speed. */
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
@@ -14,12 +13,5 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         },
       })
   );
-  return (
-    <QueryClientProvider client={client}>
-      {children}
-      {process.env.NODE_ENV === "development" && (
-        <ReactQueryDevtools initialIsOpen={false} buttonPosition="top-left" />
-      )}
-    </QueryClientProvider>
-  );
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }

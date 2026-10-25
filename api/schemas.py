@@ -11,8 +11,8 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
     # Layer 1 SC-2 implicit-signal inputs (architecture doc §2) -- all optional and additive so
-    # existing clients keep working unchanged. No client sends these yet; see
-    # docs/FRONTEND_TODO.md for what a client needs to capture to populate them for real.
+    # existing clients keep working unchanged. The web client captures and sends them
+    # (frontend/lib/chat/typingSignals.ts).
     # `nova_last_delivered_at` is deliberately NOT a field here -- it's derived server-side
     # (api/state.py::make_session_last_delivered_provider), not something the client can know.
     user_typing_started_at: datetime | None = None
@@ -71,7 +71,7 @@ class MilestoneIn(BaseModel):
     label: Optional[str] = None
 
 
-# ── Continuity / Digital Desk ────────────────────────────────────────────
+# ── Continuity (Today, calendar, firsts) ────────────────────────────────────────────
 class HomeOut(BaseModel):
     greeting: str                            # "Good evening"
     current_chapter: Optional[str] = None    # latest longitudinal narrative/theme
@@ -82,6 +82,7 @@ class HomeOut(BaseModel):
     top_proactive: Optional[str] = None      # the thought Nova is holding
     cold_start_active: bool = False
     message_count: int = 0
+    name: Optional[str] = None               # what the user goes by, once Nova has learned it
 
 
 class CalendarOut(BaseModel):

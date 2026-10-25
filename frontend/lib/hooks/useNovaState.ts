@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createGoal,
   deleteGoal,
+  getGoal,
   getGoals,
   getOnboarding,
   getProactive,
@@ -30,7 +31,11 @@ export function useUpdateGoal() {
   return useMutation({
     mutationFn: (v: { id: string; patch: { status?: string; progress_score?: number } }) =>
       updateGoal(v.id, v.patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["goals"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["goals"] });
+      qc.invalidateQueries({ queryKey: ["goal"] });
+      qc.invalidateQueries({ queryKey: ["home"] });
+    },
   });
 }
 
@@ -56,4 +61,8 @@ export function useOnboarding() {
 
 export function useSessions() {
   return useQuery({ queryKey: ["sessions"], queryFn: getSessions });
+}
+
+export function useGoal(id: string) {
+  return useQuery({ queryKey: ["goal", id], queryFn: () => getGoal(id), enabled: Boolean(id) });
 }

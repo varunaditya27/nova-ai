@@ -114,6 +114,10 @@ export function getGoals(status?: string): Promise<Goal[]> {
   return requestJson<Goal[]>(`/goals${status ? `?status=${encodeURIComponent(status)}` : ""}`);
 }
 
+export function getGoal(goalId: string): Promise<Goal> {
+  return requestJson<Goal>(`/goals/${encodeURIComponent(goalId)}`);
+}
+
 export function createGoal(title: string, description?: string): Promise<Goal> {
   return requestJson<Goal>("/goals", jsonPost({ title, description }));
 }
@@ -154,6 +158,16 @@ export function getProactive(limit = 5): Promise<ProactiveItem[]> {
  *  can be attributed to it via ChatRequest.is_reply_to_proactive. */
 export function markProactiveDelivered(itemId: string): Promise<{ item_id: string; status: string }> {
   return requestJson(`/proactive/${encodeURIComponent(itemId)}/delivered`, { method: "POST" });
+}
+
+/** One memory in full — the detail view behind an echo or a list entry. */
+export function getMemory(memoryId: string): Promise<MemoryOut> {
+  return requestJson<MemoryOut>(`/memory/${encodeURIComponent(memoryId)}`);
+}
+
+/** Readiness: is the database up? Nova's "awake / resting" pulse. */
+export function getReady(): Promise<{ status: string }> {
+  return requestJson<{ status: string }>("/health/ready");
 }
 
 export function getMemoryAudit(): Promise<MemoryAuditOut> {

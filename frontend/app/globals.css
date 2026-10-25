@@ -1,72 +1,210 @@
 @import "tailwindcss";
-@import "../lib/tokens.css";
+@import "@fontsource/young-serif/latin-400.css";
+@import "@fontsource-variable/literata/wght.css";
+@import "@fontsource-variable/literata/wght-italic.css";
 
 /*
- * Map the material tokens onto Tailwind utilities. `inline` keeps the var reference in the
- * generated utility (e.g. bg-paper -> background-color: var(--paper)), so flipping data-theme
- * on <html> re-themes everything with no re-render.
+ * Nova — the light in the room follows your day.
+ *
+ * One ground, one ink, one accent. Surfaces are told apart by small tone steps, never by lines or
+ * shadows (shadows exist only on things that float: menus, sheets, toasts). `data-light` is stamped
+ * on <html> from the real local hour (see ThemeProvider), so a 7am conversation and a 1am one are
+ * held in different rooms. Marigold (--earned) is reserved for moments that mattered.
  */
+:root,
+:root[data-light="day"] {
+  --ground: #e9f2ec;
+  --surface: #f4f9f5;
+  --sunk: #dbe8df;
+  --raised: #fcfefc;
+  --ink: #10302e;
+  --ink-soft: #3b5955;
+  --mute: #46625c;
+  --accent: #c4175a;
+  --accent-ink: #ffffff;
+  --earned: #f0b429;
+  --danger: #a3191f;
+  color-scheme: light;
+}
+
+:root[data-light="dawn"] {
+  --ground: #f5ece9;
+  --surface: #fbf5f3;
+  --sunk: #eaddd9;
+  --raised: #fffdfc;
+  --ink: #3a1d26;
+  --ink-soft: #66444e;
+  --mute: #6e4f57;
+  --accent: #b3124f;
+  --accent-ink: #ffffff;
+  --earned: #eda91f;
+  --danger: #a3191f;
+  color-scheme: light;
+}
+
+:root[data-light="dusk"] {
+  --ground: #d3e3d9;
+  --surface: #e0ece4;
+  --sunk: #c2d7ca;
+  --raised: #edf4ef;
+  --ink: #0e2b29;
+  --ink-soft: #35534f;
+  --mute: #3e5a54;
+  --accent: #b3124f;
+  --accent-ink: #ffffff;
+  --earned: #e9a21b;
+  --danger: #a3191f;
+  color-scheme: light;
+}
+
+:root[data-light="night"] {
+  --ground: #0a2325;
+  --surface: #0f2e30;
+  --sunk: #07191b;
+  --raised: #153b3d;
+  --ink: #e6f1ea;
+  --ink-soft: #b3ccc3;
+  --mute: #8fb0a5;
+  --accent: #ff8faf;
+  --accent-ink: #2b0a17;
+  --earned: #f2bc4a;
+  --danger: #ff8a80;
+  color-scheme: dark;
+}
+
 @theme inline {
-  --color-paper: var(--paper);
+  --color-ground: var(--ground);
   --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
   --color-raised: var(--raised);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
-  --color-ink-faint: var(--ink-faint);
-  --color-hairline: var(--hairline);
-  --color-brass: var(--brass);
-  --color-brass-soft: var(--brass-soft);
+  --color-mute: var(--mute);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-earned: var(--earned);
+  --color-danger: var(--danger);
 
-  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
-  --font-body: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-mono);
+  --font-display: "Young Serif", Georgia, serif;
+  --font-body: "Literata Variable", Georgia, serif;
 
-  --radius-sm: var(--r-sm);
-  --radius-md: var(--r-md);
-  --radius-lg: var(--r-lg);
+  /* Five sizes, no more. */
+  --text-small: 0.875rem;
+  --text-body: 1rem;
+  --text-read: 1.1875rem;
+  --text-title: clamp(1.75rem, 1.25rem + 1.6vw, 2.5rem);
+  --text-display: clamp(2.75rem, 1.4rem + 5.2vw, 5.25rem);
 }
 
 @layer base {
   html {
     font-family: var(--font-body);
-    /* tabular figures everywhere — numbers should never dance */
-    font-feature-settings: "tnum" 1;
+    font-size: 100%;
     text-rendering: optimizeLegibility;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--paper);
+    background-color: var(--ground);
     color: var(--ink);
+    font-size: var(--text-body);
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 900ms ease, color 900ms ease;
   }
 
-  /* Paper grain — a near-invisible tooth on the ivory. Absent at night (opacity 0). */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image: url("/grain.svg");
-    background-size: 200px 200px;
-    opacity: var(--grain-opacity);
-    mix-blend-mode: multiply;
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    text-wrap: balance;
   }
 
-  /* Display type wants soft optical sizing — set the Fraunces axes when .font-display is used. */
-  .font-display {
-    font-variation-settings: "opsz" 40, "SOFT" 40, "wght" 460;
-    letter-spacing: -0.01em;
+  p {
+    text-wrap: pretty;
   }
 
   ::selection {
-    background: var(--brass-soft);
-    color: var(--paper);
+    background: var(--accent);
+    color: var(--accent-ink);
   }
 
   :focus-visible {
-    outline: 2px solid var(--brass);
-    outline-offset: 2px;
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  button,
+  [role="button"],
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  textarea,
+  input {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Never hide content if scripting or motion fails. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* The one signature surface: a flat tone step, softly rounded. No border, no shadow. */
+  .tone {
+    background-color: var(--surface);
+    border-radius: 1.25rem;
+  }
+  .tone-sunk {
+    background-color: var(--sunk);
+    border-radius: 1.25rem;
+  }
+
+  /* Floating things — and only those — may cast a shadow. */
+  .floating {
+    background-color: var(--raised);
+    box-shadow: 0 18px 50px -12px rgb(7 25 27 / 0.35);
+  }
+
+  .read {
+    font-size: var(--text-read);
+    line-height: 1.65;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -4rem;
+    z-index: 100;
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 0.75rem 1.25rem;
+    border-radius: 999px;
+  }
+  .skip-link:focus {
+    top: 1rem;
   }
 }

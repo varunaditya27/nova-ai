@@ -10,37 +10,37 @@ const ToastContext = createContext<{ toast: (title: string, detail?: string) => 
   toast: () => {},
 });
 
-/** A quiet toast stack, bottom-right above the dock. Used for confirmations Nova should acknowledge
- * without interrupting the flow (a forget certificate, a job result). */
+/** A quiet acknowledgement for things Nova should confirm without interrupting: a saved moment, a
+ * forgotten memory. It floats above the page (so it may cast a shadow) and speaks via aria-live. */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const { t: safeTransition } = useReducedMotionSafe();
+  const { t } = useReducedMotionSafe();
 
   const toast = useCallback((title: string, detail?: string) => {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, title, detail }]);
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4800);
+    setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 5200);
   }, []);
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="pointer-events-none fixed bottom-24 right-6 z-[60] flex flex-col gap-2">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-4 bottom-24 z-[60] flex flex-col items-center gap-2 lg:inset-x-auto lg:bottom-8 lg:right-8 lg:items-end"
+      >
         <AnimatePresence>
-          {toasts.map((t) => (
+          {toasts.map((x) => (
             <motion.div
-              key={t.id}
-              initial={{ opacity: 0, y: 12, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={safeTransition(springs.wake)}
-              className="pointer-events-auto max-w-xs rounded-md border border-hairline bg-raised px-4 py-3"
-              style={{ boxShadow: "inset 0 1px 0 var(--wake)" }}
+              key={x.id}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={t(springs.wake)}
+              className="floating pointer-events-auto max-w-sm rounded-2xl px-5 py-4"
             >
-              <p className="text-sm text-ink">{t.title}</p>
-              {t.detail && (
-                <p className="mt-1 break-all font-mono text-[10px] text-ink-faint">{t.detail}</p>
-              )}
+              <p className="font-medium">{x.title}</p>
+              {x.detail && <p className="mt-1 text-[length:var(--text-small)] text-ink-soft">{x.detail}</p>}
             </motion.div>
           ))}
         </AnimatePresence>

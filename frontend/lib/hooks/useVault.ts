@@ -5,6 +5,7 @@ import {
   deleteMemory,
   getBookmarks,
   getIntegrity,
+  getMemory,
   getMemoryAudit,
   getMilestones,
   getSyncStatus,
@@ -33,6 +34,7 @@ export function useDeleteMemory() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memory-audit"] });
       qc.invalidateQueries({ queryKey: ["integrity"] });
+      qc.invalidateQueries({ queryKey: ["memory"] });
     },
   });
 }
@@ -67,4 +69,13 @@ export function useAnnotate() {
     onSuccess: invalidate,
   });
   return { bookmark, milestone };
+}
+
+/** One memory in full, fetched when its detail sheet opens. */
+export function useMemoryDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["memory", id],
+    queryFn: () => getMemory(id as string),
+    enabled: Boolean(id),
+  });
 }

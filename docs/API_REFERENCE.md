@@ -167,14 +167,14 @@ nearest episodes; degrades to a keyword scan when the vector index is cold. Dist
 
 ---
 
-## Continuity — Digital Desk / calendar / museum
+## Continuity — Today / calendar / firsts
 
 Lenses derived over data other layers already produce; the chat is never touched.
 
 ### `GET /home` → `HomeOut`
-The authenticated landing ("Digital Desk").
+Feeds the Today page and the first-run check. `name` is the preferred name Nova learned (null until known); `top_proactive` is the real generated message, not the internal content basis. The web app computes its own greeting from the local clock and ignores `greeting`.
 ```
-{ "greeting": "Good evening", "current_chapter": <latest longitudinal theme|null>,
+{ "greeting": "Good evening", "name": <string|null>, "current_chapter": <latest longitudinal theme|null>,
   "relationship_stage": "acquaintance", "last_interaction_at": <iso|null>,
   "weather": "sunny|clear|cloudy|distant",  "active_goals": 4,
   "top_proactive": <the thought Nova is holding|null>, "cold_start_active": false,

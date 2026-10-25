@@ -1,6 +1,6 @@
 """Conversation log routes — the permanent thread + annotations (single-user).
 
-`GET /messages` is the transcript the /chat UI loads (newest-first, paginated by `before`); search is
+`GET /messages` is the transcript the conversation screen loads (newest-first, paginated by `before`); search is
 keyword + date. Bookmarks and milestones are per-message annotations (the vision docs' long-press
 "Bookmark" / "Make Milestone"). All user-scoped.
 """

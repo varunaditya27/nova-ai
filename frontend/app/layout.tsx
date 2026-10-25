@@ -1,55 +1,38 @@
-import type { Metadata } from "next";
-// Self-hosted variable fonts — bundled in node_modules, so the build never reaches a font CDN.
-import "@fontsource-variable/fraunces/index.css";
-import "@fontsource-variable/instrument-sans/index.css";
-import { GeistMono } from "geist/font/mono";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { ThemeProvider, themeNoFlashScript } from "@/components/ThemeProvider";
+import { ThemeProvider, lightNoFlashScript } from "@/components/ThemeProvider";
 import { AcousticsProvider } from "@/lib/hooks/useAcoustics";
 import { QueryProvider } from "@/components/QueryProvider";
 import { ToastProvider } from "@/lib/hooks/useToast";
-import { Dock } from "@/components/primitives/Dock";
+import { AppShell } from "@/components/shell/AppShell";
 
 export const metadata: Metadata = {
   metadataBase: new URL("http://localhost:3000"),
   title: { default: "Nova", template: "%s · Nova" },
   description:
-    "Intelligence should feel like a relationship, not a tool. Nova remembers, notices, and continues — across years, not sessions.",
+    "A companion that remembers you, notices how you’re doing, and keeps going — across years, not sessions. Private, and yours.",
   applicationName: "Nova",
-  openGraph: {
-    title: "Nova",
-    description: "Intelligence that remembers. A private study for thinking.",
-    type: "website",
-  },
-  twitter: { card: "summary_large_image" },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F4F1EA" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B0B0D" },
+    { media: "(prefers-color-scheme: light)", color: "#e9f2ec" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a2325" },
   ],
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${GeistMono.variable} h-full`}
-    >
+    <html lang="en" suppressHydrationWarning data-light="day">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeNoFlashScript }} />
+        <script dangerouslySetInnerHTML={{ __html: lightNoFlashScript }} />
       </head>
-      <body className="relative min-h-full">
+      <body>
         <ThemeProvider>
           <QueryProvider>
             <AcousticsProvider>
               <ToastProvider>
-                {children}
-                <Dock />
+                <AppShell>{children}</AppShell>
               </ToastProvider>
             </AcousticsProvider>
           </QueryProvider>

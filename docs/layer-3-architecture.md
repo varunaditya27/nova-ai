@@ -1333,8 +1333,8 @@ that gate on every turn. Even with `composite_prior` forwarded, `integrate_prior
 prior-adjustment branch (`prior_confidence > 0.5 and composite_prior > 0.6`) still cannot fire in
 production: with `implicit_intensity` pinned at 0.10, the realistic ceiling for `composite_prior`
 is `0.39` (checked directly against `backend/layer1_input/assembler.py::compute_composite_prior`),
-never above 0.6 — this branch stays dormant until Layer 1's implicit-signal frontend gap closes
-(`docs/POLISH_BACKLOG.md`, `docs/FRONTEND_TODO.md`).
+never above 0.6 — this branch could not fire until the web client began sending deletion/burst
+signals (`frontend/lib/chat/typingSignals.ts`, 2026-10-25); it is reachable now.
 
 SC-1 and SC-3 now genuinely share **one** LLM call per turn, matching §14.2's spec — this was
 initially deferred as real engineering work rather than a wiring fix, then built once the user set

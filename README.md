@@ -519,7 +519,7 @@ nova-ai/
 ├── docs/
 ├── scripts/
 ├── tests/
-├── frontend/
+├── frontend/               # Next.js web app — see frontend/README.md and PRODUCT_SURFACE.md
 └── docker/                 # docker-compose.yml + per-service Dockerfiles
 ```
 
