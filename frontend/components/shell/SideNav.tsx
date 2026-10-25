@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 import { Lockup } from "@/components/ui/Mark";
+import { useCompanionMood } from "@/lib/companion/mood";
 import { NAV, isActive } from "@/lib/nav";
 import { usePendingTools } from "@/lib/hooks/useTools";
 import { useAcoustics } from "@/lib/hooks/useAcoustics";
@@ -17,6 +18,7 @@ export function SideNav() {
   const pathname = usePathname();
   const { play } = useAcoustics();
   const menu = useCommandMenu();
+  const mood = useCompanionMood();
   const errands = usePendingTools().data?.length ?? 0;
 
   return (
@@ -26,7 +28,7 @@ export function SideNav() {
         className="mb-4 flex items-center gap-3 px-2"
         aria-label="Nova — home"
       >
-        <Lockup className="text-[2rem]" />
+        <Lockup className="text-[2rem]" mood={mood} alive />
       </Link>
 
       <button

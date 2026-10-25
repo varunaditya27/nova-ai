@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { focusPull, stagger } from "@/lib/motion";
+import { Mark } from "./Mark";
+import { Margin } from "@/components/brand/Margin";
 
 /**
  * Every inner page: one h1 that says what the page is, one plain sentence that says what it's for,
@@ -11,11 +13,14 @@ import { focusPull, stagger } from "@/lib/motion";
 export function Page({
   title,
   intro,
+  note,
   actions,
   children,
 }: {
   title: string;
   intro?: ReactNode;
+  /** Nova's handwritten aside about this page (see `NOTES` in lib/voice.ts). */
+  note?: string;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -36,6 +41,12 @@ export function Page({
           </h1>
           <span aria-hidden className="page-rule mt-5" />
           {intro && <p className="read mt-5 text-ink-soft">{intro}</p>}
+          {note && (
+            <p className="mt-4 flex items-center gap-2.5">
+              <Mark size={22} alive />
+              <Margin>{note}</Margin>
+            </p>
+          )}
         </div>
         {actions && <div className="flex items-center gap-3">{actions}</div>}
       </motion.header>

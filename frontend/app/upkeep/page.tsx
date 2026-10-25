@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NOTES } from "@/lib/voice";
 import { Page } from "@/components/ui/Page";
 import { Button } from "@/components/ui/Button";
 import { runJob } from "@/lib/api/client";
@@ -31,7 +32,8 @@ export default function Upkeep() {
   return (
     <Page
       title="Upkeep"
-      intro="Nova tidies its memory and thinks things over on a schedule. You can run any of it now."
+      note={NOTES.upkeep}
+      intro="I tidy my memory and think things over on a schedule. You can make me do any of it now."
     >
       <ul className="flex max-w-3xl flex-col gap-10">
         {CHORES.map((c) => {
@@ -51,7 +53,7 @@ export default function Upkeep() {
                   {out?.state === "done" && (
                     <dl className="tone mt-4 grid max-w-md gap-1.5 px-5 py-4">
                       {out.rows.length === 0 && (
-                        <p>Done. There was nothing to report.</p>
+                        <p>Done. Nothing to report, which is the best kind.</p>
                       )}
                       {out.rows.map((r) => (
                         <div
@@ -66,8 +68,7 @@ export default function Upkeep() {
                   )}
                   {out?.state === "failed" && (
                     <p className="mt-3 text-danger">
-                      That didn’t run just now. Nothing was changed — you can
-                      try again.
+                      That didn’t run. Nothing was changed, and you can try again.
                     </p>
                   )}
                 </div>
@@ -77,7 +78,7 @@ export default function Upkeep() {
                 onClick={() => run(c.name)}
                 disabled={out?.state === "running"}
               >
-                {out?.state === "running" ? "Running…" : "Run it now"}
+                {out?.state === "running" ? "On it…" : "Run it now"}
               </Button>
             </li>
           );

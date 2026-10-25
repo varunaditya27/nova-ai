@@ -1,5 +1,8 @@
 "use client";
 
+import { Mark } from "@/components/ui/Mark";
+import { Margin } from "@/components/brand/Margin";
+import { NOTES } from "@/lib/voice";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -202,12 +205,18 @@ function Talk() {
           <Skeleton lines={4} className="pl-14" />
         ) : empty ? (
           <div className="flex min-h-[48vh] flex-col justify-center gap-6">
+            <span className="flex items-end gap-4">
+              <Mark size={52} alive />
+              <Margin tilt={-3} className="pb-1.5">
+                {NOTES.talk}
+              </Margin>
+            </span>
             <h1 className="text-[length:var(--text-display)]">
               Say the first thing.
             </h1>
             <p className="read max-w-xl text-ink-soft">
-              Nova remembers what you share, and builds on it over the weeks and
-              years. There’s no wrong way to begin — or pick one of these.
+              I remember what you share, and I build on it over weeks and
+              years. Start anywhere, or borrow one of these.
             </p>
             <ul className="flex flex-col items-start gap-2">
               {STARTERS.map((s) => (

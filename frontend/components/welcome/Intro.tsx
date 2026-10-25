@@ -49,6 +49,11 @@ export function Intro() {
         { yPercent: 115, stagger: 0.07, duration: 0.8, ease: "power4.out" },
         "-=0.1",
       )
+      .from(
+        "[data-intro-hello]",
+        { autoAlpha: 0, y: 8, duration: 0.5, ease: "power3.out" },
+        "-=0.2",
+      )
       .to({}, { duration: 0.5 })
       .to("[data-intro-content]", {
         autoAlpha: 0,
@@ -89,6 +94,9 @@ export function Intro() {
             </span>
           ))}
         </p>
+        <span data-intro-hello className="hand -mt-2 -rotate-3 text-accent">
+          hello.
+        </span>
       </div>
     </div>
   );

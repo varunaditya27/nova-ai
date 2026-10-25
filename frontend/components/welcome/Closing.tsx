@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { LightField } from "@/components/brand/LightField";
 import { Lockup, Mark } from "@/components/ui/Mark";
 import { gsap, MOTION_OK, SplitText, useGSAP } from "@/lib/gsap";
+import { Margin } from "@/components/brand/Margin";
 import { Section } from "./Section";
 import { SECTIONS } from "./Header";
 import { MagneticButton } from "@/components/brand/MagneticButton";
@@ -73,11 +74,17 @@ export function Closing() {
             <Mark size={460} />
           </span>
           <div className="relative flex flex-col items-start gap-8">
+            <span data-close-item className="flex items-end gap-4">
+              <Mark size={64} alive />
+              <Margin tilt={-3} className="pb-2">
+                I’ll wait. I’m good at it.
+              </Margin>
+            </span>
             <h2 data-close-title className="text-[length:var(--text-display)]">
               Say the first thing.
             </h2>
             <p data-close-item className="read max-w-xl text-ink-soft">
-              There’s nothing to sign up for. Start whenever you like.
+              There’s nothing to sign up for. Start whenever you like. I’ll be here.
             </p>
             <div data-close-item>
               <MagneticButton onClick={begin}>

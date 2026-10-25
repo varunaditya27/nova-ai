@@ -21,7 +21,7 @@ export function Echoes({ echoes }: { echoes: Echo[] }) {
         className="inline-flex min-h-9 items-center gap-2 bg-sunk px-4 text-[length:var(--text-small)] text-ink-soft hover:text-ink"
       >
         <Mark size={14} />
-        Nova remembered {n === 1 ? "something" : `${n} things`} for this
+        I remembered {n === 1 ? "something" : `${n} things`} for this
         <ChevronDown
           size={14}
           aria-hidden

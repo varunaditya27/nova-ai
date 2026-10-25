@@ -78,7 +78,7 @@ export function ThreadProof() {
 
   return (
     <Section id="proof" label="An example, three weeks apart">
-      <SectionHead n="01" name="The proof" />
+      <SectionHead n="01" name="The proof" note="watch, it’s quick" />
       <h2 className="mb-14 max-w-2xl text-[length:var(--text-title)]">
         The same conversation, three weeks apart.
       </h2>

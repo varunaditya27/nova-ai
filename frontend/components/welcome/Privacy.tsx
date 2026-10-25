@@ -24,7 +24,7 @@ const POINTS = [
 export function Privacy() {
   return (
     <Section id="private" tone="ink" label="Privacy" reveal>
-      <SectionHead n="07" name="Privacy" />
+      <SectionHead n="07" name="Privacy" note="nobody reads over my shoulder" />
       <Reveal className="mb-14 max-w-3xl">
         <ScrubText className="text-[length:var(--text-display)] leading-[0.98]">
           What you tell Nova is yours.

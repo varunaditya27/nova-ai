@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { HandHelping } from "lucide-react";
 import { Mark } from "@/components/ui/Mark";
+import { thinkingLine, type Mood } from "@/lib/voice";
 import { Button } from "@/components/ui/Button";
 import { groupSittings } from "@/lib/chat/sittings";
 import type { StreamState } from "@/lib/chat/streamReducer";
@@ -20,11 +21,17 @@ function clock(iso: string | null): string {
     : d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** A reply that landed in the last few seconds makes the stamp hop once, like a signature being pressed. */
+function arrivedJustNow(iso: string | null): boolean {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() < 8000;
+}
+
 /** Nova's name on a reply, sitting on the thread. */
-function NovaMark({ thinking = false }: { thinking?: boolean }) {
+function NovaMark({ mood = "calm" }: { mood?: Mood }) {
   return (
     <span className="absolute left-0 top-0.5" aria-hidden>
-      <Mark size={26} state={thinking ? "thinking" : "still"} />
+      <Mark size={26} mood={mood} />
     </span>
   );
 }
@@ -66,10 +73,10 @@ function Row({
       id={`msg-${message.message_id}`}
       className="group relative scroll-mt-24 pl-10 sm:pl-14"
     >
-      <NovaMark />
+      <NovaMark mood={arrivedJustNow(message.created_at) ? "happy" : "calm"} />
       <div className={cn(crisis && "tone-sunk px-6 py-5")}>
         <p className="mb-1 text-[length:var(--text-small)] text-mute">
-          {crisis ? "Nova is staying with you" : "Nova"}{" "}
+          {crisis ? "I’m staying with you" : "Nova"}{" "}
           <time className="opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             · {clock(message.created_at)}
           </time>
@@ -91,7 +98,7 @@ function Row({
         )}
         {message.tool_invoked && (
           <p className="mt-3 flex items-center gap-2 text-[length:var(--text-small)] text-ink-soft">
-            <HandHelping size={15} aria-hidden /> Nova handled this as an errand
+            <HandHelping size={15} aria-hidden /> I handled this as an errand
             —{" "}
             <Link
               href="/errands"
@@ -161,8 +168,8 @@ export function Thread({
         <div className="relative pb-8 pl-10 sm:pl-14">
           <Button variant="quiet" onClick={onLoadOlder} disabled={loadingOlder}>
             {loadingOlder
-              ? "Finding earlier conversations…"
-              : "Show earlier conversations"}
+              ? "Flipping back through the pages…"
+              : "Flip back to earlier pages"}
           </Button>
         </div>
       )}
@@ -218,9 +225,9 @@ export function Thread({
             aria-live="polite"
             aria-busy={streaming.phase === "streaming"}
           >
-            <NovaMark thinking={!streaming.text} />
+            <NovaMark mood={streaming.text ? "calm" : "thinking"} />
             <p className="mb-1 text-[length:var(--text-small)] text-mute">
-              {streaming.text ? "Nova" : "Nova is thinking…"}
+              {streaming.text ? "Nova" : thinkingLine(messages.length)}
             </p>
             {streaming.text && (
               <p className="read max-w-[62ch] whitespace-pre-wrap">
@@ -235,9 +242,9 @@ export function Thread({
 
         {opening && !pendingUser && !showStreaming && (
           <article className="relative pl-10 sm:pl-14">
-            <NovaMark />
+            <NovaMark mood="happy" />
             <p className="mb-1 text-[length:var(--text-small)] text-mute">
-              Nova wanted to start this one
+              I wanted to start this one
             </p>
             <p className="read max-w-[62ch] whitespace-pre-wrap">{opening}</p>
             <button

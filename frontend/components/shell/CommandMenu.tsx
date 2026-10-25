@@ -119,8 +119,8 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
       (m): Row => ({
         key: `m-${m.memory_id}`,
         title: m.summary,
-        hint: `Nova remembers · ${relativeTime(m.created_at)}`,
-        group: "In Nova’s memory — by meaning",
+        hint: `I remember · ${relativeTime(m.created_at)}`,
+        group: "In my memory, by meaning",
         go: () => router.push(`/memory?open=${m.memory_id}`),
       }),
     );
@@ -194,7 +194,7 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
                   aria-activedescendant={
                     rows[safeCursor] ? `${listId}-${safeCursor}` : undefined
                   }
-                  placeholder="Go somewhere, or look for a moment…"
+                  placeholder="Go somewhere, or ask me to find a moment…"
                   className="min-h-9 w-full bg-transparent text-[length:var(--text-read)] outline-none placeholder:text-mute"
                 />
               </div>
@@ -205,8 +205,7 @@ export function CommandMenuProvider({ children }: { children: ReactNode }) {
               >
                 {rows.length === 0 && (
                   <li className="px-4 py-8 text-center text-ink-soft">
-                    Nothing matches “{q}”. Try a few other words, or describe
-                    the moment: “the night I couldn’t sleep”.
+                    I can’t find “{q}”. Try other words, or describe the moment: “the night I couldn’t sleep”.
                   </li>
                 )}
                 {rows.map((r, i) => {

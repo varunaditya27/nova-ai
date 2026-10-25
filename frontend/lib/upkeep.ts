@@ -5,67 +5,67 @@ export const CHORES: Chore[] = [
   {
     name: "memory_consolidation",
     title: "Tidy memories",
-    what: "Lets small details fade, merges similar memories, and writes down what stays true about you.",
+    what: "I let small details fade, merge similar memories, and write down what stays true about you.",
     when: "Every couple of hours",
   },
   {
     name: "proactive_check",
     title: "Decide what to bring up",
-    what: "Works out whether there’s something worth reaching out about, and when.",
+    what: "I work out whether there’s something worth reaching out about, and when.",
     when: "Every half hour",
   },
   {
     name: "longitudinal_summary",
     title: "Write this week’s chapter",
-    what: "Writes up the week as a short chapter for Our story.",
+    what: "I write up the week as a short chapter for Our story.",
     when: "Weekly",
   },
   {
     name: "narrative_arc",
     title: "Update the story so far",
-    what: "Rebuilds the current chapter of your life from what has happened.",
+    what: "I rebuild the current chapter of your life from what has happened.",
     when: "Weekly",
   },
   {
     name: "pattern_detection",
     title: "Spot patterns in your days",
-    what: "Looks for things that keep repeating — when you’re stressed, what helps.",
+    what: "I look for things that keep repeating: when you’re stressed, what helps.",
     when: "Weekly",
   },
   {
     name: "social_pattern_detection",
     title: "Spot patterns with your people",
-    what: "Looks for repeating themes in your relationships.",
+    what: "I look for repeating themes in your relationships.",
     when: "Weekly",
   },
   {
     name: "goal_staleness",
     title: "Check on stalled goals",
-    what: "Notices goals you haven’t mentioned in a while and marks them as slipping.",
+    what: "I notice goals you haven’t mentioned in a while and mark them as slipping.",
     when: "Weekly",
   },
   {
     name: "dependency_monitor",
     title: "Check the balance",
-    what: "Makes sure Nova is a help in your life rather than something you lean on too heavily.",
+    what: "I make sure I’m a help in your life rather than something you lean on too heavily.",
     when: "Weekly",
   },
   {
     name: "life_calendar",
     title: "Update milestones and look-backs",
-    what: "Marks anniversaries and moments, and writes look-backs when they come due.",
+    what: "I mark anniversaries and moments, and write look-backs when they come due.",
     when: "Daily",
   },
   {
     name: "distress_gap",
     title: "Check in after hard days",
-    what: "If you had a rough patch and then went quiet, queues a gentle check-in.",
+    what: "If you had a rough patch and then went quiet, I line up a gentle check-in.",
     when: "Daily",
   },
   {
     name: "integrity_check",
     title: "Verify nothing was altered",
-    what: "Checks that Nova’s records haven’t been tampered with.",
+    what: "I check that my records haven’t been tampered with.",
     when: "Daily",
   },
 ];
@@ -99,7 +99,7 @@ const LABELS: Record<string, string> = {
 
 const SKIPS: Record<string, string> = {
   cold_start_active:
-    "Skipped — Nova is still getting to know you, so it stays quiet for now.",
+    "Skipped. I’m still getting to know you, so I’m staying quiet for now.",
 };
 
 const HIDDEN = new Set([

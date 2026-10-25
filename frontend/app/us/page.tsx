@@ -1,6 +1,7 @@
 "use client";
 
 import { Page } from "@/components/ui/Page";
+import { NOTES } from "@/lib/voice";
 import { Meter } from "@/components/ui/Bits";
 import { Skeleton, Trouble } from "@/components/ui/States";
 import { useRelationship, useSessions } from "@/lib/hooks/useNovaState";
@@ -69,7 +70,8 @@ export default function Us() {
   return (
     <Page
       title="How we talk"
-      intro="How freely Nova speaks depends on how long you’ve known each other. Here is where you are, and the style Nova has learned from you."
+      note={NOTES.us}
+      intro="How freely I speak depends on how long we’ve known each other. Here is where we are, and the style I’ve learned from you."
     >
       <section aria-labelledby="stage" className="mb-20">
         <h2 id="stage" className="sr-only">
@@ -140,7 +142,7 @@ export default function Us() {
               </p>
               <Meter value={r.trust_score} label="Trust" />
               <p className="mt-2 text-[length:var(--text-small)] text-ink-soft">
-                Builds as you open up and Nova proves it listens.
+                Builds as you open up and I prove I’m listening.
               </p>
             </div>
           </div>
@@ -154,8 +156,7 @@ export default function Us() {
             How you like to talk
           </h2>
           <p className="mb-7 text-ink-soft">
-            You never set these. Nova learns them from how you write, and
-            adjusts to match.
+            You never set these. I learn them from how you write, and adjust to match.
           </p>
           <ul className="flex flex-col gap-8">
             {spectrums(r).map((s) => (
@@ -194,7 +195,7 @@ export default function Us() {
             {convos.map((c) => (
               <span
                 key={c.session_key}
-                className="w-3 rounded-t-full bg-accent"
+                className="w-3 bg-accent"
                 style={{
                   height: `${Math.max(8, (c.turn_count / longest) * 100)}%`,
                 }}

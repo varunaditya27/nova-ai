@@ -8,18 +8,18 @@ export function Pulse() {
   const { awake, checking } = useAwake();
   if (checking)
     return (
-      <p className="text-[length:var(--text-small)] text-mute">Checking in…</p>
+      <p className="text-[length:var(--text-small)] text-mute">Waking up…</p>
     );
   return (
     <p
       className="flex items-start gap-2 text-[length:var(--text-small)] text-ink-soft"
       role="status"
     >
-      <Mark size={16} quiet={!awake} className="mt-0.5" />
+      <Mark size={16} quiet={!awake} mood={awake ? "calm" : "sleepy"} className="mt-0.5" />
       <span>
         {awake
-          ? "Nova is here"
-          : "Nova is resting. Your words are safe; try again in a moment."}
+          ? "I’m here."
+          : "I’m resting. Your words are safe; try again in a moment."}
       </span>
     </p>
   );

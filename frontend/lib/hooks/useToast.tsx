@@ -1,5 +1,6 @@
 "use client";
 
+import { Mark } from "@/components/ui/Mark";
 import {
   createContext,
   useCallback,
@@ -48,14 +49,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={t(springs.wake)}
-              className="floating pointer-events-auto max-w-sm rounded-2xl px-5 py-4"
+              className="floating pointer-events-auto flex max-w-sm items-start gap-3 border-l-[3px] border-accent px-5 py-4"
             >
-              <p className="font-medium">{x.title}</p>
-              {x.detail && (
-                <p className="mt-1 text-[length:var(--text-small)] text-ink-soft">
-                  {x.detail}
-                </p>
-              )}
+              <Mark size={22} mood="happy" className="mt-0.5" />
+              <div>
+                <p className="font-medium">{x.title}</p>
+                {x.detail && (
+                  <p className="mt-1 text-[length:var(--text-small)] text-ink-soft">
+                    {x.detail}
+                  </p>
+                )}
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>

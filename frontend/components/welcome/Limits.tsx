@@ -18,7 +18,7 @@ const ITEMS = [
 export function Limits() {
   return (
     <Section label="What Nova is not">
-      <SectionHead n="08" name="Limits" />
+      <SectionHead n="08" name="Limits" note="yes, I list my own flaws" />
       <div className="grid gap-12 lg:grid-cols-12">
         <Reveal className="lg:sticky lg:top-32 lg:col-span-4 lg:self-start">
           <h2 className="text-[length:var(--text-title)]">What Nova is not.</h2>

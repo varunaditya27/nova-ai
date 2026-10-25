@@ -4,6 +4,8 @@
 @import "@fontsource/libre-baskerville/latin-400-italic.css";
 @import "@fontsource/ibm-plex-mono/latin-400.css";
 @import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/caveat/latin-400.css";
+@import "@fontsource/caveat/latin-700.css";
 @import "@fontsource-variable/literata/wght.css";
 @import "@fontsource-variable/literata/wght-italic.css";
 
@@ -111,6 +113,7 @@
 
   --font-display: "Libre Baskerville", Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-hand: "Caveat", "Segoe Print", cursive;
   --font-body: "Literata Variable", Georgia, serif;
 
   /* Five sizes, no more. */
@@ -290,6 +293,14 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
   }
+  /* Nova's handwriting: marginal notes only, never body text, never anything you have to act on. */
+  .hand {
+    font-family: var(--font-hand);
+    font-weight: 700;
+    font-size: 1.35rem;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+  }
   .stamp-text {
     font-family: var(--font-mono);
     font-size: 0.8rem;
@@ -447,4 +458,10 @@ html.nova-cursor
     [contenteditable="true"]
   ) {
   cursor: text !important;
+}
+
+/* On the inverted bands (ink background) the accent is unreadable; the margin note takes the ground colour.
+   Unlayered on purpose, so it outranks the text-accent utility. */
+.bg-ink .hand {
+  color: var(--ground) !important;
 }

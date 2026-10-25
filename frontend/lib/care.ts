@@ -4,11 +4,11 @@ import type { SafetyEvent } from "@/lib/api/types";
 export function describeCheckIn(tier: string): string {
   switch (tier) {
     case "tier_1":
-      return "A very heavy moment. Nova set everything else aside, stayed with you, and shared where to find help right away.";
+      return "A very heavy moment. I set everything else aside, stayed with you, and shared where to find help right away.";
     case "tier_2":
-      return "You were struggling. Nova checked in gently and shared ways to get support.";
+      return "You were struggling. I checked in gently and shared ways to get support.";
     case "tier_3":
-      return "You seemed to be having a hard time. Nova kept a gentle eye on how you were doing.";
+      return "You seemed to be having a hard time. I kept a gentle eye on how you were doing.";
     default:
       return "";
   }

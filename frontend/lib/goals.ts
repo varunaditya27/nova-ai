@@ -27,7 +27,7 @@ export function habitCadence(frequency: string): string {
 
 /** "5 days in a row" / "3 weeks in a row" — streaks count in the habit's own unit. */
 export function streakWords(streak: number, frequency: string): string {
-  if (streak <= 0) return "Not started — tell Nova when you do it";
+  if (streak <= 0) return "Not started. Tell me when you do it";
   const unit = frequency === "weekly" ? "week" : "day";
   return `${streak} ${unit}${streak === 1 ? "" : "s"} in a row`;
 }

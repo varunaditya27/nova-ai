@@ -90,7 +90,7 @@ export function Capabilities() {
       className="group overflow-hidden bg-sunk py-20 sm:py-28 lg:flex lg:min-h-dvh lg:flex-col lg:justify-center lg:py-12"
     >
       <div className="mx-auto mb-12 w-full max-w-6xl px-5 sm:px-8 lg:px-12">
-        <SectionHead n="05" name="What it does" />
+        <SectionHead n="05" name="What it does" note="scroll sideways, it’s allowed" />
         <h2 className="text-[length:var(--text-title)]">
           What it does for you.
         </h2>

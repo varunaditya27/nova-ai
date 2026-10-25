@@ -90,7 +90,7 @@ function tidy(text: string): string {
 }
 
 export function patternSureness(confidence: number): string {
-  if (confidence >= 0.8) return "Nova has seen this several times";
-  if (confidence >= 0.5) return "Nova has noticed this a few times";
-  return "Nova suspects this, but isn’t sure yet";
+  if (confidence >= 0.8) return "I’ve seen this several times";
+  if (confidence >= 0.5) return "I’ve noticed this a few times";
+  return "I suspect this, but I’m not sure yet";
 }

@@ -31,13 +31,13 @@ export const NAV: NavGroup[] = [
       {
         href: "/",
         label: "Talk",
-        about: "Your one ongoing conversation with Nova",
+        about: "Our one ongoing conversation",
         icon: MessageCircle,
       },
       {
         href: "/today",
         label: "Today",
-        about: "What’s on Nova’s mind and what’s coming up",
+        about: "What’s on my mind, and what’s coming up",
         icon: Sun,
       },
     ],
@@ -54,7 +54,7 @@ export const NAV: NavGroup[] = [
       {
         href: "/keepsakes",
         label: "Keepsakes",
-        about: "Messages you saved and moments that mattered",
+        about: "Lines you saved and moments that mattered",
         icon: Bookmark,
       },
     ],
@@ -65,13 +65,13 @@ export const NAV: NavGroup[] = [
       {
         href: "/memory",
         label: "Memory",
-        about: "What Nova remembers, and how to make it forget",
+        about: "What I remember, and how to make me forget",
         icon: Sparkles,
       },
       {
         href: "/people",
         label: "People",
-        about: "The people in your life Nova has come to know",
+        about: "The people in your life I’ve come to know",
         icon: Users,
       },
       {
@@ -88,19 +88,19 @@ export const NAV: NavGroup[] = [
       {
         href: "/us",
         label: "How we talk",
-        about: "How well Nova knows you and how you like to talk",
+        about: "How well I know you, and how you like to talk",
         icon: HeartHandshake,
       },
       {
         href: "/errands",
         label: "Errands",
-        about: "Things Nova can do for you, with your say-so",
+        about: "Things I can do for you, with your say-so",
         icon: HandHelping,
       },
       {
         href: "/care",
         label: "Care",
-        about: "Times Nova checked in on you, and who to call",
+        about: "Times I checked in on you, and who to call",
         icon: CalendarHeart,
       },
     ],
@@ -117,7 +117,7 @@ export const NAV: NavGroup[] = [
       {
         href: "/upkeep",
         label: "Upkeep",
-        about: "Nova’s housekeeping — run it by hand",
+        about: "My housekeeping. Run it by hand.",
         icon: Wrench,
       },
     ],

@@ -1083,5 +1083,9 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   its folded corner, Remotion films re-rendered with the stamp, and an ink-pen cursor (`components/brand/NovaCursor.tsx`,
   pure logic in `lib/cursor/`, handwriting while Nova writes via `html[data-busy]`, switchable in the sidebar).
   Also fixed: pinned "how it grows" panels used `visibility:hidden` and dropped stages 2-4 from the accessibility tree.
+- **[done, 2026-10-25] Personality and character across the whole app** (`frontend/BRAND.md` "Personality: the keeper"). Central
+  voice (`lib/voice.ts`), a living stamp with moods and habits (`Mark`, `lib/companion/`), handwritten margin notes (`Margin`), and every page,
+  empty state, loading line, error, toast, 404, command menu, nav caption, welcome chapter and intro rewritten in Nova's first-person voice.
+  Third-person survives only in `/privacy` and `/welcome` factual claims, deliberately. Toasts and sheets lost their last soft/rounded corners.
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).

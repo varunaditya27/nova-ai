@@ -134,7 +134,7 @@ export function Constellation() {
 
   return (
     <Section id="connects" tone="ink" label="Everything connects" reveal>
-      <SectionHead n="04" name="How it connects" />
+      <SectionHead n="04" name="How it connects" note="poke around, I don’t mind" />
       <div className="mb-10 max-w-3xl">
         <h2 className="text-[length:var(--text-title)]">
           Nothing it learns is on its own.

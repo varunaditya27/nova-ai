@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { NOTES } from "@/lib/voice";
 import Link from "next/link";
 import { Empty, Skeleton, Trouble } from "@/components/ui/States";
 import { Page } from "@/components/ui/Page";
@@ -62,11 +63,7 @@ function Saved() {
     );
   if (folders.length === 0) {
     return (
-      <Empty title="Nothing saved yet.">
-        When Nova says something worth keeping — advice, a line that made you
-        laugh, a hard-won idea — hover over it in the conversation and choose
-        “Save”. You can file it under a name of your own.
-      </Empty>
+      <Empty kind="keepsakesSaved" />
     );
   }
   return (
@@ -88,7 +85,7 @@ function Saved() {
                   onRemove={() =>
                     bookmark.mutate(
                       { id: m.message_id, on: false },
-                      { onSuccess: () => toast("Removed from Keepsakes") },
+                      { onSuccess: () => toast("Removed. It’s still in our conversation.") },
                     )
                   }
                 />
@@ -116,11 +113,7 @@ function Moments() {
   const items = q.data ?? [];
   if (items.length === 0) {
     return (
-      <Empty title="No moments marked yet.">
-        Some things you say change your life — getting in, quitting, finishing
-        something hard. Hover over the message in the conversation and choose
-        “This mattered”, and it will be kept here like a photograph.
-      </Empty>
+      <Empty kind="keepsakesMattered" />
     );
   }
   return (
@@ -142,7 +135,7 @@ function Moments() {
             onRemove={() =>
               milestone.mutate(
                 { id: m.message_id, on: false },
-                { onSuccess: () => toast("No longer marked as a moment") },
+                { onSuccess: () => toast("Unmarked. It’s still in our conversation.") },
               )
             }
           />
@@ -158,7 +151,8 @@ export default function Keepsakes() {
   return (
     <Page
       title="Keepsakes"
-      intro="Messages you saved, and moments you marked as mattering, from your conversations."
+      note={NOTES.keepsakes}
+      intro="Lines you saved, and moments you said mattered. I keep them safe."
       actions={
         <Tabs
           label="Kind of keepsake"

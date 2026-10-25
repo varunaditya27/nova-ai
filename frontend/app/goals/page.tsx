@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NOTES } from "@/lib/voice";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Page } from "@/components/ui/Page";
@@ -81,8 +82,8 @@ export default function Goals() {
       { title: t },
       {
         onSuccess: () =>
-          toast("Goal added", "Nova will keep track of it with you."),
-        onError: () => toast("Couldn’t add that just now", "Please try again."),
+          toast("Added.", "I’ll keep track of it with you."),
+        onError: () => toast("That didn’t save", "Nothing was added. Please try again."),
       },
     );
     setTitle("");
@@ -91,7 +92,8 @@ export default function Goals() {
   return (
     <Page
       title="Goals"
-      intro="Mention a goal in conversation — “I want to finish my course by December” — and Nova adds it, breaks it into steps, and checks in. You can also add one here."
+      note={NOTES.goals}
+      intro="Mention a goal — “I want to finish my course by December” — and I’ll add it, break it into steps, and check in. You can also add one here."
       actions={
         <Tabs
           label="Which goals"
@@ -140,20 +142,14 @@ export default function Goals() {
         />
       ) : (q.data ?? []).length === 0 ? (
         <Empty
-          title={
+          kind={
             tab === "active"
-              ? "No goals in progress."
+              ? "goalsActive"
               : tab === "completed"
-                ? "Nothing finished yet."
-                : "Nothing set aside."
+                ? "goalsCompleted"
+                : "goalsPaused"
           }
-        >
-          {tab === "active"
-            ? "When you tell Nova about something you want to do, it appears here with its steps and any habits that will help."
-            : tab === "completed"
-              ? "Goals you finish are kept here, so you can look back at what you’ve done."
-              : "Goals you let go of rest here. There’s no shame in changing your mind."}
-        </Empty>
+        />
       ) : (
         <ul className="flex max-w-3xl flex-col">
           {q.data?.map((g) => (

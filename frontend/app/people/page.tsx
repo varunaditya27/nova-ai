@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NOTES } from "@/lib/voice";
 import { ArrowRight } from "lucide-react";
 import { Page } from "@/components/ui/Page";
 import { Avatar } from "@/components/ui/Bits";
@@ -18,7 +19,8 @@ export default function People() {
   return (
     <Page
       title="People"
-      intro="Nova learns who matters to you from the way you talk about them — never from your contacts or messages with anyone else."
+      note={NOTES.people}
+      intro="I learn who matters to you from how you talk about them. Never from your contacts, and never from your messages with anyone else."
     >
       {q.isLoading ? (
         <Skeleton lines={4} />
@@ -28,11 +30,7 @@ export default function People() {
           onRetry={() => q.refetch()}
         />
       ) : people.length === 0 ? (
-        <Empty title="Nova hasn’t heard about anyone yet.">
-          Mention your sister, a friend, a professor in passing — “Meera is
-          visiting next week” is enough. Nova remembers them and how things are
-          going between you.
-        </Empty>
+        <Empty kind="people" />
       ) : (
         <ul className="flex flex-col">
           {people.map((p) => (

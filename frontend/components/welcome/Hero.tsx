@@ -1,5 +1,6 @@
 "use client";
 
+import { Margin } from "@/components/brand/Margin";
 import { useRef } from "react";
 import { ButtonLink } from "@/components/ui/Button";
 import { LightField } from "@/components/brand/LightField";
@@ -196,6 +197,9 @@ export function Hero() {
             <ButtonLink href="#proof" variant="text">
               See it in action
             </ButtonLink>
+            <Margin tilt={-4} className="hidden sm:inline-block">
+              no sign-up, just hello
+            </Margin>
           </div>
         </div>
       </div>

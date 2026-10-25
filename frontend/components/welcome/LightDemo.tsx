@@ -52,7 +52,7 @@ export function LightDemo() {
 
   return (
     <Section id="light" label="The room matches your day">
-      <SectionHead n="06" name="The light" />
+      <SectionHead n="06" name="The light" note="I follow your sun" />
       <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
         <Reveal className="lg:col-span-5">
           <h2 className="text-[length:var(--text-title)]">

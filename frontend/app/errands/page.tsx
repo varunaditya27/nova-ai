@@ -1,6 +1,7 @@
 "use client";
 
 import { PendingCard } from "@/components/errands/PendingCard";
+import { NOTES } from "@/lib/voice";
 import { Page } from "@/components/ui/Page";
 import { Button } from "@/components/ui/Button";
 import { Empty, Skeleton, Trouble } from "@/components/ui/States";
@@ -31,7 +32,8 @@ export default function Errands() {
   return (
     <Page
       title="Errands"
-      intro="Things Nova can do for you. It always asks before changing anything, and most things can be undone."
+      note={NOTES.errands}
+      intro="Things I can do for you. I always ask before changing anything, and most things can be undone."
     >
       <section aria-labelledby="waiting" className="mb-16">
         <h2
@@ -44,13 +46,13 @@ export default function Errands() {
           <Skeleton lines={2} />
         ) : pending.isError ? (
           <Trouble
-            what="Nova’s waiting list couldn’t be loaded just now."
+            what="My waiting list couldn’t be loaded just now."
             onRetry={() => pending.refetch()}
           />
         ) : waiting.length === 0 ? (
           <div className="max-w-2xl">
             <p className="read mb-4 text-ink-soft">
-              Nothing is waiting. You could try asking Nova something like:
+              Nothing is waiting. You could ask me something like:
             </p>
             <ul className="flex flex-col gap-2">
               {EXAMPLES.map((e) => (
@@ -76,7 +78,7 @@ export default function Errands() {
           id="done"
           className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
         >
-          What Nova has done for you
+          What I’ve done for you
         </h2>
         {history.isLoading ? (
           <Skeleton lines={3} />
@@ -86,10 +88,7 @@ export default function Errands() {
             onRetry={() => history.refetch()}
           />
         ) : done.length === 0 ? (
-          <Empty title="No errands yet.">
-            Once Nova does something for you, it’s listed here — so you always
-            know what it has touched.
-          </Empty>
+          <Empty kind="errands" />
         ) : (
           <ul className="flex max-w-3xl flex-col gap-7">
             {done.map((a) => {
@@ -97,7 +96,7 @@ export default function Errands() {
               return (
                 <li key={a.action_id} className="rule-top grid gap-1 pt-5">
                   <p className="text-[length:var(--text-small)] text-ink-soft">
-                    {toolName(a.tool_name)} · Nova helped you{" "}
+                    {toolName(a.tool_name)} · I helped you{" "}
                     {operationPhrase(a.operation)}
                   </p>
                   <p className="read">
@@ -117,13 +116,13 @@ export default function Errands() {
                             onSuccess: (r) =>
                               toast(
                                 r.undone
-                                  ? "Undone"
-                                  : "That one can’t be undone",
+                                  ? "Undone. As if it never happened."
+                                  : "That one can’t be undone.",
                                 r.undone ? undefined : "It stays as it is.",
                               ),
                             onError: () =>
                               toast(
-                                "Couldn’t undo that just now",
+                                "I couldn’t undo that",
                                 "Please try again.",
                               ),
                           })

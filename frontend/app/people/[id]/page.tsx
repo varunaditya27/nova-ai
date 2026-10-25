@@ -68,7 +68,7 @@ export default function Person() {
         <Avatar name={p.display_name} size={72} />
         <p className="max-w-xl text-ink-soft">
           {p.is_support_source
-            ? "Nova sees them as someone who supports you. "
+            ? "I see them as someone who supports you. "
             : ""}
           {p.active_conflict
             ? "There’s something unresolved between you two right now."
@@ -108,12 +108,11 @@ export default function Person() {
             id="noticed"
             className="rule-top pt-4 mb-5 text-[length:var(--text-read)]"
           >
-            What Nova has noticed
+            What I’ve noticed
           </h2>
           {patterns.length === 0 ? (
             <p className="text-ink-soft">
-              No patterns yet. Nova looks for them once there’s enough history
-              to be fair.
+              No patterns yet. I only look for them once there’s enough history to be fair.
             </p>
           ) : (
             <ul className="flex flex-col gap-6">

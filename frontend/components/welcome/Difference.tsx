@@ -51,7 +51,7 @@ const NOVA = [
 export function Difference() {
   return (
     <Section tone="sunk" label="The difference">
-      <SectionHead n="02" name="The difference" />
+      <SectionHead n="02" name="The difference" note="the whole point, really" />
       <Reveal className="mb-12 max-w-3xl">
         <ScrubText className="text-[length:var(--text-display)] leading-[0.98]">
           Most assistants start from zero every time.

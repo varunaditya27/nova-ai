@@ -113,7 +113,7 @@ export default function GoalDetail() {
           className="mt-2 w-full accent-[var(--accent)]"
         />
         <p className="mt-2 text-[length:var(--text-small)] text-mute">
-          Nova also updates this on its own from what you tell it.
+          I also update this myself, from what you tell me.
         </p>
       </section>
 
@@ -127,8 +127,7 @@ export default function GoalDetail() {
           </h2>
           {g.milestones.length === 0 ? (
             <p className="max-w-md text-ink-soft">
-              No steps yet. Nova breaks a goal into steps once it has enough
-              detail about what you’re aiming for.
+              No steps yet. Give me a little more detail about what you’re aiming for and I’ll break it into steps.
             </p>
           ) : (
             <ol className="relative flex flex-col gap-6 pl-9">
@@ -170,8 +169,7 @@ export default function GoalDetail() {
           </h2>
           {g.habits.length === 0 ? (
             <p className="max-w-md text-ink-soft">
-              No habits yet. When Nova suggests a routine and you adopt it, it’s
-              tracked here.
+              No habits yet. When I suggest a routine and you take it up, I’ll track it here.
             </p>
           ) : (
             <ul className="flex flex-col gap-7">
@@ -211,8 +209,7 @@ export default function GoalDetail() {
             </ul>
           )}
           <p className="mt-6 max-w-md text-[length:var(--text-small)] text-mute">
-            You don’t need to tick anything off — tell Nova when you’ve done it
-            (“I went for a run this morning”) and it counts.
+            You never have to tick anything off. Just tell me (“I went for a run this morning”) and it counts.
           </p>
         </section>
       </div>
@@ -233,7 +230,7 @@ export default function GoalDetail() {
             onClick={() =>
               patch(
                 { status: "completed", progress_score: 1 },
-                "Marked as done — well done",
+                "Done. Well done, genuinely.",
               )
             }
           >
@@ -243,7 +240,7 @@ export default function GoalDetail() {
         {g.status !== "abandoned" && !done && (
           <Button
             variant="quiet"
-            onClick={() => patch({ status: "abandoned" }, "Set aside")}
+            onClick={() => patch({ status: "abandoned" }, "Set aside. It’ll keep.")}
           >
             Set it aside
           </Button>
@@ -268,7 +265,7 @@ export default function GoalDetail() {
               onClick={() =>
                 del.mutate(g.goal_id, {
                   onSuccess: () => {
-                    toast("Goal deleted");
+                    toast("Gone. I’ve torn that page out.");
                     router.push("/goals");
                   },
                 })

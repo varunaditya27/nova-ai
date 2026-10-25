@@ -35,7 +35,7 @@ const QA = [
 export function Questions() {
   return (
     <Section id="questions" tone="sunk" label="Questions">
-      <SectionHead n="09" name="Questions" />
+      <SectionHead n="09" name="Questions" note="ask away" />
       <div className="grid gap-12 lg:grid-cols-12">
         <Reveal className="lg:sticky lg:top-32 lg:col-span-4 lg:self-start">
           <h2 className="text-[length:var(--text-title)]">

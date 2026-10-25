@@ -12,7 +12,7 @@ describe("style copy", () => {
     expect(s[0].sentence).toContain("casually");
     expect(s[1].sentence).toContain("depth");
     expect(s[2].sentence).toContain("moderate");
-    expect(s[3].sentence).toContain("holds back advice");
+    expect(s[3].sentence).toContain("hold back advice");
   });
   it("clamps wild values onto the track", () => {
     expect(

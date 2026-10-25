@@ -119,7 +119,7 @@ export function Growth() {
         className="px-5 py-20 sm:px-8 sm:py-28 lg:flex lg:min-h-dvh lg:items-center lg:px-12 lg:py-16"
       >
         <div className="mx-auto w-full max-w-6xl">
-          <SectionHead n="03" name="How it grows" />
+          <SectionHead n="03" name="How it grows" note="slowly, on purpose" />
           <h2 className="max-w-3xl text-[length:var(--text-title)]">
             It gets to know you slowly.
           </h2>

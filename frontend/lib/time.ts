@@ -83,15 +83,6 @@ export function countdown(iso: string | null, now: Date = new Date()): string {
   return `${Math.abs(diff)} day${Math.abs(diff) === 1 ? "" : "s"} overdue`;
 }
 
-/** "Good morning" — from the browser's own clock, so it is right wherever the person actually is. */
-export function greetingFor(date: Date): string {
-  const h = date.getHours();
-  if (h >= 5 && h < 12) return "Good morning";
-  if (h >= 12 && h < 17) return "Good afternoon";
-  if (h >= 17 && h < 22) return "Good evening";
-  return "Still up";
-}
-
 const DAY_MONTH = new Intl.DateTimeFormat("en", {
   day: "numeric",
   month: "long",

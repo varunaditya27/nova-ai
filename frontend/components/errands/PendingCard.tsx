@@ -19,7 +19,7 @@ export function PendingCard({ item }: { item: ToolConfirmation }) {
     <div className="tone-sunk flex flex-col gap-4 px-6 py-5">
       <div>
         <p className="text-[length:var(--text-small)] text-ink-soft">
-          {toolName(item.tool_name)} · Nova would like to
+          {toolName(item.tool_name)} · I’d like to
         </p>
         <p className="read mt-1">{item.action_description}</p>
       </div>
@@ -35,14 +35,14 @@ export function PendingCard({ item }: { item: ToolConfirmation }) {
             confirm.mutate(item.request_id, {
               onSuccess: (r) =>
                 toast(
-                  r.ok ? "Done" : "That didn’t work",
+                  r.ok ? "Done." : "That didn’t work",
                   r.ok
                     ? r.result_summary
                     : (r.error_message ?? r.result_summary),
                 ),
               onError: () =>
                 toast(
-                  "Couldn’t do that just now",
+                  "I couldn’t do that",
                   "Nothing was changed. You can try again.",
                 ),
             })
@@ -55,7 +55,7 @@ export function PendingCard({ item }: { item: ToolConfirmation }) {
           disabled={busy}
           onClick={() =>
             deny.mutate(item.request_id, {
-              onSuccess: () => toast("Okay, left alone", "Nova won’t do that."),
+              onSuccess: () => toast("Okay, left alone.", "I won’t do that."),
             })
           }
         >

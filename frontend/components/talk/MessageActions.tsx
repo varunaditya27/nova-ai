@@ -39,7 +39,7 @@ export function MessageActions({
       {
         onSuccess: () =>
           toast(
-            "Saved to Keepsakes",
+            "Saved. A good line, that.",
             category ? `Filed under “${category}”.` : undefined,
           ),
       },
@@ -54,7 +54,7 @@ export function MessageActions({
       {
         onSuccess: () =>
           toast(
-            "Kept as a moment that mattered",
+            "Marked. I’ll remember this one.",
             "You’ll find it in Keepsakes.",
           ),
       },
@@ -135,7 +135,7 @@ export function MessageActions({
           onClick={() => {
             navigator.clipboard
               ?.writeText(message.content)
-              .then(() => toast("Copied"));
+              .then(() => toast("Copied."));
           }}
         >
           <Copy size={15} aria-hidden /> Copy

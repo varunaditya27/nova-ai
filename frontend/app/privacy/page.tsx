@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NOTES } from "@/lib/voice";
 import { Check, TriangleAlert } from "lucide-react";
 import { Page } from "@/components/ui/Page";
 import { Button } from "@/components/ui/Button";
@@ -58,6 +59,7 @@ export default function Privacy() {
   return (
     <Page
       title="Privacy"
+      note={NOTES.privacy}
       intro="What Nova promises about your data, and a live check that it holds."
     >
       <ul className="mb-20 grid gap-10 lg:grid-cols-3">

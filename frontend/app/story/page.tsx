@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { NOTES } from "@/lib/voice";
 import { Page } from "@/components/ui/Page";
 import { Tabs } from "@/components/ui/Tabs";
 import { Chapters } from "@/components/story/Chapters";
@@ -15,7 +16,8 @@ export default function Story() {
   return (
     <Page
       title="Our story"
-      intro="Nova writes a chapter for each week. Days shows when you talked, and Firsts keeps the things that happened for the first time."
+      note={NOTES.story}
+      intro="I write a chapter for each week. Days shows when we talked, and Firsts keeps the things that happened for the first time."
       actions={
         <Tabs
           label="How to read our story"

@@ -8,6 +8,7 @@ import {
   useSpring,
 } from "motion/react";
 import { Lockup } from "@/components/ui/Mark";
+import { useCompanionMood } from "@/lib/companion/mood";
 import { Button } from "@/components/ui/Button";
 import { useBegin } from "./useBegin";
 
@@ -20,6 +21,7 @@ export const SECTIONS = [
 
 export function Header() {
   const begin = useBegin();
+  const mood = useCompanionMood();
   const { scrollY, scrollYProgress } = useScroll();
   const [over, setOver] = useState(true);
   useMotionValueEvent(scrollY, "change", (y) =>
@@ -37,7 +39,7 @@ export function Header() {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6">
         <a href="#top" aria-label="Nova">
-          <Lockup className="text-[1.7rem]" />
+          <Lockup className="text-[1.7rem]" mood={mood} alive />
         </a>
         <nav
           aria-label="On this page"

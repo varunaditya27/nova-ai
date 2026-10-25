@@ -20,7 +20,7 @@ export function receiptNumber(certificate: string): string {
 function weight(importance: number): string {
   if (importance >= 0.75) return "Nova treats this as very important";
   if (importance >= 0.45) return "Nova treats this as fairly important";
-  return "Nova treats this as a passing detail";
+  return "I treat this as a passing detail";
 }
 
 /** One memory in full, and the only place that can make Nova forget it — in two deliberate steps. */
@@ -52,9 +52,7 @@ export function MemorySheet({
       {receipt ? (
         <div className="flex flex-col gap-5">
           <p className="read">
-            Nova can no longer recall this, and its words have been erased from
-            memory. The signed receipt below proves it happened and can’t be
-            forged.
+            I can no longer recall this, and my words about it are erased. The signed receipt below proves it happened and can’t be forged.
           </p>
           {receipt.cascade && (
             <p className="text-ink-soft">
@@ -81,7 +79,7 @@ export function MemorySheet({
                   ?.writeText(receipt.certificate)
                   .then(() =>
                     toast(
-                      "Full receipt copied",
+                      "Receipt copied.",
                       "Keep it somewhere safe — it proves this memory was erased.",
                     ),
                   )
@@ -116,7 +114,7 @@ export function MemorySheet({
           {!confirming ? (
             <div className="pt-4">
               <Button variant="quiet" onClick={() => setConfirming(true)}>
-                Ask Nova to forget this
+                Ask me to forget this
               </Button>
             </div>
           ) : (
@@ -129,8 +127,7 @@ export function MemorySheet({
                 Forget this for good?
               </h3>
               <p>
-                Nova will erase what it remembers about this and will never
-                bring it up again. You’ll get a signed receipt.
+                I’ll erase what I remember about this and never bring it up again. You’ll get a signed receipt.
               </p>
               <p className="text-ink-soft">
                 The original messages stay in your conversation history, and
@@ -145,7 +142,7 @@ export function MemorySheet({
                       onSuccess: (r) => setReceipt(r),
                       onError: () =>
                         toast(
-                          "Couldn’t forget that just now",
+                          "I couldn’t forget that",
                           "Nothing was changed. Please try again.",
                         ),
                     })

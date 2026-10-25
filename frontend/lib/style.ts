@@ -34,10 +34,10 @@ export function spectrums(
       at: f,
       sentence:
         f < 0.4
-          ? "You write casually, so Nova keeps it relaxed."
+          ? "You write casually, so I keep it relaxed."
           : f > 0.6
-            ? "You write formally, so Nova keeps it measured."
-            : "Nova matches your in-between tone.",
+            ? "You write formally, so I keep it measured."
+            : "I match your in-between tone.",
     },
     {
       key: "length",
@@ -46,10 +46,10 @@ export function spectrums(
       at: l,
       sentence:
         l < 0.4
-          ? "You like it brief, so Nova gets to the point."
+          ? "You like it brief, so I get to the point."
           : l > 0.6
-            ? "You like depth, so Nova explains fully."
-            : "Nova gives replies of a middling length.",
+            ? "You like depth, so I explain fully."
+            : "I give replies of a middling length.",
     },
     {
       key: "questions",
@@ -58,10 +58,10 @@ export function spectrums(
       at: q,
       sentence:
         q < 0.4
-          ? "Nova asks you fewer questions."
+          ? "I ask you fewer questions."
           : q > 0.6
-            ? "You seem to enjoy being asked, so Nova asks more."
-            : "Nova asks a moderate number of questions.",
+            ? "You seem to enjoy being asked, so I ask more."
+            : "I ask a moderate number of questions.",
     },
     {
       key: "advice",
@@ -70,10 +70,10 @@ export function spectrums(
       at: a,
       sentence:
         a < 0.4
-          ? "Nova holds back advice unless you ask for it."
+          ? "I hold back advice unless you ask for it."
           : a > 0.6
-            ? "You welcome advice, so Nova offers it freely."
-            : "Nova offers advice now and then.",
+            ? "You welcome advice, so I offer it freely."
+            : "I offer advice now and then.",
     },
   ];
 }

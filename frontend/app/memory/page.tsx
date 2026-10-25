@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { NOTES } from "@/lib/voice";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -17,9 +18,9 @@ type Tab = "events" | "learned";
 
 /** How sure Nova is of something it has learned, in words. */
 function sureness(confidence: number): string {
-  if (confidence >= 0.8) return "Nova is quite sure";
-  if (confidence >= 0.5) return "Nova thinks so";
-  return "Nova is guessing";
+  if (confidence >= 0.8) return "I’m quite sure";
+  if (confidence >= 0.5) return "I think so";
+  return "I’m guessing";
 }
 
 function Entry({ m, onOpen }: { m: MemoryOut; onOpen: (id: string) => void }) {
@@ -48,8 +49,8 @@ function Integrity() {
   return (
     <p role="status" className="mt-16 max-w-2xl text-ink-soft">
       {ok
-        ? "Nothing here has been changed since Nova wrote it. "
-        : "Something in these records doesn’t add up — it may have been changed outside Nova. See Privacy for details. "}
+        ? "Nothing here has been changed since I wrote it. "
+        : "Something in these records doesn’t add up — it may have been changed outside me. See Privacy for details. "}
       <button
         onClick={() => q.refetch()}
         className="text-accent underline underline-offset-4"
@@ -74,7 +75,7 @@ function Ask({ onOpen }: { onOpen: (id: string) => void }) {
         id="ask"
         className="rule-top pt-4 mb-3 text-[length:var(--text-read)]"
       >
-        Ask Nova what it remembers
+        Ask me what I remember
       </h2>
       <form
         onSubmit={(e) => {
@@ -108,7 +109,7 @@ function Ask({ onOpen }: { onOpen: (id: string) => void }) {
             <Skeleton lines={2} />
           ) : q.isError ? (
             <Trouble
-              what="Nova couldn’t search its memory just now."
+              what="I couldn’t search my memory just now."
               onRetry={() => q.refetch()}
             />
           ) : (q.data ?? []).length === 0 ? (
@@ -144,7 +145,8 @@ function MemoryPage() {
   return (
     <Page
       title="Memory"
-      intro="What Nova remembers, in its own words. Open a memory to read it in full or to make Nova forget it."
+      note={NOTES.memory}
+      intro="What I remember, in my own words. Open a memory to read it in full, or to make me forget it."
       actions={
         <Tabs
           label="Kind of memory"
@@ -158,7 +160,7 @@ function MemoryPage() {
             },
             {
               value: "learned",
-              label: "What Nova has learned",
+              label: "What I’ve learned",
               count: learned.length,
             },
           ]}
@@ -170,16 +172,12 @@ function MemoryPage() {
         <Skeleton lines={4} />
       ) : audit.isError ? (
         <Trouble
-          what="Nova’s memory couldn’t be read just now."
+          what="My memory couldn’t be read just now."
           onRetry={() => audit.refetch()}
         />
       ) : tab === "events" ? (
         events.length === 0 ? (
-          <Empty title="Nothing remembered yet.">
-            Nova doesn’t keep every word. It keeps what seems to matter — big
-            feelings, big news, things about your life. They’ll appear here as
-            you talk.
-          </Empty>
+          <Empty kind="memoryEvents" />
         ) : (
           <ul className="flex max-w-3xl flex-col">
             {events.map((m) => (
@@ -188,10 +186,7 @@ function MemoryPage() {
           </ul>
         )
       ) : learned.length === 0 ? (
-        <Empty title="Nothing learned yet.">
-          After enough conversations, Nova notices what stays true about you —
-          what you like, how you work, who matters — and writes it down here.
-        </Empty>
+        <Empty kind="memoryLearned" />
       ) : (
         <ul className="flex max-w-3xl flex-col gap-6">
           {learned.map((s) => (

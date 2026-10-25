@@ -17,7 +17,10 @@ import { usePendingTools } from "@/lib/hooks/useTools";
 import { rise, stagger } from "@/lib/motion";
 import { relationshipLabel } from "@/lib/people";
 import { stageById, toNextStage } from "@/lib/stages";
-import { countdown, greetingFor, humanDay, relativeTime } from "@/lib/time";
+import { countdown, humanDay, relativeTime } from "@/lib/time";
+import { hello } from "@/lib/voice";
+import { Mark } from "@/components/ui/Mark";
+import { Margin } from "@/components/brand/Margin";
 import { upcoming } from "@/lib/upcoming";
 
 function whenWeLastTalked(iso: string | null): string {
@@ -69,7 +72,7 @@ export default function Today() {
     ? toNextStage(h.relationship_stage, rel.data.total_sessions)
     : null;
   const first = h.message_count === 0;
-  const greeting = greetingFor(new Date());
+  const { headline, aside } = hello(new Date(), h.name);
 
   return (
     <motion.div
@@ -79,13 +82,16 @@ export default function Today() {
       className="mx-auto flex max-w-6xl flex-col gap-16 px-5 pb-28 pt-10 sm:px-8 lg:gap-20 lg:px-12 lg:pt-16"
     >
       <motion.header variants={rise} className="flex flex-col gap-4">
-        <h1 className="text-[length:var(--text-display)]">
-          {greeting}
-          {h.name ? `, ${h.name}` : ""}.
-        </h1>
+        <div className="flex items-end gap-4">
+          <Mark size={56} alive />
+          <Margin tilt={-3} className="pb-2">
+            {aside}
+          </Margin>
+        </div>
+        <h1 className="text-[length:var(--text-display)]">{headline}</h1>
         <p className="read max-w-2xl text-ink-soft">
           {first
-            ? "This is where your life together will gather. For now it’s a blank page."
+            ? "This is where our life together will gather. For now it’s a blank page, and I’m rather fond of it."
             : whenWeLastTalked(h.last_interaction_at)}
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -105,12 +111,10 @@ export default function Today() {
       {h.cold_start_active && (
         <motion.section variants={rise} className="tone max-w-3xl px-7 py-6">
           <h2 className="rule-top pt-4 text-[length:var(--text-read)]">
-            Nova is still getting to know you
+            I’m still getting to know you
           </h2>
           <p className="mt-2 text-ink-soft">
-            For the first few conversations Nova stays gentle: it asks little,
-            brings up nothing from the past, and won’t reach out first. That
-            changes as it learns your rhythm.
+            For the first few conversations I stay gentle: I ask little, bring up nothing from the past, and won’t reach out first. That changes as I learn your rhythm.
           </p>
         </motion.section>
       )}
@@ -124,7 +128,7 @@ export default function Today() {
             id="mind"
             className="rule-top pt-4 mb-4 text-[length:var(--text-read)] text-ink-soft"
           >
-            On Nova’s mind
+            On my mind
           </h2>
           {onMind ? (
             <>
@@ -139,8 +143,8 @@ export default function Today() {
             </>
           ) : (
             <p className="read max-w-lg text-ink-soft">
-              Nothing pressing. When there’s something worth saying, Nova will
-              bring it up — it doesn’t talk just to fill the quiet.
+              Nothing pressing. When I have something worth saying, I’ll bring
+              it up. I don’t talk just to fill the quiet.
             </p>
           )}
         </section>
@@ -159,8 +163,8 @@ export default function Today() {
             <p className="read">{h.current_chapter}</p>
           ) : (
             <p className="text-ink-soft">
-              Nova writes a chapter for each week. The first one appears after
-              you’ve been talking for a few days.
+              I write a chapter for each week. The first one turns up after
+              we’ve been talking for a few days. No spoilers.
             </p>
           )}
           <Link
@@ -187,8 +191,9 @@ export default function Today() {
             <Skeleton lines={3} />
           ) : soon.length === 0 ? (
             <p className="text-ink-soft">
-              Nothing due in the next month. When you tell Nova about a deadline
-              or a plan, it shows up here.
+              Nothing due in the next month. Tell me about a deadline or a plan
+              and it will turn up here, with a countdown I’ll try not to
+              overplay.
             </p>
           ) : (
             <ul className="flex flex-col gap-5">
@@ -221,8 +226,8 @@ export default function Today() {
             <Skeleton lines={3} />
           ) : active.length === 0 ? (
             <p className="text-ink-soft">
-              No goals yet. Mention something you’re working toward in
-              conversation and Nova will keep track of it for you.
+              No goals yet. Mention something you’re working toward and I’ll
+              keep track of it, and nudge you at sensible intervals.
             </p>
           ) : (
             <ul className="flex flex-col gap-5">
@@ -296,7 +301,7 @@ export default function Today() {
           href="/us"
           className="mt-3 inline-flex min-h-11 items-center gap-1 text-accent underline underline-offset-4"
         >
-          How Nova knows you <ArrowRight size={16} aria-hidden />
+          How I know you <ArrowRight size={16} aria-hidden />
         </Link>
       </motion.section>
     </motion.div>

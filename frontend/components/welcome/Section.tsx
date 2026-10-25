@@ -1,5 +1,6 @@
 "use client";
 
+import { Margin } from "@/components/brand/Margin";
 import { useRef, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { gsap, MOTION_OK, useGSAP } from "@/lib/gsap";
@@ -67,11 +68,21 @@ export function Section({
 export { Reveal } from "@/components/brand/Reveal";
 
 /** The editorial header of a chapter: a rule, its number, its name. The same names the chapter rail uses. */
-export function SectionHead({ n, name }: { n: string; name: string }) {
+export function SectionHead({
+  n,
+  name,
+  note,
+}: {
+  n: string;
+  name: string;
+  /** Nova's handwritten aside about this chapter. */
+  note?: string;
+}) {
   return (
-    <div className="rule-top mb-12 flex items-baseline gap-5 pt-4">
+    <div className="rule-top mb-12 flex flex-wrap items-baseline gap-x-5 gap-y-1 pt-4">
       <span className="font-display text-[length:var(--text-read)]">{n}</span>
       <span className="label">{name}</span>
+      {note && <Margin className="ml-auto">{note}</Margin>}
     </div>
   );
 }

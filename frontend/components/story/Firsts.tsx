@@ -18,10 +18,7 @@ export function Firsts() {
   const entries = q.data?.entries ?? [];
   if (entries.length === 0) {
     return (
-      <Empty title="Nothing here yet — everything is still ahead.">
-        Your first conversation, your first goal, the first moment you mark as
-        mattering: each one is kept here, with the day it happened.
-      </Empty>
+      <Empty kind="firsts" />
     );
   }
   return (

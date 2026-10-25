@@ -59,7 +59,7 @@ export function Sheet({
             aria-modal="true"
             aria-label={title}
             tabIndex={-1}
-            className="floating relative flex h-full w-full max-w-xl flex-col overflow-y-auto rounded-l-[1.75rem] px-6 pb-10 pt-6 outline-none sm:px-9"
+            className="floating relative flex h-full w-full max-w-xl flex-col overflow-y-auto px-6 pb-10 pt-6 outline-none sm:px-9"
             initial={{ x: 48, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 48, opacity: 0 }}

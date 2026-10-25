@@ -185,8 +185,8 @@ export function Days() {
           </div>
           <p className="read mt-6 text-ink-soft">
             {total === 0
-              ? "No conversations this month."
-              : `${total} ${total === 1 ? "message" : "messages"} this month. The busiest day was ${DAY_LONG.format(new Date(`${busiest.date}T12:00:00Z`))}.`}
+              ? "A quiet month. Nothing written."
+              : `${total} ${total === 1 ? "message" : "messages"} this month. The busiest day was ${DAY_LONG.format(new Date(`${busiest.date}T12:00:00Z`))}. We had a lot to say.`}
           </p>
         </>
       )}

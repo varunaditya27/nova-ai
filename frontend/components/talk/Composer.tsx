@@ -141,7 +141,7 @@ export function Composer({
           ) : (
             <VolumeX size={15} aria-hidden />
           )}
-          {readAloud ? "Nova reads replies aloud" : "Read replies aloud"}
+          {readAloud ? "I’ll read replies aloud" : "Read replies aloud"}
         </button>
       </div>
     </div>

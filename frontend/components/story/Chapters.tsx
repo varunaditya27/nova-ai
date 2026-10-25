@@ -18,11 +18,7 @@ export function Chapters() {
   const chapters = q.data ?? [];
   if (chapters.length === 0) {
     return (
-      <Empty title="Your first chapter is still being written.">
-        Nova writes one at the end of each week, once you’ve been talking for a
-        few days. It’s a short account of what the week was about — you can come
-        back to it years from now.
-      </Empty>
+      <Empty kind="chapters" />
     );
   }
   return (
