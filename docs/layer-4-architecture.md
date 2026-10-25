@@ -21,70 +21,10 @@ This distinction is critical. The Persona Engine is not a prompt prefix. It is a
 
 ## 2. Architecture Overview
 
-```
-Inputs consumed by Layer 4:
- ├── TemporalContextObject (Layer 1)
- │     ├── circadian_band
- │     └── session_gap_category
- ├── MemoryPacket (Layer 2)
- │     ├── recalled_memories
- │     ├── identity_memory_entries
- │     ├── stm_turns (last 10 turns)
- │     └── uwm_context
- └── EmotionIntentPacket (Layer 3)
-       ├── primary_emotion
-       ├── background_state
-       ├── intent
-       ├── empathy_hypothesis
-       ├── conversation_mode
-       ├── response_instruction
-       ├── emotional_posture_instruction
-       ├── advice_gate
-       └── disclosure_depth_allowed
+<p align="center"><img src="diagrams/generation.svg" alt="Three inputs feed deterministic persona steps, then a semantic planner (4a) and an emotion refiner (4b) produce the FinalResponsePacket." width="100%"></p>
 
-          │
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-1: Persona State Resolver                 │  Deterministic; < 5ms
-│  (reads Identity Memory → current persona)   │
-└───────────────────────────────────────────────┘
-          │
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-2: Relationship State Manager             │  Deterministic; < 3ms
-│  (tie strength, stage, intimacy model)        │
-└───────────────────────────────────────────────┘
-          │
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-3: Tone & Style Calibrator                │  Deterministic; < 2ms
-│  (maps context → voice parameters)           │
-└───────────────────────────────────────────────┘
-          │
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-4: Persona Drift Detector                 │  Per-turn check; < 5ms
-│  (identity contradiction guard)              │
-└───────────────────────────────────────────────┘
-          │
-          ├─── PersonaPacket emitted to SC-5 and SC-6
-          │
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-5: Semantic Planner (Agent 4a)            │  LLM call; target 300–500ms
-│  (factual content generation)               │
-└───────────────────────────────────────────────┘
-          │ SemanticDraft
-          ▼
-┌───────────────────────────────────────────────┐
-│  SC-6: Emotion Refiner (Agent 4b)             │  LLM call or skip; 200–400ms
-│  (emotional tone + phrasing adjustment)      │
-└───────────────────────────────────────────────┘
-          │
-          ▼
-    FinalResponsePacket
-    (passed to Layer 5 and Layer 9)
-```
+*Figure: Layer 4 inputs, the deterministic persona steps, and the 4a planner and 4b refiner.*
+
 
 **Execution model:**
 - SC-1 through SC-4 run sequentially (each depends on the prior); total ≤ 15ms

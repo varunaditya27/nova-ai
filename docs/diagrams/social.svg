@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 800" width="1100" height="800" role="img" aria-labelledby="social-title social-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="social-title">Layer 5: social intelligence</title>
+<desc id="social-desc">Four inputs feed two parallel steps, then pattern recognition and coaching detection; coaching either passes the response through or augments it.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="799" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 5 · SOCIAL INTELLIGENCE</text>
+<rect x="40" y="50" width="252" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="166.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">FinalResponsePacket · L4</text>
+<text x="166.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">final_text, topic_domain</text>
+<text x="166.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">intent_served</text>
+<rect x="308" y="50" width="252" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="434.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">EmotionIntentPacket · L3</text>
+<text x="434.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">primary_emotion, intent</text>
+<text x="434.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">conversation_mode, background_state</text>
+<rect x="576" y="50" width="252" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="702.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">MemoryPacket · L2</text>
+<text x="702.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">uwm_context (relationship_graph,</text>
+<text x="702.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">social_context), recalled_memories</text>
+<text x="702.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">stm_turns</text>
+<rect x="844" y="50" width="252" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="970.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">TemporalContextObject · L1</text>
+<text x="970.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">circadian_band</text>
+<text x="970.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">session_gap_category</text>
+<path d="M166 160 L166 196" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M434 160 L434 196" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M702 160 L702 196" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M970 160 L970 196" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M166 196 L970 196" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="130" y="236" width="300" height="62" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="280.0" y="258.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Social Graph Manager</text>
+<text x="280.0" y="276.0" text-anchor="middle" font-size="10.5" fill="#5a524b">relationship model</text>
+<rect x="600" y="236" width="300" height="62" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="750.0" y="258.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Interpersonal Event Tracker</text>
+<text x="750.0" y="276.0" text-anchor="middle" font-size="10.5" fill="#5a524b">detects and classifies events</text>
+<path d="M280 196 L280 236" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M750 196 L750 236" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="380" y="370" width="340" height="62" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="392.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-3 · Social Pattern Recognizer</text>
+<text x="550.0" y="410.0" text-anchor="middle" font-size="10.5" fill="#5a524b">cross-session dynamics</text>
+<path d="M280 298 L280 334 L550 334" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M750 298 L750 334 L550 334" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M550 334 L550 370" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="380" y="470" width="340" height="62" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="492.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Coaching Opportunity Detector</text>
+<text x="550.0" y="510.0" text-anchor="middle" font-size="10.5" fill="#5a524b">when and how to coach</text>
+<path d="M550 432 L550 470" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550 532 L550 560" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M550 560 L260 560 L260 600" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<path d="M550 560 L840 560 L840 600" fill="none" stroke="#b45309" stroke-width="1.5" marker-end="url(#y)"/>
+<rect x="40" y="600" width="440" height="62" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="260.0" y="622.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">coaching_opportunity: None</text>
+<text x="260.0" y="640.0" text-anchor="middle" font-size="10.5" fill="#5a524b">pass through; Layer 4 response unchanged</text>
+<rect x="620" y="600" width="440" height="62" fill="#f8ead9" stroke="#b45309" stroke-width="1.3"/>
+<text x="840.0" y="622.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#b45309">SC-5 · Social Coaching Response Modifier</text>
+<text x="840.0" y="640.0" text-anchor="middle" font-size="10.5" fill="#5a524b">coaching_opportunity: Some; augments the reply</text>
+<path d="M260 662 L260 728 L380 728" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<path d="M840 662 L840 728 L720 728" fill="none" stroke="#b45309" stroke-width="1.5" marker-end="url(#y)"/>
+<rect x="380" y="700" width="340" height="56" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="550.0" y="722.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">SocialIntelligencePacket</text>
+<text x="550.0" y="740.0" text-anchor="middle" font-size="10.5" fill="#5a524b">passed to Layer 6, Layer 7 and Layer 9</text>
+<text x="22" y="784" font-size="10.5" fill="#5a524b">Parallel steps: SC-1 and SC-2 run side by side and join at SC-3</text>
+</svg>

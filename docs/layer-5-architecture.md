@@ -27,66 +27,10 @@ All five sub-components run in **parallel with Layer 4** when the conversation d
 
 ## 2. Architecture Overview
 
-```
-Inputs consumed by Layer 5:
- ├── FinalResponsePacket (Layer 4)
- │     ├── final_text
- │     ├── topic_domain
- │     └── intent_served
- ├── EmotionIntentPacket (Layer 3)
- │     ├── primary_emotion
- │     ├── intent (with topic_domain)
- │     ├── conversation_mode
- │     └── background_state
- ├── MemoryPacket (Layer 2)
- │     ├── uwm_context (relationship_graph, social_context)
- │     ├── recalled_memories
- │     └── stm_turns
- └── TemporalContextObject (Layer 1)
-       └── circadian_band, session_gap_category
+<p align="center"><img src="diagrams/social.svg" alt="Four inputs feed two parallel steps, then pattern recognition and coaching detection; coaching either passes the response through or augments it." width="100%"></p>
 
-          │
-          ├────────────────────────────────────┐
-          │                                    │ (parallel processing)
-          ▼                                    ▼
-┌──────────────────────────┐        ┌──────────────────────────────┐
-│ SC-1: Social Graph       │        │ SC-2: Interpersonal Event    │
-│       Manager            │        │       Tracker                │
-│ (relationship model)     │        │ (detect + classify events)   │
-└──────────────────────────┘        └──────────────────────────────┘
-          │                                    │
-          └────────────────┬───────────────────┘
-                           │
-                           ▼
-              ┌────────────────────────────┐
-              │ SC-3: Social Pattern       │
-              │       Recognizer           │
-              │ (cross-session dynamics)   │
-              └────────────────────────────┘
-                           │
-                           ▼
-              ┌────────────────────────────┐
-              │ SC-4: Coaching Opportunity │
-              │       Detector             │
-              │ (when + how to coach)      │
-              └────────────────────────────┘
-                           │
-              ┌────────────┴────────────────┐
-              │ coaching_opportunity: None  │ → pass through (Layer 4 response unchanged)
-              │ coaching_opportunity: Some  │ → SC-5
-              └─────────────────────────────┘
-                           │ (if Some)
-                           ▼
-              ┌────────────────────────────┐
-              │ SC-5: Social Coaching      │
-              │       Response Modifier    │
-              │ (augment Layer 4 response) │
-              └────────────────────────────┘
-                           │
-                           ▼
-                  SocialIntelligencePacket
-                  (passed to Layer 6, Layer 7, and Layer 9)
-```
+*Figure: Layer 5 inputs, the two parallel steps, and the coaching branch.*
+
 
 **Execution model:**
 - SC-1 + SC-2 run in parallel, both triggered on every message

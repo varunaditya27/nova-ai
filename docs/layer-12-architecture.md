@@ -24,54 +24,10 @@ All four are coordinated by a persistent **Privacy Agent** that runs as a backgr
 
 ## 2. Architecture Overview
 
-```
-User's Device (Primary)
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│  ┌──────────────────────────────────────────────────────────────────────┐  │
-│  │  /nova-data/ (encrypted at rest; all files SQLCipher or AES-256-GCM) │  │
-│  │                                                                      │  │
-│  │  memory.db           episodic + semantic + identity (SQLCipher)     │  │
-│  │  memory.vdb          vector embeddings (hnswlib, AES-256-GCM)       │  │
-│  │  longitudinal.db     Layer 10 data (SQLCipher)                      │  │
-│  │  personality.db      personality vector + drift history (SQLCipher)  │  │
-│  │  goals.db            Layer 7 goal state (SQLCipher)                 │  │
-│  │  safety.db           Layer 11 safety record (SQLCipher)             │  │
-│  │  audit.db            audit index + deletion log (SQLCipher)         │  │
-│  │  keystore/           hardware-bound key material (Secure Enclave)   │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                        ▲                                                    │
-│                        │ read/write (all in-process, no network)            │
-│                        │                                                    │
-│  ┌─────────────────────┴────────────────────────────────────────────────┐  │
-│  │  Privacy Agent (persistent background service)                       │  │
-│  │                                                                      │  │
-│  │  EncryptionManager    DeletionExecutor    AuditIndexBuilder          │  │
-│  │  SyncCoordinator      IntegrityVerifier   ConsentManager             │  │
-│  └──────────────────────────────────────────────────────────────────────┘  │
-│                        │                                                    │
-│          E2E-encrypted sync deltas only (no plaintext ever leaves device)  │
-└──────────────────────────────────────────────────────────────────────────── ┘
-                          │
-                          ▼
-              Nova Sync Server
-              ┌──────────────────────────────────────┐
-              │  Encrypted Blob Store                │
-              │  (opaque AES-256-GCM ciphertext)     │
-              │                                      │
-              │  server sees: account_id, blob_size, │
-              │    sync_timestamp                    │
-              │  server NEVER sees: key, plaintext,  │
-              │    content, user identity data       │
-              └──────────────────────────────────────┘
-                          │
-                          ▼
-              User's Device (Secondary — laptop, tablet, etc.)
-              ┌──────────────────────────────────────┐
-              │  Decrypts with user's key (local)    │
-              │  Populates local /nova-data/          │
-              └──────────────────────────────────────┘
-```
+<p align="center"><img src="diagrams/privacy-storage.svg" alt="Stores and a privacy agent sit on the first device; only encrypted deltas reach the sync server, which cannot read them; a second device decrypts locally." width="100%"></p>
+
+*Figure: Layer 12 on-device storage and the sync path to a second device. This is the design; encryption at rest is not deployed.*
+
 
 **Fundamental rule:** Anything that contains, or could be used to reconstruct, conversation content stays on device. The cloud never sees plaintext, even in encrypted form that Nova holds the key to, unless the user has opted in to cloud backup and holds the only decryption key.
 
@@ -441,6 +397,11 @@ injectable param, so this pseudocode's chapter-merge algorithm below was never c
 caller. Reintroduce both together if a real chapter-cascade store is added.
 
 ### 4.3 Deletion Execution Algorithm
+
+<p align="center"><img src="diagrams/deletion-cascade.svg" alt="After a confirmed request and a dry run, deletion removes the memory, cascades to what it supported, then issues a certificate and records it in the privacy chain." width="100%"></p>
+
+*Figure: the deletion steps inside one transaction. Steps 4 to 7 cascade; the cross-store cascade is a documented follow-up.*
+
 
 ```python
 class DeletionExecutor:
@@ -998,6 +959,11 @@ class SyncOperation:
 ```
 
 ### 6.3 Sync Protocol — Full Sequence
+
+<p align="center"><img src="diagrams/sync-sequence.svg" alt="Device A encrypts a delta and pushes it; the server stores the ciphertext; device B pulls, and decrypts locally." width="100%"></p>
+
+*Figure: sync between two devices through the server, which stores and forwards ciphertext only.*
+
 
 ```python
 class SyncCoordinator:

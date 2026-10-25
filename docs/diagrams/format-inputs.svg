@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 830" width="1100" height="830" role="img" aria-labelledby="format-inputs-title format-inputs-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="format-inputs-title">Layer 9: inputs and output routing</title>
+<desc id="format-inputs-desc">Four groups of inputs feed format adaptation, micro-interaction planning and orchestration; voice mode adds a synthesizer, and engagement signals update the format profile afterwards.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="829" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 9 · OUTPUT &amp; INTERACTION</text>
+<rect x="40" y="50" width="252" height="140" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="166.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 4</text>
+<text x="166.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">final_response_text</text>
+<text x="166.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">complexity_score (0.0–1.0)</text>
+<text x="166.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">semantic_draft (pre-refinement)</text>
+<text x="166.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">final_text (post-refinement)</text>
+<path d="M166 190 L166 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="308" y="50" width="252" height="140" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="434.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layers 1, 3, 5, 8</text>
+<text x="434.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">circadian_band, session_gap_category</text>
+<text x="434.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">valence, arousal, primary_emotion</text>
+<text x="434.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">emotional_intensity (0.0–1.0)</text>
+<text x="434.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">relationship_stage, tie_strength</text>
+<text x="434.0" y="150.0" text-anchor="middle" font-size="10.5" fill="#5a524b">crisis_mode_active (hard suppressor)</text>
+<path d="M434 190 L434 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="576" y="50" width="252" height="140" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="702.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From session context</text>
+<text x="702.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">conversation_mode</text>
+<text x="702.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">voice_mode (bool)</text>
+<text x="702.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">content_type</text>
+<text x="702.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">urgency_level (0.0–1.0)</text>
+<path d="M702 190 L702 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="844" y="50" width="252" height="140" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="970.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From user format profile</text>
+<text x="970.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">preferred_length, emoji_usage_rate</text>
+<text x="970.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">format_preference</text>
+<text x="970.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">explicit_overrides</text>
+<path d="M970 190 L970 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M166 200 L970 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="340" y="240" width="420" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="262.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Format Adapter</text>
+<text x="550.0" y="280.0" text-anchor="middle" font-size="10.5" fill="#5a524b">runs first; produces FormatSpec; no LLM</text>
+<path d="M550 200 L550 240" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="340" y="326" width="420" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="348.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Micro-Interaction Engine</text>
+<text x="550.0" y="366.0" text-anchor="middle" font-size="10.5" fill="#5a524b">decides pre-response signals; no LLM</text>
+<path d="M550 296 L550 326" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="560" y="316" text-anchor="start" font-size="10.5" fill="#5a524b">FormatSpec</text>
+<rect x="340" y="412" width="420" height="56" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="550.0" y="434.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">SC-1 · Interaction Orchestrator</text>
+<text x="550.0" y="452.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">assembles the full event sequence; no LLM</text>
+<path d="M550 382 L550 412" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="560" y="402" text-anchor="start" font-size="10.5" fill="#5a524b">MicroInteractionPlan</text>
+<path d="M550 468 L550 486" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M550 486 L260 486 L260 520" fill="none" stroke="#5a524b" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550 486 L840 486 L840 520" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#y)"/>
+<text x="270" y="480" text-anchor="start" font-size="10.5" fill="#5a524b">voice_mode = False</text>
+<text x="850" y="480" text-anchor="start" font-size="10.5" fill="#b45309" font-weight="700">voice_mode = True</text>
+<rect x="40" y="520" width="440" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="260.0" y="542.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Text event stream</text>
+<text x="260.0" y="560.0" text-anchor="middle" font-size="10.5" fill="#5a524b">WebSocket or SSE, delivered to the UI</text>
+<rect x="620" y="520" width="440" height="56" fill="#f8ead9" stroke="#b45309" stroke-width="1.3"/>
+<text x="840.0" y="542.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#b45309">SC-3 · Voice &amp; SSML Synthesizer</text>
+<text x="840.0" y="560.0" text-anchor="middle" font-size="10.5" fill="#5a524b">prosody, filler, TTS abstraction</text>
+<rect x="40" y="720" width="1020" height="60" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="742.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Post-delivery</text>
+<text x="550.0" y="760.0" text-anchor="middle" font-size="10.5" fill="#5a524b">Layer 9 reads engagement signals (latency, length ratio, format feedback) and updates the profile</text>
+<path d="M260 576 L260 720" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<path d="M840 576 L840 720" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#y)"/>
+<text x="22" y="814" font-size="10.5" fill="#5a524b">Solid: text path. Dashed amber: voice mode only.</text>
+</svg>

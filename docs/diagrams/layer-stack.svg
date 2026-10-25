@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" width="1100" height="620" role="img" aria-labelledby="layer-stack-title layer-stack-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="layer-stack-title">The thirteen layers, grouped</title>
+<desc id="layer-stack-desc">The thirteen layers grouped into four bands for reading: perceive and remember, understand and respond, relate and act, reflect and protect.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="619" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">THE THIRTEEN LAYERS</text>
+<rect x="40" y="70" width="210" height="96" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="145.0" y="121.7" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#5a524b">Perceive and remember</text>
+<rect x="270" y="70" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="362.0" y="92.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Input Perception</text>
+<text x="362.0" y="110.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 1</text>
+<rect x="468" y="70" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="560.0" y="92.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Memory</text>
+<text x="560.0" y="110.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 2</text>
+<rect x="40" y="186" width="210" height="96" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="145.0" y="237.7" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#5a524b">Understand and respond</text>
+<rect x="270" y="186" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="362.0" y="208.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Emotion &amp; Reasoning</text>
+<text x="362.0" y="226.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 3</text>
+<rect x="468" y="186" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="560.0" y="208.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Persona &amp; Generation</text>
+<text x="560.0" y="226.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 4</text>
+<rect x="666" y="186" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="758.0" y="208.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Output &amp; Interaction</text>
+<text x="758.0" y="226.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 9</text>
+<rect x="40" y="302" width="210" height="96" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="145.0" y="353.7" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#5a524b">Relate, plan and act</text>
+<rect x="270" y="302" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="362.0" y="324.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Social Intelligence</text>
+<text x="362.0" y="342.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 5</text>
+<rect x="468" y="302" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="560.0" y="324.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Proactive Engagement</text>
+<text x="560.0" y="342.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 6</text>
+<rect x="666" y="302" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="758.0" y="324.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Goals &amp; Accountability</text>
+<text x="758.0" y="342.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 7</text>
+<rect x="864" y="302" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="956.0" y="324.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Tools &amp; Actions</text>
+<text x="956.0" y="342.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 8</text>
+<rect x="40" y="418" width="210" height="96" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="145.0" y="469.7" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#5a524b">Reflect and protect</text>
+<rect x="270" y="418" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="362.0" y="440.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Longitudinal Life</text>
+<text x="362.0" y="458.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 10</text>
+<rect x="468" y="418" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="560.0" y="440.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Safety &amp; Crisis</text>
+<text x="560.0" y="458.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 11</text>
+<rect x="666" y="418" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="758.0" y="440.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Privacy &amp; Data</text>
+<text x="758.0" y="458.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 12</text>
+<rect x="864" y="418" width="184" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="956.0" y="440.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="11" font-weight="700" fill="#1a1a1a">Onboarding &amp; Cold Start</text>
+<text x="956.0" y="458.0" text-anchor="middle" font-size="10.5" fill="#5a524b">layer 13</text>
+<text x="22" y="604" font-size="10.5" fill="#5a524b">Grouping is for reading only. The specs do not define these bands.</text>
+</svg>

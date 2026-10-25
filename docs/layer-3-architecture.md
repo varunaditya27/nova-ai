@@ -24,54 +24,10 @@ All six sub-components run before any response generation. Together they produce
 
 ## 2. Architecture Overview
 
-```
-Inputs from upstream layers:
- ├── InputPerceptionPacket (Layer 1)
- │     ├── composite_emotional_prior
- │     ├── implicit_emotional_intensity_score
- │     ├── prosody_emotion_estimate (if voice)
- │     ├── signal_mismatch flag
- │     └── circadian_band
- └── MemoryPacket (Layer 2)
-       ├── recalled_memories (with emotion vectors)
-       ├── uwm_context (psychological_model, active_stressors)
-       └── stm_turns (last 10 turns)
+<p align="center"><img src="diagrams/emotion-classification.svg" alt="Layer 1 and Layer 2 outputs feed six sub-components in sequence, ending in a read-only EmotionIntentPacket." width="100%"></p>
 
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-1: Primary Emotion Classifier          │  LLM-assisted + heuristic
-└────────────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-2: Background Emotional State Tracker  │  Deterministic + memory-derived
-└────────────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-3: Intent Classifier                   │  Rule-based + LLM
-└────────────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-4: Stated-vs-Felt Mismatch Detector    │  Cross-signal comparison
-└────────────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-5: Empathy Hypothesis Generator        │  Structured reasoning
-└────────────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────────────┐
-│  SC-6: Conversation Mode Resolver          │  Deterministic policy
-└────────────────────────────────────────────┘
-          │
-          ▼
-    EmotionIntentPacket
-    (read-only, passed to all downstream layers)
-```
+*Figure: Layer 3 inputs and the six classification steps, ending in the EmotionIntentPacket.*
+
 
 **Execution model:** SC-1 through SC-4 can run in parallel after receiving their shared inputs. SC-5 runs after all four complete. SC-6 runs last. Total target latency: **under 200ms** including one LLM call for SC-1 using a fast small model.
 
@@ -844,24 +800,27 @@ def generate_empathy_hypothesis(
 
 ### 7.4 Need-to-Posture Mapping Table
 
-```
-need                    → posture (default)             → posture (BES negative drift override)
-───────────────────────────────────────────────────────────────────────────────────────────────
-to_be_heard             → validate_then_hold            → validate_then_hold
-to_be_validated         → validate_then_hold            → validate_then_hold
-to_celebrate            → celebrate                     → celebrate (no override for positives)
-to_problem_solve        → validate_then_solve           → validate_then_solve
-to_think_aloud          → co_think                      → co_think
-to_decide               → co_think                      → validate_then_solve
-space_to_sit_with_it    → listen_only                   → listen_only
-information             → inform_with_warmth            → inform_with_warmth (more warmth)
-distraction             → inform_with_warmth            → gentle_redirect
-crisis_support          → crisis_protocol               → crisis_protocol (unconditional)
-```
+| Need | Default posture | Posture with BES negative-drift override |
+|---|---|---|
+| `to_be_heard` | validate_then_hold | validate_then_hold |
+| `to_be_validated` | validate_then_hold | validate_then_hold |
+| `to_celebrate` | celebrate | celebrate (no override for positives) |
+| `to_problem_solve` | validate_then_solve | validate_then_solve |
+| `to_think_aloud` | co_think | co_think |
+| `to_decide` | co_think | validate_then_solve |
+| `space_to_sit_with_it` | listen_only | listen_only |
+| `information` | inform_with_warmth | inform_with_warmth (more warmth) |
+| `distraction` | inform_with_warmth | gentle_redirect |
+| `crisis_support` | crisis_protocol | crisis_protocol (unconditional) |
 
 ---
 
 ## 8. Sub-Component 6 — Conversation Mode Resolver
+
+<p align="center"><img src="diagrams/mode-routing.svg" alt="The mode resolver fixes one conversation mode; casual messages take the fast System 1 path, while complex or emotional messages take the fuller System 2 path." width="100%"></p>
+
+*Figure: the mode resolver and the System 1 and System 2 routes. Which of the eight modes map to each route is not specified in the docs.*
+
 
 ### 8.1 Purpose
 

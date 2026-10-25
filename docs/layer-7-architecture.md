@@ -23,63 +23,10 @@ Layer 7 contains **five sub-components**:
 
 ## 2. Architecture Overview
 
-```
-Inputs to Layer 7:
+<p align="center"><img src="diagrams/goals.svg" alt="Per-message, session and daily inputs feed goal extraction and the goal store, which branches into progress monitoring and decomposition, then into the response and proactive queue." width="100%"></p>
 
-Per-message (from Layer 1 + Layer 2 output):
- ├── user_message_text
- ├── classified_intent (from Layer 1)
- ├── emotional_state (from Layer 1)
- ├── retrieved_memories (from Layer 2)
- └── session_context
+*Figure: Layer 7 inputs, the goal store, and the outputs to Layers 2, 4, 6 and 12.*
 
-Post-session (background, from Layer 2 State Updater):
- └── session_summary (after session ends)
-
-Background poll (every 24h):
- └── goal_store scan for due milestones and stale goals
-
-                    │
-                    ▼
-     ┌──────────────────────────────────────┐
-     │  SC-1: Goal Extractor                │  Per-message, background
-     │  (detect + formalize new goals)      │  LLM call; runs async
-     └──────────────────────────────────────┘
-                    │ GoalExtractionResult
-                    ▼
-     ┌──────────────────────────────────────┐
-     │  SC-2: Goal Store                    │  Always running; persistent
-     │  (lifecycle management + retrieval)  │  Read on every message
-     └──────────────────────────────────────┘
-                    │
-         ┌──────────┴──────────────────────┐
-         │                                 │
-         ▼                                 ▼
-┌────────────────────┐         ┌────────────────────────┐
-│  SC-3: Progress    │         │  SC-5: Goal Decomposer │
-│  Monitor           │         │  (milestones + habits  │
-│  (inference +      │         │   + Layer 6 handoff)   │
-│   state update)    │         └────────────────────────┘
-└────────────────────┘                    │
-         │                                │ ProactiveItem
-         │ GoalContextPacket              ▼
-         ▼                      Layer 6 Proactive Queue
-┌────────────────────┐
-│  SC-4: Accountabil-│
-│  ity Response      │  Per-message; conditional
-│  Modifier          │
-└────────────────────┘
-         │
-         ▼
-  Layer 4 Response Generator
-  (GoalContextPacket injected into prompt)
-
-Outputs from Layer 7:
- ├── GoalContextPacket → Layer 4 (per message, if goals are relevant)
- ├── ProactiveItems → Layer 6 (milestone approaching; stale goal; celebration)
- ├── GoalStateUpdate → Layer 2 UWM (goal status changes; new goals; completions)
- └── Layer7Output → Layer 12 Audit Log
-```
 
 **Execution model:**
 - SC-1 runs **asynchronously** after each message — it does not block response generation
@@ -455,6 +402,11 @@ def get_relevant_goals(
 ```
 
 ### 4.6 Goal Status Transition Rules
+
+<p align="center"><img src="diagrams/goal-states.svg" alt="Goals move between tentative, active, on-track, at-risk and paused, with stale-timer transitions; completed, abandoned and archived are end states." width="100%"></p>
+
+*Figure: goal status transitions from the STATUS_TRANSITIONS rules. Any state can also move to completed, abandoned or paused when the user says so.*
+
 
 Status transitions are governed by explicit rules, not arbitrary LLM judgment:
 

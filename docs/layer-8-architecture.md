@@ -42,26 +42,10 @@ Layer 8 contains **four sub-components plus a plugin set**:
 
 ## 2. Architecture Overview
 
-```
-A user message that asks Nova to DO something
-                    │
-                    ▼
-   ┌─────────────────────────────────────────────┐
-   │  SC-1: Tool Manager (orchestrator)          │
-   │                                             │
-   │  1. detect_intent  ───────────────────────► ToolIntent (or None → no tool)
-   │  2. resolve params (SC-3) ────────────────► missing? → ONE clarifying question
-   │  3. confirmation gate (SC-2) ─────────────► SOFT/HARD? → ConfirmationRequest
-   │  4. execute via plugin (uniform interface)                                   │
-   │  5. record (SC-4) ────────────────────────► ActionRecord (append-only)       │
-   └─────────────────────────────────────────────┘
-                    │
-                    ▼
-              ToolUseOutput
-        (result + action record, or
-         a clarification / confirmation
-         request handed back to Layer 4/9)
-```
+<p align="center"><img src="diagrams/tool-pipeline.svg" alt="A message that asks Nova to act passes detect intent, resolve parameters, the confirmation gate, plugin execution and recording, then returns a result or a question." width="100%"></p>
+
+*Figure: the Layer 8 tool pipeline, from intent detection to the action record.*
+
 
 **Execution position.** Layer 8 is invoked during response generation (Layer 4) when the user's
 message expresses an intent to act. It is *not* on the safety-critical path: if Layer 11 detects
@@ -127,9 +111,14 @@ gate or resolver.
 
 ### 4.2 Base tier per action verb
 
-```
-read → AUTO   search → AUTO   create → SOFT   update → SOFT   delete → HARD   send → HARD
-```
+| Action verb | Confirmation tier |
+|---|---|
+| `read` | AUTO |
+| `search` | AUTO |
+| `create` | SOFT |
+| `update` | SOFT |
+| `delete` | HARD |
+| `send` | HARD |
 
 ### 4.3 Baseline + intrinsic floors
 
@@ -179,6 +168,11 @@ the record's `undo_token`, refuses if another user owns the action, dispatches t
 through the uniform plugin interface, which is what makes plugins swappable.
 
 ### 5.1 Confirmation security model
+
+<p align="center"><img src="diagrams/tool-confirmation.svg" alt="AUTO actions run at once. SOFT and HARD actions wait as a pending confirmation bound to a fingerprint, then run once on confirm, or end on deny." width="100%"></p>
+
+*Figure: states of a risky action. Pending confirmations are held in process memory and are lost on restart (see the limitation below).*
+
 
 Confirmation is a **bound, single-use capability token**, never a trusted boolean:
 

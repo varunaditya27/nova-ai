@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 540" width="1100" height="540" role="img" aria-labelledby="sync-sequence-title sync-sequence-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="sync-sequence-title">Layer 12: sync between two devices through a blind server</title>
+<desc id="sync-sequence-desc">Device A encrypts a delta and pushes it; the server stores the ciphertext; device B pulls, and decrypts locally.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="539" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 12 · ZERO-KNOWLEDGE SYNC</text>
+<rect x="80" y="44" width="200" height="46" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="180.0" y="71.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Device A</text>
+<path d="M180 90 L180 470" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="450" y="44" width="200" height="46" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="550.0" y="71.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">Sync server</text>
+<path d="M550 90 L550 470" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4"/>
+<rect x="820" y="44" width="200" height="46" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="920.0" y="71.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Device B</text>
+<path d="M920 90 L920 470" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4"/>
+<path d="M180 150 L230 150 L230 170 L180 170" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="240" y="164" text-anchor="start" font-size="10.5" fill="#1a1a1a">build delta, encrypt</text>
+<path d="M180 210 L550 210" fill="none" stroke="#006680" stroke-width="1.5" marker-end="url(#t)"/>
+<text x="365" y="200" text-anchor="middle" font-size="10.5" fill="#006680">push AES-256-GCM ciphertext</text>
+<text x="562" y="248" text-anchor="start" font-size="10.5" fill="#5a524b">stores blob; idempotent on delta_id</text>
+<path d="M920 300 L550 300" fill="none" stroke="#006680" stroke-width="1.5" marker-end="url(#t)"/>
+<text x="735" y="290" text-anchor="middle" font-size="10.5" fill="#006680">GET /sync/pull (cursor)</text>
+<path d="M550 340 L920 340" fill="none" stroke="#006680" stroke-width="1.5" marker-end="url(#t)"/>
+<text x="735" y="330" text-anchor="middle" font-size="10.5" fill="#006680">deltas from other devices</text>
+<path d="M920 390 L970 390 L970 410 L920 410" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="905" y="430" text-anchor="end" font-size="10.5" fill="#1a1a1a">decrypt, apply</text>
+<rect x="40" y="480" width="1020" height="44" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="506.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">The server never holds the key or plaintext; each device decrypts locally.</text>
+</svg>

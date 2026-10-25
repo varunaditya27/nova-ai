@@ -102,6 +102,11 @@ use the same local model; the difference is depth, not size.
 
 ### The 13 layers
 
+<p align="center"><img src="docs/diagrams/layer-stack.svg" alt="The thirteen layers grouped into four bands for reading: perceive and remember, understand and respond, relate and act, reflect and protect." width="100%"></p>
+
+*Figure: the thirteen layers, grouped for reading.*
+
+
 | # | Layer | What it does | State |
 |---|---|---|---|
 | 1 | [Input Perception](docs/layer-1-architecture.md) | Reads time of day, silence, typing behaviour; never shows the model a raw timestamp | Live. Voice-prosody input is not wired |

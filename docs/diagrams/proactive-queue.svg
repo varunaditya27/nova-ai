@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 560" width="1100" height="560" role="img" aria-labelledby="proactive-queue-title proactive-queue-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="proactive-queue-title">Layer 6: proactive queue item states</title>
+<desc id="proactive-queue-desc">An item waits as pending, is deferred and retried, is approved and sent, then is responded to or ignored after 48 hours.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="559" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 6 · PROACTIVE QUEUE ITEM STATES</text>
+<rect x="40" y="120" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="130.0" y="142.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">pending</text>
+<text x="130.0" y="160.0" text-anchor="middle" font-size="10.5" fill="#5a524b">not yet evaluated</text>
+<rect x="320" y="120" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="410.0" y="142.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">approved</text>
+<text x="410.0" y="160.0" text-anchor="middle" font-size="10.5" fill="#5a524b">cleared by SC-3</text>
+<rect x="600" y="120" width="180" height="56" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="690.0" y="142.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">sent</text>
+<text x="690.0" y="160.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">message delivered</text>
+<rect x="880" y="120" width="180" height="56" fill="#e6f1e6" stroke="#006600" stroke-width="1.3"/>
+<text x="970.0" y="142.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006600">responded</text>
+<text x="970.0" y="160.0" text-anchor="middle" font-size="10.5" fill="#5a524b">user replied</text>
+<rect x="40" y="300" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="130.0" y="322.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">deferred</text>
+<text x="130.0" y="340.0" text-anchor="middle" font-size="10.5" fill="#5a524b">not the right time yet</text>
+<rect x="320" y="300" width="180" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="410.0" y="322.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">suppressed</text>
+<text x="410.0" y="340.0" text-anchor="middle" font-size="10.5" fill="#5a524b">killed by gate policy</text>
+<rect x="600" y="300" width="180" height="56" fill="#f8ead9" stroke="#b45309" stroke-width="1.3"/>
+<text x="690.0" y="322.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#b45309">ignored</text>
+<text x="690.0" y="340.0" text-anchor="middle" font-size="10.5" fill="#5a524b">no reply within 48 h</text>
+<rect x="40" y="430" width="180" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="130.0" y="452.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">expired</text>
+<text x="130.0" y="470.0" text-anchor="middle" font-size="10.5" fill="#5a524b">past expiry time</text>
+<path d="M220 148 L320 148" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="270" y="140" text-anchor="middle" font-size="10.5" fill="#5a524b">send now</text>
+<path d="M500 148 L600 148" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="550" y="140" text-anchor="middle" font-size="10.5" fill="#5a524b">generated</text>
+<path d="M780 148 L880 148" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="830" y="140" text-anchor="middle" font-size="10.5" fill="#5a524b">replies</text>
+<path d="M690 176 L690 300" fill="none" stroke="#b45309" stroke-width="1.5" marker-end="url(#y)"/>
+<text x="700" y="240" text-anchor="start" font-size="10.5" fill="#5a524b">48 h, no reply</text>
+<path d="M130 176 L130 300" fill="none" stroke="#5a524b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="142" y="240" text-anchor="start" font-size="10.5" fill="#5a524b">defer</text>
+<path d="M40 328 L22 328 L22 148 L40 148" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<path d="M220 340 L320 340" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="270" y="332" text-anchor="middle" font-size="10.5" fill="#5a524b">suppress</text>
+<path d="M130 356 L130 430" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="142" y="400" text-anchor="start" font-size="10.5" fill="#5a524b">past expiry</text>
+<text x="22" y="544" font-size="10.5" fill="#5a524b">Solid: normal path. A pending item can also be suppressed or expire directly; the arrows show the main routes.</text>
+</svg>

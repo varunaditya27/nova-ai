@@ -23,67 +23,10 @@ Layer 6 contains **five sub-components**:
 
 ## 2. Architecture Overview
 
-```
-Inputs to Layer 6 (continuous; not per user message):
+<p align="center"><img src="diagrams/proactive.svg" alt="Five inputs feed a queue. Each candidate is classified, passed through a timing gate, then either sent, or deferred or suppressed back to the queue." width="100%"></p>
 
-From Layer 1 (Temporal Resolver — polled every 30 min):
- ├── pending_threads (overdue or due-today list)
- ├── circadian_band (current time band)
- ├── user_baseline_messaging_schedule
- └── session_gap (time since last user message)
+*Figure: Layer 6 inputs, the proactive queue, and the timing gate that sends, defers or suppresses each candidate.*
 
-From Layer 2 (Memory — polled every session end + background):
- ├── episodic_memories (recent + high-importance)
- ├── semantic_memories (stable user facts)
- └── uwm_context (life events, known upcoming dates, BES trend)
-
-From Layer 5 (Social Intelligence — event-driven):
- ├── proactive_coaching_queue (coaching items deferred for future session)
- └── social_graph_updates (new events or pattern activations)
-
-From Layer 7 (Goals — event-driven):
- └── goal_check_in_requests (goals with due dates approaching)
-
-From Layer 3 (post-session Background Emotional State):
- └── bes_trend (7-day rolling emotional trajectory)
-
-                    │
-                    ▼
-     ┌──────────────────────────────────┐
-     │ SC-1: Proactive Queue Manager    │  Always running; background
-     │ (persistent priority queue)      │  Poll interval: 30 min
-     └──────────────────────────────────┘
-                    │ candidate items
-                    ▼
-     ┌──────────────────────────────────┐
-     │ SC-2: Initiative Classifier      │  Per candidate; deterministic
-     │ (type, framing, content basis)   │  < 5ms per item
-     └──────────────────────────────────┘
-                    │ classified candidates
-                    ▼
-     ┌──────────────────────────────────┐
-     │ SC-3: Timing & Delivery Gate     │  Per candidate; deterministic
-     │ (multi-condition send/defer/kill) │  < 10ms per item
-     └──────────────────────────────────┘
-                    │
-         ┌──────────┴──────────────┐
-         │ SEND_NOW                │ DEFER / SUPPRESS
-         ▼                         └────────────────▶ back to SC-1
-     ┌──────────────────────────────────┐
-     │ SC-4: Proactive Message          │  LLM call; < 400ms
-     │       Generator                  │
-     └──────────────────────────────────┘
-                    │ ProactiveMessage
-                    ▼
-     ┌──────────────────────────────────┐
-     │ SC-5: Response Tracker           │  Post-send; monitoring
-     │ (monitors user reaction)         │  Updates queue priority
-     └──────────────────────────────────┘
-                    │
-                    ▼
-         Notification API → User device
-         (delivered via push / in-app / WhatsApp Business API)
-```
 
 **Execution model:**
 - SC-1 runs as a background process polling every 30 minutes
@@ -235,6 +178,11 @@ BES_WEIGHTS = {
 **Context weight** \(W_{	ext{context}}\): boosts items where the current situation makes an item especially relevant (e.g., user just returned after a long silence → `SILENCE_BREAK` is no longer relevant, deprioritize to 0.0; a conflict that was active but user hasn't been heard from in 5 days → `CONFLICT_RESOLUTION_CHECK` boosts to 1.4).
 
 ### 3.4 Queue Lifecycle Rules
+
+<p align="center"><img src="diagrams/proactive-queue.svg" alt="An item waits as pending, is deferred and retried, is approved and sent, then is responded to or ignored after 48 hours." width="100%"></p>
+
+*Figure: states of a proactive queue item, from pending to responded, ignored, suppressed or expired.*
+
 
 - **Maximum active items per user:** 10 pending items at any time. New items beyond this threshold replace the lowest-priority item.
 - **Maximum items sent per day:** 1. This is a hard cap. Proactive messages are rare by design.
@@ -392,6 +340,11 @@ class ClassifiedInitiative:
 ---
 
 ## 5. Sub-Component 3 — Timing & Delivery Gate
+
+<p align="center"><img src="diagrams/proactive-gates.svg" alt="A candidate passes three groups of blocking conditions; any blocking condition defers or suppresses it, and only a clear pass sends it." width="100%"></p>
+
+*Figure: the three blocking groups of the timing gate. The first blocking condition decides; only a clear candidate is sent.*
+
 
 ### 5.1 Purpose
 

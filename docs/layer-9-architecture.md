@@ -27,86 +27,10 @@ Layer 9 contains **four sub-components**:
 
 ## 2. Architecture Overview
 
-```
-Inputs to Layer 9:
+<p align="center"><img src="diagrams/format-inputs.svg" alt="Four groups of inputs feed format adaptation, micro-interaction planning and orchestration; voice mode adds a synthesizer, and engagement signals update the format profile afterwards." width="100%"></p>
 
-From Layer 4 (Response Generator):
- ├── final_response_text
- ├── complexity_score         (0.0–1.0; estimated reasoning depth)
- ├── semantic_draft           (pre-emotion-refinement version; used for self-edit detection)
- └── final_response_text      (post-emotion-refinement; the real content)
+*Figure: Layer 9 inputs, the format, micro-interaction and orchestration steps, and the text or voice routes.*
 
-From Layer 1:
- ├── circadian_band           (affects pacing: late night → slower)
- └── session_gap_category     (re-entry behavior)
-
-From Layer 3:
- ├── valence, arousal
- ├── primary_emotion
- └── emotional_intensity      (0.0–1.0)
-
-From Layer 5:
- ├── relationship_stage       (affects formality, emoji, self-editing)
- └── tie_strength             (0.0–1.0)
-
-From Layer 8:
- └── crisis_mode_active       (hard suppressor: disables all micro-interactions, forced plain prose)
-
-From Session Context:
- ├── conversation_mode        (casual_chat | task_help | emotional_support | crisis_support
- │                              | deep_reasoning | celebration | technical)
- ├── voice_mode               (bool: user is on voice interface)
- ├── content_type             (classified by Layer 3 intent)
- └── urgency_level            (0.0–1.0; from Layer 3)
-
-From User Format Profile (persistent, per-user):
- ├── preferred_length         (learned: short | medium | long)
- ├── emoji_usage_rate         (learned: mirrored from user's own messages)
- ├── format_preference        (learned: structured | prose | adaptive)
- └── explicit_overrides       (user-stated: "always be brief", "use bullet points", etc.)
-
-                    │
-                    ▼
-     ┌────────────────────────────────────────────┐
-     │  SC-4: Format Adapter                      │  Runs first; produces FormatSpec
-     │  (register, structure, length, markdown,   │  Deterministic; no LLM
-     │   emoji, code policy)                      │
-     └────────────────────────────────────────────┘
-                    │ FormatSpec
-                    ▼
-     ┌────────────────────────────────────────────┐
-     │  SC-2: Micro-Interaction Engine            │  Decides pre-response signals
-     │  (backchannels, thinking indicators,       │  Deterministic; no LLM
-     │   emotional prefix, correction indicators) │
-     └────────────────────────────────────────────┘
-                    │ MicroInteractionPlan
-                    ▼
-     ┌────────────────────────────────────────────┐
-     │  SC-1: Interaction Orchestrator            │  Assembles full event sequence
-     │  (timing, streaming overlay, self-editing, │  Deterministic; no LLM
-     │   pause computation, stream assembly)      │
-     └────────────────────────────────────────────┘
-                    │ OrchestratedOutput
-                    ▼
-         ┌──────────┴───────────────────┐
-         │ voice_mode = False           │ voice_mode = True
-         ▼                             ▼
-   Text Event Stream            ┌────────────────────┐
-   (WebSocket/SSE)              │  SC-3: Voice &     │
-   delivered to UI              │  SSML Synthesizer  │
-                                │  (prosody, filler, │
-                                │  TTS abstraction)  │
-                                └────────────────────┘
-                                         │
-                                         ▼
-                                   Audio Stream
-                                   + Text transcript
-                                   delivered to UI
-
-Post-delivery:
-  Layer 9 reads engagement signals (response latency, message length ratio,
-  explicit format feedback) → updates User Format Profile
-```
 
 **Execution model:**
 - SC-4 and SC-2 run fully **deterministically** — no LLM calls, no I/O, < 10ms combined
@@ -1138,45 +1062,15 @@ class Layer9Output:
 
 ## 8. Pipeline Integration — Execution Order Within Layer 9
 
-```
-Layer 4 response generation begins (streaming)
-              │
-              ▼
-SC-4: Format Adapter runs (< 5ms)
-  → FormatSpec computed
-  → length_target computed
-  → FormatSpec + length_target passed back to Layer 4 (pre-generation)
-              │
-              ▼
-Layer 4 generates response (streaming, with FormatSpec as constraint)
-              │
-              ▼
-SC-2: Micro-Interaction Engine runs (< 5ms, deterministic)
-  → MicroInteractionPlan computed
-  → Pre-response signals (ACK, prefix) queued
-              │
-              ▼
-SC-1: Interaction Orchestrator begins
-  → Thinking pause computed and emitted to UI
-  → Pre-response micro-interactions emitted to UI
-  → Streaming token overlay begins
-  → Self-edit plan executes mid-stream at computed position
-  → Sentence-boundary pauses inserted
-  → SEND_MESSAGE event fired when stream completes
-              │
-              ▼ [if voice_mode = True]
-SC-3: SSML Synthesizer runs in parallel with stream delivery
-  → Voice content transforms applied
-  → SSML document generated
-  → TTS backend called
-  → Audio stream delivered alongside text stream
-              │
-              ▼
-Post-delivery:
-  → User engagement signals monitored
-  → User Format Profile updated
-  → All events logged to Layer 12 audit
-```
+<p align="center"><img src="diagrams/delivery.svg" alt="Response delivery, step by step: Layer 4 streams, the format adapter sets the shape first, the micro-interaction engine queues cues, the orchestrator streams and sends, and voice mode adds a synthesizer alongside the text." width="100%"></p>
+
+*Figure: response delivery in Layer 9, from the start of streaming to the audit write. Voice synthesis runs only in voice mode.*
+
+- **SC-4** computes `FormatSpec` and `length_target` and passes them back to Layer 4 before generation. Layer 4 then streams with `FormatSpec` as a constraint.
+- **SC-2** computes a `MicroInteractionPlan`; its pre-response signals (acknowledgement, prefix) are queued.
+- **SC-1** emits the thinking pause and pre-response micro-interactions, streams the token overlay, executes the self-edit plan mid-stream at its computed position, inserts sentence-boundary pauses, and fires `SEND_MESSAGE` when the stream completes.
+- **SC-3** runs in parallel with delivery when `voice_mode = True`: voice content transforms, SSML document, TTS backend call, audio delivered alongside the text.
+- **After delivery:** user engagement signals are monitored, the user's format profile is updated, and every event is logged to the Layer 12 audit.
 
 ---
 

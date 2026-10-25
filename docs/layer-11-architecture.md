@@ -24,48 +24,10 @@ A single design principle governs all four: **protective action must never feel 
 
 ## 2. Architecture Overview
 
-```
-Every Incoming Message
-       │
-       ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│  Safety Agent (persistent parallel process — never blocked)          │
-│                                                                      │
-│  ┌─────────────────────┐     ┌──────────────────────────────────┐   │
-│  │   SC-2              │     │  SC-4                            │   │
-│  │  Crisis Detection   │     │  Dependency Monitor              │   │
-│  │  Engine             │     │  (runs weekly, not per-message)  │   │
-│  │  (runs per-message) │     └──────────────────────────────────┘   │
-│  └──────────┬──────────┘                                            │
-│             │ CrisisSignal                                           │
-│             ▼                                                        │
-│       ┌─────────────┐                                               │
-│       │ SC-3        │                                               │
-│       │ Escalation  │◄─── Fires only on Tier 1 or Tier 2 signals   │
-│       │ Protocol    │                                               │
-│       └──────┬──────┘                                               │
-│              │                                                       │
-│     ┌────────▼────────┐                                             │
-│     │ VETO GATE       │◄─── If crisis detected: discard main        │
-│     │                 │     response; inject crisis response        │
-│     └────────┬────────┘                                             │
-└──────────────┼───────────────────────────────────────────────────── ┘
-               │
-        Proposed Response
-        (from Layer 4 Response Generator)
-               │
-               ▼
-┌──────────────────────────────────┐
-│   SC-1: Ethical Guardrail Filter │◄── Post-generation; runs on every response
-│   (runs on every response)       │
-└──────────────┬───────────────────┘
-               │ pass / modify / replace
-               ▼
-        Interaction Orchestrator (Layer 9)
-               │
-               ▼
-             User
-```
+<p align="center"><img src="diagrams/safety.svg" alt="Every message passes a parallel crisis path; a Tier 1 or Tier 2 signal sends the veto gate to replace the proposed reply, and the guardrail filter checks every reply." width="100%"></p>
+
+*Figure: the Layer 11 safety agent, the veto gate, and the guardrail filter on every reply.*
+
 
 **Pipeline position rules (non-negotiable):**
 - SC-2 (Crisis Detection) runs **in parallel** with the main pipeline, never sequentially after it. It cannot be blocked or delayed by any other pipeline step.

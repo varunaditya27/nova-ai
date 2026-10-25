@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" width="1100" height="620" role="img" aria-labelledby="tool-pipeline-title tool-pipeline-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="tool-pipeline-title">Layer 8: tool use pipeline</title>
+<desc id="tool-pipeline-desc">A message that asks Nova to act passes detect intent, resolve parameters, the confirmation gate, plugin execution and recording, then returns a result or a question.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="619" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 8 · TOOLS &amp; ACTIONS</text>
+<rect x="290" y="50" width="520" height="44" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="76.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">A user message that asks Nova to act</text>
+<path d="M550 94 L550 120" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="290" y="120" width="520" height="340" fill="none" stroke="#5a524b" stroke-width="1" stroke-dasharray="2 3"/>
+<text x="302" y="138" font-size="10.5" font-weight="700" fill="#5a524b">SC-1 · Tool Manager (orchestrator)</text>
+<rect x="320" y="150" width="460" height="52" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="172.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">1 · detect_intent</text>
+<text x="550.0" y="190.0" text-anchor="middle" font-size="10.5" fill="#5a524b">ToolIntent, or None: no tool, generation runs</text>
+<rect x="320" y="214" width="460" height="52" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="236.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">2 · resolve params (SC-3)</text>
+<text x="550.0" y="254.0" text-anchor="middle" font-size="10.5" fill="#5a524b">missing parameter: one clarifying question</text>
+<rect x="320" y="278" width="460" height="52" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="550.0" y="300.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">3 · confirmation gate (SC-2)</text>
+<text x="550.0" y="318.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">SOFT or HARD: returns a ConfirmationRequest</text>
+<rect x="320" y="342" width="460" height="52" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="364.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">4 · execute via plugin</text>
+<text x="550.0" y="382.0" text-anchor="middle" font-size="10.5" fill="#5a524b">one uniform plugin interface</text>
+<rect x="320" y="406" width="460" height="52" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="428.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">5 · record (SC-4)</text>
+<text x="550.0" y="446.0" text-anchor="middle" font-size="10.5" fill="#5a524b">append-only ActionRecord</text>
+<path d="M550.0 202 L550.0 214" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 266 L550.0 278" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 330 L550.0 342" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 394 L550.0 406" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550 460 L550 480" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="290" y="480" width="520" height="60" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="550.0" y="502.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">ToolUseOutput</text>
+<text x="550.0" y="520.0" text-anchor="middle" font-size="10.5" fill="#5a524b">result + action record, or a clarification /</text>
+<text x="550.0" y="535.0" text-anchor="middle" font-size="10.5" fill="#5a524b">confirmation handed back to Layer 4 or 9</text>
+<text x="22" y="604" font-size="10.5" fill="#5a524b">Failure anywhere in Layer 8 degrades to no action and is still recorded</text>
+</svg>

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 660" width="1100" height="660" role="img" aria-labelledby="input-perception-title input-perception-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="input-perception-title">Layer 1: input perception pipeline</title>
+<desc id="input-perception-desc">A raw event passes temporal resolution, implicit signal extraction, optional multimodal and voice steps, and assembly into one read-only packet.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="659" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 1 · INPUT PERCEPTION</text>
+<rect x="290" y="56" width="520" height="40" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="80.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Raw incoming event</text>
+<rect x="290" y="122" width="520" height="58" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="144.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Temporal Resolver</text>
+<text x="550.0" y="162.0" text-anchor="middle" font-size="10.5" fill="#5a524b">deterministic, zero LLM calls</text>
+<rect x="290" y="206" width="520" height="58" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="228.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Implicit Signal Extractor</text>
+<text x="550.0" y="246.0" text-anchor="middle" font-size="10.5" fill="#5a524b">deterministic signal extraction</text>
+<rect x="290" y="290" width="520" height="58" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="550.0" y="312.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-3 · Multimodal Normalizer</text>
+<text x="550.0" y="330.0" text-anchor="middle" font-size="10.5" fill="#5a524b">conditional: only on non-text input</text>
+<rect x="290" y="374" width="520" height="58" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3" stroke-dasharray="5 4"/>
+<text x="550.0" y="396.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Voice Prosody Extractor</text>
+<text x="550.0" y="414.0" text-anchor="middle" font-size="10.5" fill="#5a524b">conditional: only on voice input</text>
+<rect x="290" y="458" width="520" height="58" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="550.0" y="480.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">SC-5 · Input Perception Assembler</text>
+<text x="550.0" y="498.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">merges every sub-component output</text>
+<rect x="290" y="542" width="520" height="44" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="550.0" y="564.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">InputPerceptionPacket</text>
+<text x="550.0" y="582.0" text-anchor="middle" font-size="10.5" fill="#5a524b">read-only, passed to all downstream layers</text>
+<path d="M550.0 96 L550.0 122" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 180 L550.0 206" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 264 L550.0 290" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 348 L550.0 374" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 432 L550.0 458" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550.0 516 L550.0 542" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="22" y="644" font-size="10.5" fill="#5a524b">dashed: runs only for that input type</text>
+</svg>

@@ -35,42 +35,10 @@ All architecture decisions in Layer 13 follow three governing principles. These 
 
 ## 3. Architecture Overview
 
-```
-New User — First Message
-       │
-       ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│  Cold Start Engine (temporary overlay — active from T=0 until graduation)  │
-│                                                                            │
-│  ┌──────────────────────┐   ┌──────────────────────┐                      │
-│  │  SC-1                │   │  SC-2                │                      │
-│  │  Progressive         │   │  Cold Start          │                      │
-│  │  Elicitation         │   │  Handling            │                      │
-│  │  ├─ ElicitationQueue │   │  ├─ InitialState      │                      │
-│  │  ├─ PassiveEngine    │   │  ├─ ColdStartConfig   │                      │
-│  │  └─ SurfacingPolicy  │   │  └─ ContextBuilder   │                      │
-│  └────────┬─────────────┘   └──────────┬───────────┘                      │
-│           │                            │                                   │
-│           └────────────────┬───────────┘                                   │
-│                            │                                               │
-│                  ┌─────────▼─────────┐                                    │
-│                  │  GraduationEval   │                                    │
-│                  │  (checked at end  │                                    │
-│                  │  of each session) │                                    │
-│                  └─────────┬─────────┘                                    │
-│                            │                                               │
-│  ┌─────────────────────────▼────────────────────────┐                     │
-│  │  SC-3: Feature Introduction Pacing               │                     │
-│  │  FeaturePacingController — gates all features     │                     │
-│  │  until their FeatureReadinessProfile is met       │                     │
-│  └─────────────────────────┬────────────────────────┘                     │
-│                            │                                               │
-└────────────────────────────┼───────────────────────────────────────────────┘
-                             │ Cold Start Engine self-terminates on graduation
-                             ▼
-               Normal Runtime (Layers 1–12 fully active)
-               Conversation Orchestrator takes full control
-```
+<p align="center"><img src="diagrams/cold-start.svg" alt="A new user meets a temporary cold start overlay with elicitation and handling; a graduation check at each session end, then the normal runtime takes over." width="100%"></p>
+
+*Figure: the Layer 13 cold start overlay, and the normal runtime after graduation.*
+
 
 ---
 
@@ -906,6 +874,11 @@ class ColdStartContextBuilder:
 ```
 
 ### 5.4 Graduation Criteria
+
+<p align="center"><img src="diagrams/graduation.svg" alt="The cold start overlay runs until a graduation check at session end finds all nine criteria met; then the overlay ends and the normal runtime takes over." width="100%"></p>
+
+*Figure: the cold start overlay, the graduation check at each session end, and the nine criteria.*
+
 
 ```python
 class GraduationEvaluator:

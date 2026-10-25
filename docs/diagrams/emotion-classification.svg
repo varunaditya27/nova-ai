@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" width="1100" height="720" role="img" aria-labelledby="emotion-classification-title emotion-classification-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="emotion-classification-title">Layer 3: emotion and intent classification</title>
+<desc id="emotion-classification-desc">Layer 1 and Layer 2 outputs feed six sub-components in sequence, ending in a read-only EmotionIntentPacket.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="719" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 3 · EMOTION &amp; REASONING</text>
+<rect x="40" y="60" width="340" height="100" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="210.0" y="82.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 1 · InputPerceptionPacket</text>
+<text x="210.0" y="100.0" text-anchor="middle" font-size="10.5" fill="#5a524b">composite_emotional_prior, signal_mismatch</text>
+<text x="210.0" y="115.0" text-anchor="middle" font-size="10.5" fill="#5a524b">implicit_emotional_intensity_score</text>
+<text x="210.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">prosody_emotion_estimate (voice), circadian_band</text>
+<rect x="40" y="190" width="340" height="100" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="210.0" y="212.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 2 · MemoryPacket</text>
+<text x="210.0" y="230.0" text-anchor="middle" font-size="10.5" fill="#5a524b">recalled_memories (with emotion vectors)</text>
+<text x="210.0" y="245.0" text-anchor="middle" font-size="10.5" fill="#5a524b">uwm_context (psychological_model,</text>
+<text x="210.0" y="260.0" text-anchor="middle" font-size="10.5" fill="#5a524b">active_stressors) · stm_turns (last 10)</text>
+<rect x="460" y="60" width="600" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="760.0" y="82.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Primary Emotion Classifier</text>
+<text x="760.0" y="100.0" text-anchor="middle" font-size="10.5" fill="#5a524b">LLM-assisted, with heuristics</text>
+<rect x="460" y="138" width="600" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="760.0" y="160.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Background Emotional State</text>
+<text x="760.0" y="178.0" text-anchor="middle" font-size="10.5" fill="#5a524b">deterministic, memory-derived</text>
+<rect x="460" y="216" width="600" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="760.0" y="238.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-3 · Intent Classifier</text>
+<text x="760.0" y="256.0" text-anchor="middle" font-size="10.5" fill="#5a524b">rule-based, with an LLM</text>
+<rect x="460" y="294" width="600" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="760.0" y="316.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Stated-vs-Felt Mismatch</text>
+<text x="760.0" y="334.0" text-anchor="middle" font-size="10.5" fill="#5a524b">cross-signal comparison</text>
+<rect x="460" y="372" width="600" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="760.0" y="394.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-5 · Empathy Hypothesis Generator</text>
+<text x="760.0" y="412.0" text-anchor="middle" font-size="10.5" fill="#5a524b">structured reasoning</text>
+<rect x="460" y="450" width="600" height="56" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="760.0" y="472.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">SC-6 · Conversation Mode Resolver</text>
+<text x="760.0" y="490.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">deterministic policy</text>
+<path d="M760.0 116 L760.0 138" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M760.0 194 L760.0 216" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M760.0 272 L760.0 294" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M760.0 350 L760.0 372" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M760.0 428 L760.0 450" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="460" y="528" width="600" height="50" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="760.0" y="550.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">EmotionIntentPacket</text>
+<text x="760.0" y="568.0" text-anchor="middle" font-size="10.5" fill="#5a524b">read-only, passed to all downstream layers</text>
+<path d="M760.0 506 L760.0 528" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M380 110 L420 110" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M380 240 L420 240" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M420 88 L420 240" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M420 88 L460 88" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="22" y="704" font-size="10.5" fill="#5a524b">SC-1 and SC-3 share one LLM call; the Mode Resolver is deterministic</text>
+</svg>

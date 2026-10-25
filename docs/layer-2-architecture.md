@@ -25,48 +25,21 @@ All eight are fully specified here. There are no stubs, no deferred schemas.
 
 ## 2. Architecture Overview
 
-```
-Session begins
-      │
-      ▼
-┌──────────────────────────────────────────┐
-│  MEMORY ARBITER                          │
-│  (orchestrates all sub-components below) │
-└──────────────────────────────────────────┘
-      │
-      ├──► SC-1: Short-Term Buffer       (in-session only)
-      │
-      ├──► SC-2: Episodic Memory Store   (past events, summaries)
-      │
-      ├──► SC-3: Semantic Memory Store   (stable facts, preferences)
-      │
-      ├──► SC-4: Identity Memory Store   (Nova's self-model)
-      │
-      ├──► SC-5: User World Model        (structured user representation)
-      │
-      ├──► SC-6: Recall Scoring Engine   (four-component competitive retrieval)
-      │
-      ├──► SC-7: Forgetting & Consolidation Engine  (periodic maintenance)
-      │
-      └──► SC-8: Memory Audit Trail      (why every recall/deletion happened)
+<p align="center"><img src="diagrams/memory-arbiter.svg" alt="The memory arbiter sits at the left and fans out to eight sub-components; a MemoryPacket goes to downstream layers, and a State Updater writes at session end." width="100%"></p>
 
-↓
-MemoryPacket (read-only, passed to all downstream layers)
+*Figure: the memory arbiter and its eight sub-components; the State Updater runs at session end.*
 
-↓
-Session ends →  State Updater runs:
-                - Writes new episodic memories
-                - Updates User World Model
-                - Updates cross-session narrative links
-                - Logs audit trail entries
-                - Schedules next consolidation batch
-```
 
 The **Memory Arbiter** is the single entry point. No downstream agent queries a memory store directly. All reads go through the Arbiter; all writes go through the State Updater (which runs at session end, not during inference).
 
 ---
 
 ## 3. Sub-Component 1 — Short-Term Memory Buffer
+
+<p align="center"><img src="diagrams/memory-lifecycle.svg" alt="A turn is promoted to an episodic memory only if it passes the promotion check; the forgetting and consolidation engine later clusters episodes into semantic memory." width="100%"></p>
+
+*Figure: a turn passes the promotion check to become an episodic memory; the consolidation engine clusters episodes into semantic memory and everything is audited.*
+
 
 ### 3.1 Purpose
 
@@ -1068,6 +1041,11 @@ class AuditEvent:
     content_hash: str                   # SHA-256 of the event data (tamper detection)
     prev_event_hash: str                # hash of previous event (chain integrity)
 ```
+
+<p align="center"><img src="diagrams/audit-chain.svg" alt="Each audit event stores a content hash that is computed with the previous event hash, so changing an earlier event breaks every later link." width="100%"></p>
+
+*Figure: each audit event is hashed together with the previous one, so editing an earlier event breaks every later link.*
+
 
 The hash chain (`content_hash` ← `prev_event_hash`) forms a lightweight audit log integrity proof. Modifying a past event invalidates all subsequent hashes, making tampering detectable.
 

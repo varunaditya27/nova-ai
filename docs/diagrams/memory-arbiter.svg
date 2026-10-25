@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 720" width="1100" height="720" role="img" aria-labelledby="memory-arbiter-title memory-arbiter-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="memory-arbiter-title">Layer 2: memory arbiter and its eight sub-components</title>
+<desc id="memory-arbiter-desc">The memory arbiter sits at the left and fans out to eight sub-components; a MemoryPacket goes to downstream layers, and a State Updater writes at session end.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="719" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 2 · MEMORY ARBITER</text>
+<rect x="40" y="250" width="240" height="120" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="160.0" y="272.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">Memory arbiter</text>
+<text x="160.0" y="290.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">orchestrates all sub-components</text>
+<text x="160.0" y="305.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">session begins here</text>
+<rect x="340" y="80" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="102.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Short-term buffer</text>
+<text x="700.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">in-session only</text>
+<rect x="340" y="138" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="160.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Episodic memory store</text>
+<text x="700.0" y="178.0" text-anchor="middle" font-size="10.5" fill="#5a524b">past events and summaries</text>
+<rect x="340" y="196" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="218.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-3 · Semantic memory store</text>
+<text x="700.0" y="236.0" text-anchor="middle" font-size="10.5" fill="#5a524b">stable facts and preferences</text>
+<rect x="340" y="254" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="276.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Identity memory store</text>
+<text x="700.0" y="294.0" text-anchor="middle" font-size="10.5" fill="#5a524b">Nova&#x27;s self-model</text>
+<rect x="340" y="312" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="334.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-5 · User world model</text>
+<text x="700.0" y="352.0" text-anchor="middle" font-size="10.5" fill="#5a524b">structured representation of the user</text>
+<rect x="340" y="370" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="392.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-6 · Recall scoring engine</text>
+<text x="700.0" y="410.0" text-anchor="middle" font-size="10.5" fill="#5a524b">four-component competitive retrieval</text>
+<rect x="340" y="428" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="450.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-7 · Forgetting &amp; consolidation</text>
+<text x="700.0" y="468.0" text-anchor="middle" font-size="10.5" fill="#5a524b">periodic maintenance</text>
+<rect x="340" y="486" width="720" height="50" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="700.0" y="508.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-8 · Memory audit trail</text>
+<text x="700.0" y="526.0" text-anchor="middle" font-size="10.5" fill="#5a524b">why every recall and deletion happened</text>
+<path d="M280 310 L320 310" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M320 105.0 L320 511.0" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M320 105.0 L340 105.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 163.0 L340 163.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 221.0 L340 221.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 279.0 L340 279.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 337.0 L340 337.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 395.0 L340 395.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 453.0 L340 453.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 511.0 L340 511.0" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="40" y="560" width="500" height="50" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="290.0" y="582.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">MemoryPacket</text>
+<text x="290.0" y="600.0" text-anchor="middle" font-size="10.5" fill="#5a524b">read-only, passed to all downstream layers</text>
+<path d="M160 370 L160 560" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="580" y="540" width="480" height="130" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="820.0" y="562.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Session ends · State Updater runs</text>
+<text x="820.0" y="580.0" text-anchor="middle" font-size="10.5" fill="#5a524b">writes new episodic memories</text>
+<text x="820.0" y="595.0" text-anchor="middle" font-size="10.5" fill="#5a524b">updates the User World Model</text>
+<text x="820.0" y="610.0" text-anchor="middle" font-size="10.5" fill="#5a524b">updates cross-session narrative links</text>
+<text x="820.0" y="625.0" text-anchor="middle" font-size="10.5" fill="#5a524b">logs audit trail entries</text>
+<text x="820.0" y="640.0" text-anchor="middle" font-size="10.5" fill="#5a524b">schedules the next consolidation batch</text>
+<text x="22" y="704" font-size="10.5" fill="#5a524b">Layer 2 is read-only during inference; all writes happen in the State Updater</text>
+</svg>

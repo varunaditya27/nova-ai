@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 680" width="1100" height="680" role="img" aria-labelledby="proactive-gates-title proactive-gates-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="proactive-gates-title">Layer 6: timing and delivery gate</title>
+<desc id="proactive-gates-desc">A candidate passes three groups of blocking conditions; any blocking condition defers or suppresses it, and only a clear pass sends it.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="679" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 6 · TIMING &amp; DELIVERY GATE</text>
+<rect x="40" y="90" width="560" height="110" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="320.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">Block 1 · temporal (immediate defer)</text>
+<text x="320.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">before earliest send time → defer · past expiry → suppress</text>
+<text x="320.0" y="145.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">late-night band → defer to morning · active session (&lt;5 min) → defer</text>
+<text x="320.0" y="160.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">daily cap (1 a day) reached → defer · under 48 h since last → defer</text>
+<rect x="40" y="260" width="560" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="320.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Block 2 · emotional state</text>
+<text x="320.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#5a524b">crisis in last session → defer 24 h (wellbeing checks exempt)</text>
+<text x="320.0" y="315.0" text-anchor="middle" font-size="10.5" fill="#5a524b">BES deteriorating, non-wellbeing type → suppress</text>
+<text x="320.0" y="330.0" text-anchor="middle" font-size="10.5" fill="#5a524b">last session below −0.7 valence, celebratory or nudge → defer 36 h</text>
+<rect x="40" y="430" width="560" height="110" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="320.0" y="452.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Block 3 · relationship state</text>
+<text x="320.0" y="470.0" text-anchor="middle" font-size="10.5" fill="#5a524b">stage &#x27;new&#x27; → suppress</text>
+<text x="320.0" y="485.0" text-anchor="middle" font-size="10.5" fill="#5a524b">acquaintance: only thread follow-ups and date reminders</text>
+<text x="320.0" y="500.0" text-anchor="middle" font-size="10.5" fill="#5a524b">further conditions are in the layer-6 spec</text>
+<path d="M320 200 L320 260" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="332" y="240" text-anchor="start" font-size="10.5" fill="#5a524b">clear</text>
+<path d="M320 370 L320 430" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="332" y="410" text-anchor="start" font-size="10.5" fill="#5a524b">clear</text>
+<path d="M600 145 L640 145" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M600 315 L640 315" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M600 485 L640 485" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M640 145 L640 485" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="660" y="270" width="400" height="72" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="860.0" y="292.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">DEFER or SUPPRESS</text>
+<text x="860.0" y="310.0" text-anchor="middle" font-size="10.5" fill="#5a524b">first blocking condition decides;</text>
+<text x="860.0" y="325.0" text-anchor="middle" font-size="10.5" fill="#5a524b">reason recorded for audit</text>
+<path d="M640 306 L660 306" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M320 540 L320 590" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="40" y="590" width="560" height="56" fill="#e6f1e6" stroke="#006600" stroke-width="1.3"/>
+<text x="320.0" y="612.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006600">SEND_NOW</text>
+<text x="320.0" y="630.0" text-anchor="middle" font-size="10.5" fill="#5a524b">SC-4 generates the message (LLM, under 400 ms)</text>
+<text x="22" y="664" font-size="10.5" fill="#5a524b">Only a candidate that clears all three blocks is sent. Thresholds are in the layer-6 spec.</text>
+</svg>

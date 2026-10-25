@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 300" width="1100" height="300" role="img" aria-labelledby="audit-chain-title audit-chain-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="audit-chain-title">Layer 2: hash-chained audit trail</title>
+<desc id="audit-chain-desc">Each audit event stores a content hash that is computed with the previous event hash, so changing an earlier event breaks every later link.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="299" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 2 · TAMPER-EVIDENT AUDIT CHAIN</text>
+<rect x="40" y="80" width="300" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="190.0" y="102.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Event 1</text>
+<text x="190.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">event data</text>
+<text x="190.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">content_hash = SHA-256(data)</text>
+<rect x="400" y="80" width="300" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="102.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Event 2</text>
+<text x="550.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">event data</text>
+<text x="550.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">hashed together with</text>
+<text x="550.0" y="150.0" text-anchor="middle" font-size="10.5" fill="#5a524b">event 1 content_hash</text>
+<rect x="760" y="80" width="300" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="910.0" y="102.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Event 3</text>
+<text x="910.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">event data</text>
+<text x="910.0" y="135.0" text-anchor="middle" font-size="10.5" fill="#5a524b">hashed together with</text>
+<text x="910.0" y="150.0" text-anchor="middle" font-size="10.5" fill="#5a524b">event 2 content_hash</text>
+<path d="M340 140 L400 140" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="370" y="132" text-anchor="middle" font-size="10.5" fill="#5a524b">prev</text>
+<path d="M700 140 L760 140" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="730" y="132" text-anchor="middle" font-size="10.5" fill="#5a524b">prev</text>
+<text x="40" y="250" text-anchor="start" font-size="11" fill="#1a1a1a">Changing event 1 changes its hash, so event 2 no longer matches; every later event breaks the same way.</text>
+<text x="22" y="284" font-size="10.5" fill="#5a524b">Tamper-evident: this proves edits, it does not prevent them.</text>
+</svg>

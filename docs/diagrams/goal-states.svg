@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 560" width="1100" height="560" role="img" aria-labelledby="goal-states-title goal-states-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="goal-states-title">Layer 7: goal status transitions</title>
+<desc id="goal-states-desc">Goals move between tentative, active, on-track, at-risk and paused, with stale-timer transitions; completed, abandoned and archived are end states.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="559" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 7 · GOAL STATUS</text>
+<rect x="40" y="90" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="130.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">tentative</text>
+<text x="130.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">mentioned once</text>
+<rect x="320" y="90" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="410.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">active</text>
+<text x="410.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">in progress</text>
+<rect x="600" y="90" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="690.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">on_track</text>
+<text x="690.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">progress is positive</text>
+<rect x="880" y="90" width="180" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="970.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">completed</text>
+<text x="970.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">user says it is done</text>
+<rect x="40" y="250" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="130.0" y="272.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">paused</text>
+<text x="130.0" y="290.0" text-anchor="middle" font-size="10.5" fill="#5a524b">user paused it</text>
+<rect x="600" y="250" width="180" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="690.0" y="272.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">at_risk</text>
+<text x="690.0" y="290.0" text-anchor="middle" font-size="10.5" fill="#5a524b">going stale</text>
+<rect x="880" y="250" width="180" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="970.0" y="272.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">abandoned</text>
+<text x="970.0" y="290.0" text-anchor="middle" font-size="10.5" fill="#5a524b">user gives up</text>
+<rect x="40" y="410" width="180" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="130.0" y="432.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">archived</text>
+<text x="130.0" y="450.0" text-anchor="middle" font-size="10.5" fill="#5a524b">end of the stale path</text>
+<path d="M220 118 L320 118" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="270" y="110" text-anchor="middle" font-size="10.5" fill="#5a524b">reaffirmed</text>
+<path d="M500 118 L600 118" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="550" y="110" text-anchor="middle" font-size="10.5" fill="#5a524b">progress</text>
+<path d="M600 136 L500 136" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="550" y="152" text-anchor="middle" font-size="10.5" fill="#5a524b">setback</text>
+<path d="M690 146 L690 250" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="700" y="200" text-anchor="start" font-size="10.5" fill="#5a524b">stale 14 days</text>
+<path d="M410 146 L410 278 L600 278" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="505" y="296" text-anchor="middle" font-size="10.5" fill="#5a524b">stale 21 days</text>
+<path d="M600 262 L450 262 L450 146" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="460" y="232" text-anchor="start" font-size="10.5" fill="#5a524b">progress</text>
+<path d="M780 278 L880 278" fill="none" stroke="#800000" stroke-width="1.5" marker-end="url(#m)"/>
+<text x="830" y="270" text-anchor="middle" font-size="10.5" fill="#5a524b">stale 30</text>
+<path d="M220 280 L340 280 L340 146" fill="none" stroke="#006600" stroke-width="1.5" marker-end="url(#g)"/>
+<text x="226" y="296" text-anchor="start" font-size="10.5" fill="#5a524b">reaffirmed</text>
+<path d="M130 306 L130 410" fill="none" stroke="#5a524b" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="142" y="366" text-anchor="start" font-size="10.5" fill="#5a524b">stale 90 days</text>
+<text x="22" y="544" font-size="10.5" fill="#5a524b">Also: any state can move to completed, abandoned or paused when the user says so.</text>
+</svg>

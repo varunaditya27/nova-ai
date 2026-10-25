@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 560" width="1100" height="560" role="img" aria-labelledby="memory-lifecycle-title memory-lifecycle-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="memory-lifecycle-title">Layer 2: how a memory is kept, consolidated and audited</title>
+<desc id="memory-lifecycle-desc">A turn is promoted to an episodic memory only if it passes the promotion check; the forgetting and consolidation engine later clusters episodes into semantic memory.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="559" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 2 · MEMORY LIFECYCLE</text>
+<rect x="40" y="90" width="160" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="120.0" y="124.3" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Turn</text>
+<rect x="250" y="90" width="220" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="360.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Short-term buffer</text>
+<text x="360.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">in-session; never persisted</text>
+<rect x="520" y="90" width="260" height="60" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="650.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">Promotion check</text>
+<text x="650.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">high arousal, life-event keyword,</text>
+<text x="650.0" y="145.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">or explicit flag</text>
+<rect x="830" y="90" width="230" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="945.0" y="112.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Episodic memory</text>
+<text x="945.0" y="130.0" text-anchor="middle" font-size="10.5" fill="#5a524b">LLM summary, embedded in Chroma</text>
+<path d="M200 120 L250 120" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M470 120 L520 120" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M780 120 L830 120" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="805" y="110" text-anchor="middle" font-size="10.5" fill="#5a524b">yes</text>
+<rect x="520" y="210" width="260" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="650.0" y="232.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">Discarded</text>
+<text x="650.0" y="250.0" text-anchor="middle" font-size="10.5" fill="#5a524b">ordinary turns are not kept verbatim</text>
+<path d="M650 150 L650 210" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="662" y="186" text-anchor="start" font-size="10.5" fill="#5a524b">no</text>
+<rect x="40" y="320" width="280" height="70" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="180.0" y="342.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">FCE trigger</text>
+<text x="180.0" y="360.0" text-anchor="middle" font-size="10.5" fill="#5a524b">any of: 50 new episodes, 25 sessions,</text>
+<text x="180.0" y="375.0" text-anchor="middle" font-size="10.5" fill="#5a524b">14 days, manual review, pre-deletion</text>
+<rect x="370" y="320" width="200" height="70" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="470.0" y="342.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Decay sweep</text>
+<text x="470.0" y="360.0" text-anchor="middle" font-size="10.5" fill="#5a524b">forgetting pass</text>
+<rect x="620" y="320" width="200" height="70" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="720.0" y="342.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Cluster</text>
+<text x="720.0" y="360.0" text-anchor="middle" font-size="10.5" fill="#5a524b">cosine similarity &gt; 0.85</text>
+<rect x="870" y="320" width="190" height="70" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="965.0" y="342.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Semantic memory</text>
+<text x="965.0" y="360.0" text-anchor="middle" font-size="10.5" fill="#5a524b">confidence grows</text>
+<path d="M320 355 L370 355" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M570 355 L620 355" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M820 355 L870 355" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M945 150 L945 290 L180 290 L180 320" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="40" y="450" width="1020" height="60" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="550.0" y="472.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Memory audit trail</text>
+<text x="550.0" y="490.0" text-anchor="middle" font-size="10.5" fill="#5a524b">every lifecycle event is logged with a reason, in a SHA-256 hash chain</text>
+<path d="M965 390 L965 450" fill="none" stroke="#006680" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#t)"/>
+<text x="22" y="544" font-size="10.5" fill="#5a524b">Triggers are whichever comes first. The 14-day and 25-session triggers need a persisted counter (see the layer-2 doc).</text>
+</svg>

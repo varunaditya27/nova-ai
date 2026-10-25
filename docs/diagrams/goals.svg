@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" width="1100" height="780" role="img" aria-labelledby="goals-title goals-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="goals-title">Layer 7: goals and accountability</title>
+<desc id="goals-desc">Per-message, session and daily inputs feed goal extraction and the goal store, which branches into progress monitoring and decomposition, then into the response and proactive queue.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="779" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 7 · GOALS &amp; ACCOUNTABILITY</text>
+<rect x="40" y="50" width="300" height="96" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="190.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Per message</text>
+<text x="190.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">user_message_text, classified_intent</text>
+<text x="190.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">emotional_state, retrieved_memories</text>
+<rect x="40" y="170" width="300" height="66" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="190.0" y="192.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">After each session</text>
+<text x="190.0" y="210.0" text-anchor="middle" font-size="10.5" fill="#5a524b">session_summary</text>
+<rect x="40" y="260" width="300" height="66" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="190.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Every 24 hours</text>
+<text x="190.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#5a524b">goal_store: due milestones, stale goals</text>
+<path d="M340 98.0 L370 98.0" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M340 203.0 L370 203.0" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M340 293.0 L370 293.0" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M370 80 L370 293.0" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<rect x="400" y="50" width="340" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="570.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Goal Extractor</text>
+<text x="570.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">per message, background LLM call</text>
+<path d="M370 80 L400 80" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="400" y="150" width="340" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="570.0" y="172.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Goal Store</text>
+<text x="570.0" y="190.0" text-anchor="middle" font-size="10.5" fill="#5a524b">lifecycle and retrieval; read on every message</text>
+<path d="M570 110 L570 150" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="400" y="270" width="340" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="570.0" y="292.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-3 · Progress Monitor</text>
+<text x="570.0" y="310.0" text-anchor="middle" font-size="10.5" fill="#5a524b">inference and state update</text>
+<path d="M570 210 L570 270" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="770" y="270" width="290" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="915.0" y="292.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-5 · Goal Decomposer</text>
+<text x="915.0" y="310.0" text-anchor="middle" font-size="10.5" fill="#5a524b">milestones, habits, Layer 6 handoff</text>
+<path d="M740 180 L915 180 L915 270" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="400" y="380" width="340" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="570.0" y="402.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-4 · Accountability Modifier</text>
+<text x="570.0" y="420.0" text-anchor="middle" font-size="10.5" fill="#5a524b">per message; only when relevant</text>
+<path d="M570 330 L570 380" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="400" y="480" width="340" height="50" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="570.0" y="502.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Layer 4 Response Generator</text>
+<text x="570.0" y="520.0" text-anchor="middle" font-size="10.5" fill="#5a524b">GoalContextPacket injected into the prompt</text>
+<path d="M570 440 L570 480" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="770" y="380" width="290" height="50" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="915.0" y="402.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Layer 6 Proactive Queue</text>
+<text x="915.0" y="420.0" text-anchor="middle" font-size="10.5" fill="#5a524b">milestones, stale goals, wins</text>
+<path d="M915 330 L915 380" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="40" y="600" width="1020" height="120" fill="#faf7f5" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="622.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Outputs from Layer 7</text>
+<text x="550.0" y="640.0" text-anchor="middle" font-size="10.5" fill="#5a524b">GoalContextPacket → Layer 4 (per message, if goals are relevant)</text>
+<text x="550.0" y="655.0" text-anchor="middle" font-size="10.5" fill="#5a524b">ProactiveItems → Layer 6 (milestone approaching; stale goal; celebration)</text>
+<text x="550.0" y="670.0" text-anchor="middle" font-size="10.5" fill="#5a524b">GoalStateUpdate → Layer 2 UWM (status changes; new goals; completions)</text>
+<text x="550.0" y="685.0" text-anchor="middle" font-size="10.5" fill="#5a524b">Layer7Output → Layer 12 audit log</text>
+<text x="22" y="764" font-size="10.5" fill="#5a524b">Stale-goal triggers run on the 24-hour background scan</text>
+</svg>

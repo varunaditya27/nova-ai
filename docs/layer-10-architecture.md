@@ -23,67 +23,10 @@ Layer 10 contains **five sub-components**:
 
 ## 2. Architecture Overview
 
-```
-Primary Data Sources for Layer 10:
+<p align="center"><img src="diagrams/longitudinal.svg" alt="Five source layers feed a life calendar, which triggers four workers; their outputs go to a shared bus, read by Layer 6, Layer 4 and the user-facing exports." width="100%"></p>
 
-From Layer 2 (Memory):
- ├── episodic_memory_store        (all sessions; emotional states, topics, events)
- ├── semantic_memory_store        (extracted stable facts and preferences)
- └── user_world_model             (relationships, life context, current phase)
+*Figure: Layer 10 inputs, the life calendar, its four workers, the output bus and the consumers.*
 
-From Layer 7 (Goal & Life Management):
- ├── goal_tree                    (all goals at all abstraction levels; statuses, timelines)
- ├── life_event_registry          (all detected life events with timestamps and categories)
- ├── task_completion_log          (step-level completion history)
- └── conflict_history             (detected + surfaced + resolved conflicts)
-
-From Layer 3 (Emotion):
- └── emotional_history_log        (per-session valence, arousal, primary emotion; rolling)
-
-From Layer 1 (Temporal):
- └── session_history              (session timestamps, gaps, anomalies, circadian patterns)
-
-From Layer 5 (Relationship):
- ├── tie_strength_history         (how relationship depth evolved over time)
- └── relationship_milestone_log   (first disclosure, trust threshold crossings, etc.)
-
-                    │
-                    ▼
-     ┌─────────────────────────────────────────────┐
-     │  SC-5: Life Calendar                        │
-     │  (master temporal index; owns all L10       │
-     │   scheduling, trigger timing, anniversary   │
-     │   detection, milestone sequencing)          │
-     └─────────────────────────────────────────────┘
-          │ triggers    │ triggers    │ triggers    │ triggers
-          ▼             ▼             ▼             ▼
-     ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐
-     │  SC-1   │  │  SC-2    │  │  SC-3    │  │  SC-4        │
-     │  Life   │  │  Weekly  │  │ Progress │  │ Retrospective│
-     │Narrative│  │ Summary  │  │ Tracker  │  │   Engine     │
-     │ Engine  │  │ Engine   │  │          │  │              │
-     └─────────┘  └──────────┘  └──────────┘  └──────────────┘
-          │             │             │               │
-          └─────────────┴──────┬──────┴───────────────┘
-                               ▼
-                  ┌────────────────────────┐
-                  │  Layer 10 Output Bus   │
-                  │  ───────────────────── │
-                  │  narrative_arc         │
-                  │  weekly_summaries      │
-                  │  progress_snapshots    │
-                  │  retrospective_packets │
-                  │  life_calendar_events  │
-                  └────────────────────────┘
-                               │
-              ┌────────────────┼──────────────────────┐
-              ▼                ▼                       ▼
-        Layer 6            Layer 4               User-Facing
-     (Proactivity)      (Response Gen)          UI / Exports
-     Surfaces L10       Uses L10 context        "Year in Review"
-     retrospectives     in responses            Weekly digest
-     and milestones
-```
 
 **Execution model:**
 - Layer 10 is **entirely asynchronous** — it does not run on the message-response loop. It runs as background jobs scheduled by the Life Calendar.
@@ -1156,40 +1099,15 @@ class Layer10ContextPacket:
 
 ## 9. Pipeline Integration — Where Layer 10 Connects
 
-```
-WRITE PATH (Layer 10 receives data from other layers):
+<p align="center"><img src="diagrams/data-paths.svg" alt="Layer 10 data paths: five layers write into the engine asynchronously; it feeds Layer 4 at session start, Layer 6 when items are due, and Layer 7 on its next sync; Layer 9 does not read it." width="100%"></p>
 
-Layer 2 (Memory)    →  Episodic memories, semantic facts, user world model
-Layer 3 (Emotion)   →  Per-session emotional records (continuous)
-Layer 5 (Relationship) → Tie strength updates, intimacy events
-Layer 7 (Goals)     →  Goal state changes, life event detections, task completions
-Layer 1 (Temporal)  →  Session records, gap classifications, anomalies
+*Figure: Layer 10 read and write paths. Writes are asynchronous; Layer 9 reads nothing directly.*
 
-All writes are ASYNCHRONOUS — they queue to Layer 10's ingestion pipeline
-and do not block the synchronous message-response loop.
-
-
-READ PATH (Layer 10 provides context to other layers):
-
-Layer 4 (Response Generator):
-  Receives: Layer10ContextPacket at session start
-  Uses for: long-term narrative grounding, growth language calibration,
-            awareness of recent significant events
-
-Layer 6 (Proactivity):
-  Receives: pending_retrospectives, calendar_alerts, behavioral_patterns
-  Uses for: scheduling retrospective surface messages, milestone check-ins,
-            pattern-awareness proactives
-
-Layer 7 (Goals):
-  Reads: current_chapter_summary (for context-aware goal advice)
-  Does NOT write back to Layer 10 directly; Layer 7 writes to its own stores
-  which Layer 10 reads on its next sync cycle
-
-Layer 9 (Delivery):
-  Does NOT read Layer 10 directly
-  Layer 10 content arrives through Layer 4's generated response text
-```
+- **Writes in:** Layer 2 (episodic memories, semantic facts, user world model), Layer 3 (per-session emotional records), Layer 5 (tie strength updates, intimacy events), Layer 7 (goal state changes, life event detections, task completions), Layer 1 (session records, gap classifications, anomalies). All writes queue to Layer 10's ingestion pipeline and do not block the synchronous message-response loop.
+- **Layer 4 reads** `Layer10ContextPacket` at session start, for long-term narrative grounding, growth language calibration and awareness of recent significant events.
+- **Layer 6 reads** `pending_retrospectives`, `calendar_alerts` and `behavioral_patterns`, for retrospective surface messages, milestone check-ins and pattern-awareness proactives.
+- **Layer 7 reads** `current_chapter_summary`. It does not write back to Layer 10 directly; its own stores are picked up on Layer 10's next sync cycle.
+- **Layer 9 does not read Layer 10.** Layer 10 content reaches the user only through Layer 4's generated text.
 
 ---
 

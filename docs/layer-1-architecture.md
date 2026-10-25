@@ -21,42 +21,10 @@ Layer 1 runs **before any other agent**. It produces a single, read-only `InputP
 
 Layer 1 contains **five sub-components** that run in a strict pipeline sequence:
 
-```
-Raw Incoming Event
-        │
-        ▼
-┌─────────────────────────────┐
-│  SC-1: Temporal Resolver    │  (deterministic, zero LLM calls)
-└─────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────┐
-│  SC-2: Implicit Signal      │  (deterministic signal extraction)
-│        Extractor            │
-└─────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────┐
-│  SC-3: Multimodal           │  (conditional — fires only on non-text input)
-│        Normalizer           │
-└─────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────┐
-│  SC-4: Voice Prosody        │  (conditional — fires only on voice input)
-│        Extractor            │
-└─────────────────────────────┘
-        │
-        ▼
-┌─────────────────────────────┐
-│  SC-5: Input Perception     │  (assembles all sub-component outputs
-│        Assembler            │   into one unified packet)
-└─────────────────────────────┘
-        │
-        ▼
-  InputPerceptionPacket
-  (read-only, passed to all downstream layers)
-```
+<p align="center"><img src="diagrams/input-perception.svg" alt="A raw event passes temporal resolution, implicit signal extraction, optional multimodal and voice steps, and assembly into one read-only packet." width="100%"></p>
+
+*Figure: the Layer 1 pipeline, from the raw event to the InputPerceptionPacket.*
+
 
 The pipeline is almost entirely **deterministic and zero-LLM**. SC-3 and SC-4 each invoke a single lightweight vision or audio model only when the relevant modality is present. Total execution time target: **under 5ms** for text-only messages, under **100ms** for multimodal messages.
 
@@ -87,14 +55,14 @@ The circadian band is one of the most consistently mishandled signals in existin
 
 **The `circadian_mood_prior`** is a float in `[0, 1]` computed from the band and any known user-specific deviations (see §3.4). It represents the estimated probability that the user is in an emotionally vulnerable state, used by Layer 3 (Emotion Refiner) as a Bayesian prior before reading the message content:
 
-```
-late_night     → 0.75
-early_morning  → 0.80
-morning        → 0.20
-afternoon      → 0.25
-evening        → 0.40
-night          → 0.55
-```
+| Band | Prior value, before user-specific deviations |
+|---|---|
+| `late_night` | 0.75 |
+| `early_morning` | 0.80 |
+| `morning` | 0.20 |
+| `afternoon` | 0.25 |
+| `evening` | 0.40 |
+| `night` | 0.55 |
 
 These are population-level defaults. They update per-user over time (see §3.4).
 

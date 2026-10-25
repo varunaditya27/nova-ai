@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 880" width="1100" height="880" role="img" aria-labelledby="proactive-title proactive-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="proactive-title">Layer 6: proactive engagement</title>
+<desc id="proactive-desc">Five inputs feed a queue. Each candidate is classified, passed through a timing gate, then either sent, or deferred or suppressed back to the queue.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="879" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 6 · PROACTIVE ENGAGEMENT</text>
+<rect x="40" y="50" width="196" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="138.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 1</text>
+<text x="138.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">pending_threads</text>
+<text x="138.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">circadian_band</text>
+<text x="138.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">session_gap</text>
+<rect x="252" y="50" width="196" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="350.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 2</text>
+<text x="350.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">episodic_memories</text>
+<text x="350.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">semantic_memories</text>
+<text x="350.0" y="120.0" text-anchor="middle" font-size="10.5" fill="#5a524b">uwm_context</text>
+<rect x="464" y="50" width="196" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="562.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 5</text>
+<text x="562.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">proactive_coaching_queue</text>
+<text x="562.0" y="105.0" text-anchor="middle" font-size="10.5" fill="#5a524b">social_graph_updates</text>
+<rect x="676" y="50" width="196" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="774.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 7</text>
+<text x="774.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">goal_check_in_requests</text>
+<rect x="888" y="50" width="196" height="120" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="986.0" y="72.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">From Layer 3</text>
+<text x="986.0" y="90.0" text-anchor="middle" font-size="10.5" fill="#5a524b">bes_trend (7-day)</text>
+<path d="M138 170 L138 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M350 170 L350 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M562 170 L562 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M774 170 L774 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M986 170 L986 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M138 200 L986 200" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M562 200 L562 232" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="340" y="232" width="420" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="254.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-1 · Proactive Queue Manager</text>
+<text x="550.0" y="272.0" text-anchor="middle" font-size="10.5" fill="#5a524b">always running; polls every 30 minutes</text>
+<rect x="340" y="318" width="420" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="550.0" y="340.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-2 · Initiative Classifier</text>
+<text x="550.0" y="358.0" text-anchor="middle" font-size="10.5" fill="#5a524b">per candidate, deterministic, under 5 ms</text>
+<rect x="340" y="404" width="420" height="56" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="550.0" y="426.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">SC-3 · Timing &amp; Delivery Gate</text>
+<text x="550.0" y="444.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">the primary safeguard; under 10 ms per item</text>
+<path d="M550 288 L550 318" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550 374 L550 404" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M550 460 L550 474" fill="none" stroke="#1a1a1a" stroke-width="1.5"/>
+<path d="M550 474 L270 474 L270 486" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<path d="M550 474 L830 474 L830 486" fill="none" stroke="#006600" stroke-width="1.5" marker-end="url(#g)"/>
+<rect x="40" y="486" width="460" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="270.0" y="508.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">DEFER or SUPPRESS</text>
+<text x="270.0" y="526.0" text-anchor="middle" font-size="10.5" fill="#5a524b">back to SC-1; the gate records a reason</text>
+<path d="M40 514 L24 514 L24 260 L340 260" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<rect x="600" y="486" width="460" height="56" fill="#e6f1e6" stroke="#006600" stroke-width="1.3"/>
+<text x="830.0" y="508.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006600">SEND_NOW</text>
+<text x="830.0" y="526.0" text-anchor="middle" font-size="10.5" fill="#5a524b">SC-4 generates the message (LLM, under 400 ms)</text>
+<path d="M830 542 L830 590" fill="none" stroke="#006600" stroke-width="1.5" marker-end="url(#g)"/>
+<rect x="600" y="590" width="460" height="56" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="830.0" y="612.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">SC-5 · Response Tracker</text>
+<text x="830.0" y="630.0" text-anchor="middle" font-size="10.5" fill="#5a524b">after sending: user reaction updates priority</text>
+<path d="M830 646 L830 680" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="600" y="680" width="460" height="56" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="830.0" y="702.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Notification API → user device</text>
+<text x="830.0" y="720.0" text-anchor="middle" font-size="10.5" fill="#5a524b">push, in-app, or WhatsApp Business API</text>
+<text x="22" y="864" font-size="10.5" fill="#5a524b">Blocking gate conditions are evaluated in order; the first blocking condition decides</text>
+</svg>

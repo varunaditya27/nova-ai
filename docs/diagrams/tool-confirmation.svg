@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 560" width="1100" height="560" role="img" aria-labelledby="tool-confirmation-title tool-confirmation-desc" font-family="'IBM Plex Mono', ui-monospace, Menlo, monospace" font-size="12">
+<title id="tool-confirmation-title">Layer 8: confirmation states for risky actions</title>
+<desc id="tool-confirmation-desc">AUTO actions run at once. SOFT and HARD actions wait as a pending confirmation bound to a fingerprint, then run once on confirm, or end on deny.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#1a1a1a"/></marker><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#800000"/></marker><marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006680"/></marker><marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#006600"/></marker><marker id="y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b45309"/></marker></defs>
+<rect x="0.5" y="0.5" width="1099" height="559" fill="#faf7f5" stroke="#d9d0c8"/>
+<text x="22" y="28" font-size="11" fill="#1a1a1a" font-weight="700">LAYER 8 · HOW A RISKY ACTION IS CONFIRMED</text>
+<rect x="40" y="260" width="200" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="140.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Action requested</text>
+<text x="140.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#5a524b">after detect and resolve</text>
+<rect x="290" y="260" width="220" height="60" fill="#f0ebe8" stroke="#1a1a1a" stroke-width="1.3"/>
+<text x="400.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#1a1a1a">Confirmation gate (SC-2)</text>
+<text x="400.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#5a524b">tier from the action verb</text>
+<path d="M240 290 L290 290" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="590" y="110" width="240" height="56" fill="#e6f1e6" stroke="#006600" stroke-width="1.3"/>
+<text x="710.0" y="132.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006600">AUTO: runs at once</text>
+<text x="710.0" y="150.0" text-anchor="middle" font-size="10.5" fill="#5a524b">read, search</text>
+<path d="M510 290 L540 290 L540 138 L590 138" fill="none" stroke="#006600" stroke-width="1.5" marker-end="url(#g)"/>
+<rect x="590" y="260" width="240" height="60" fill="#f8ead9" stroke="#b45309" stroke-width="1.3"/>
+<text x="710.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#b45309">SOFT / HARD: pending</text>
+<text x="710.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#5a524b">bound to a fingerprint of tool,</text>
+<text x="710.0" y="315.0" text-anchor="middle" font-size="10.5" fill="#5a524b">operation, parameters and user</text>
+<path d="M510 290 L590 290" fill="none" stroke="#b45309" stroke-width="1.5" marker-end="url(#y)"/>
+<rect x="890" y="110" width="170" height="56" fill="#e3eff2" stroke="#006680" stroke-width="1.3"/>
+<text x="975.0" y="132.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#006680">Recorded (SC-4)</text>
+<text x="975.0" y="150.0" text-anchor="middle" font-size="10.5" fill="#5a524b">append-only</text>
+<rect x="890" y="260" width="170" height="60" fill="#800000" stroke="#800000" stroke-width="1.3"/>
+<text x="975.0" y="282.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#faf7f5">Executed</text>
+<text x="975.0" y="300.0" text-anchor="middle" font-size="10.5" fill="#faf7f5">token used up</text>
+<path d="M830 290 L890 290" fill="none" stroke="#800000" stroke-width="1.5" marker-end="url(#m)"/>
+<text x="860" y="280" text-anchor="middle" font-size="10.5" fill="#800000" font-weight="700">confirm</text>
+<path d="M975 260 L975 166" fill="none" stroke="#006680" stroke-width="1.5" marker-end="url(#t)"/>
+<rect x="590" y="400" width="240" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="710.0" y="422.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">Denied</text>
+<text x="710.0" y="440.0" text-anchor="middle" font-size="10.5" fill="#5a524b">via /tools/deny</text>
+<path d="M700 320 L700 400" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="712" y="366" text-anchor="start" font-size="10.5" fill="#5a524b">deny</text>
+<rect x="890" y="400" width="170" height="56" fill="#faf7f5" stroke="#5a524b" stroke-width="1.3"/>
+<text x="975.0" y="422.0" text-anchor="middle" font-family="'Libre Baskerville', Georgia, serif" font-size="13" font-weight="700" fill="#5a524b">Undo</text>
+<text x="975.0" y="440.0" text-anchor="middle" font-size="10.5" fill="#5a524b">owner only</text>
+<path d="M975 320 L975 400" fill="none" stroke="#5a524b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="987" y="366" text-anchor="start" font-size="10.5" fill="#5a524b">undo</text>
+<text x="22" y="544" font-size="10.5" fill="#5a524b">A non-owner confirm attempt is refused and does not use up the token.</text>
+</svg>

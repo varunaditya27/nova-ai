@@ -97,6 +97,11 @@ a callable, so a refactor inside a layer never touches pipeline code.
 
 ## 3. The Conversation Turn Lifecycle
 
+<p align="center"><img src="diagrams/turn.svg" alt="One conversation turn: the message passes perception, recall, classification and generation, then guardrails and delivery, while a crisis scan runs in parallel and can veto the reply; writes happen after the reply and feed the next turn." width="100%"></p>
+
+*Figure: one conversation turn, from the message to the reply and the writes after it.*
+
+
 The entry point is `backend/pipeline/conversation_orchestrator.py` →
 `ConversationOrchestrator.run_turn(user_id, message, now, session_id)`. It threads a `TurnContext`
 through the layers and returns an `OrchestratedOutput`. The exact sequence (and the invariants it
@@ -334,6 +339,11 @@ are independent SHA-256 hash chains; Layer 12 adds a Merkle root over the encryp
 
 ## 8. Infrastructure & Models
 
+<p align="center"><img src="diagrams/topology.svg" alt="Runtime topology: the web app talks to FastAPI over REST and server-sent events; Kokoro turns text into speech; for recall, FastAPI embeds the query with Ollama, asks Chroma for the nearest memory ids, then hydrates those rows from Postgres." width="100%"></p>
+
+*Figure: runtime topology of the services.*
+
+
 | Component | Production target |
 |---|---|
 | API | FastAPI (`api/main.py`) — **live: 40+ REST routes across all 13 layers + SSE streaming (`/chat/stream`) + Kokoro voice (`/voice`)**; sync `/chat` bridges to the async layers via a threadpool. WebSocket transport is a follow-up. **Full endpoint + schema reference: [`API_REFERENCE.md`](API_REFERENCE.md).** |
@@ -418,25 +428,9 @@ Step-by-step instructions with prerequisites live in the root [`README.md`](../R
 
 ## 12. Repository Map
 
-```
-backend/
-  layer1_input/ … layer13_onboarding/   # the 13 cognitive layers (130 modules)
-  pipeline/                             # conversation_orchestrator, system1/2, state_updater, proactive
-api/                                    # FastAPI app: routes, streaming, assembly (layer hooks), state
-infra/                                  # LLM clients, Postgres + Chroma adapters, session cache
-background/                             # APScheduler jobs
-migrations/                             # Alembic schema migrations
-config/                                 # defaults.yaml + layer1..13.yaml
-docs/
-  NOVA_AI_MASTER_ARCHITECTURE.md        # ← this file (single source of truth)
-  layer-1-architecture.md … layer-13-architecture.md   # per-layer specs (+ as-built sections)
-  API_REFERENCE.md, POLISH_BACKLOG.md, PENDING_WORK.md, diagrams/, superpowers/
-tests/                                  # unit/, integration/, integration_infra/
-scripts/                                # run_local.sh
-frontend/                               # Next.js web app (see frontend/README.md)
-film/                                   # Remotion source for the /welcome films
-docker/                                 # docker-compose.yml + per-service Dockerfiles
-```
+<p align="center"><img src="diagrams/repo-layout.svg" alt="Repository layout: backend holds the thirteen layers and the pipeline; api, infra, background, migrations and config support it; docs, tests, scripts, frontend, film and docker sit alongside." width="100%"></p>
+
+*Figure: top-level folders of the repository.*
 
 ---
 
