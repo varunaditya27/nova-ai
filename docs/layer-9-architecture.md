@@ -1164,7 +1164,9 @@ class Layer9Output:
 **Voice endpoint**: live over HTTP. `POST /voice` (`api/routes/voice.py`) builds
 prosody-annotated SSML for the given conversation mode and dispatches it to the **Kokoro** backend
 (`build_voice_backend` on `AppState`, httpx transport), returning `audio/mpeg` — or `503` so the
-client falls back to text (Layer-9 degrade-to-text contract). See `docs/API_REFERENCE.md`.
+client falls back to text (Layer-9 degrade-to-text contract). The reply is XML-escaped before it goes into the
+SSML document, the route switches on the spoken-form transforms (links, headers, bullets), and `KokoroBackend` sends
+`ssml: true` + `allow_voice_tags: true`, without which Kokoro-FastAPI reads the tags aloud. See `docs/API_REFERENCE.md`.
 
 **Primary `POST /chat` delivery**: live and correct. `ConversationOrchestrator._safe_deliver` now
 writes Layer 9's `deliver()` return value back onto `ctx.response_text` — the field
@@ -1278,3 +1280,12 @@ Layer 7's `Goal.milestones`/`Goal.habits` and Layer 10's `NarrativeArc.chapters`
   fields) and `FormatSpec.allow_horizontal_rules`/`emoji_position` (confirmed with the user:
   neither has a producer in `compute_format_spec` nor a consumer in `enforce_format_spec` —
   genuinely dead on both ends, not a wiring gap).
+- **2026-10-25:** "Hear it" was reading the SSML markup aloud. Measured against the running Kokoro (same sentence): plain
+  text 3.9 s, SSML sent as before 11.6 s (tags spoken), SSML with `ssml: true` + `allow_voice_tags: true` 4.6 s (tags obeyed).
+  Fixed in three places, all in this layer: `KokoroBackend` now sends both switches; `generate_ssml` escapes the reply
+  with `html.escape` first (a reply containing `&` or `<` made Kokoro answer `400 Malformed SSML`, which `/voice`
+  turned into a silent `503`); and `/voice` calls `synthesize(..., apply_transforms=True)` so a link is spoken as
+  "I'll include a link in the text alongside this" and bullets as a spoken list (§5.6), instead of being read out
+  literally. Kokoro accepts `<emphasis>` and ignores it, so the bold transform is harmless. Verified live: same sentence
+  5.2 s, `&`/`<` text synthesizes, link 3.5 s. Tests: kokoro payload, well-formed SSML, and the real route with only
+  the HTTP transport faked.

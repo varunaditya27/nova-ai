@@ -40,6 +40,13 @@ def test_synthesize_sends_openai_compatible_payload():
     assert calls[-1]["url"].endswith("/v1/audio/speech")
 
 
+def test_synthesize_switches_ssml_on():
+    fn, calls = _recording_client()
+    KokoroBackend(request_fn=fn).synthesize("<speak>hi</speak>")
+    payload = calls[-1]["payload"]
+    assert payload["ssml"] is True and payload["allow_voice_tags"] is True
+
+
 def test_connection_error_is_graceful():
     fn, _ = _recording_client(raises=True)
     res = KokoroBackend(request_fn=fn).synthesize("hi")

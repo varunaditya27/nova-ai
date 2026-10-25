@@ -49,6 +49,27 @@ def test_voice_rejects_empty_text():
     assert _client(_OkBackend()).post("/voice", json={"text": "  "}).status_code == 422
 
 
+def test_voice_sends_kokoro_well_formed_ssml_with_links_spoken_and_switches_on():
+    """Through the real route and the real Kokoro backend: only the HTTP transport is faked."""
+    import xml.etree.ElementTree as ET
+    from backend.layer9_output.tts_backends.kokoro_backend import KokoroBackend
+
+    sent = []
+
+    def transport(method, url, payload=None):
+        sent.append(payload)
+        return SimpleNamespace(ok=True, content=b"ID3-fake-mp3", status_code=200)
+
+    r = _client(KokoroBackend(request_fn=transport)).post(
+        "/voice", json={"text": "Tom & Jerry <3 it. See https://example.com/page?a=1&b=2 for more.", "conversation_mode": "casual"})
+    assert r.status_code == 200
+    payload = sent[-1]
+    assert payload["ssml"] is True and payload["allow_voice_tags"] is True
+    spoken = "".join(ET.fromstring(payload["input"]).itertext())
+    assert "Tom & Jerry" in spoken
+    assert "https://" not in spoken and "link" in spoken
+
+
 class _OkSTT:
     def transcribe(self, audio_bytes, mime_type="audio/webm"):
         return TranscriptResult(transcript="hello nova", confidence=0.95, language="en", ok=True)

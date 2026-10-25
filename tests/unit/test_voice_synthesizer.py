@@ -87,3 +87,10 @@ def test_synthesize_without_backend_is_graceful():
 def test_synthesize_backend_failure_is_graceful():
     res = vs.synthesize("Hello.", backend=_Backend(ok=False), conversation_mode="casual_chat")
     assert res.ok is False
+
+
+def test_generate_ssml_is_well_formed_when_the_reply_contains_markup_characters():
+    import xml.etree.ElementTree as ET
+    doc = vs.generate_ssml("Tom & Jerry: 5 < 6, but 7 > 3. It is <3.", "casual_chat")
+    spoken = "".join(ET.fromstring(doc.ssml).itertext())
+    assert "Tom & Jerry" in spoken and "5 < 6" in spoken

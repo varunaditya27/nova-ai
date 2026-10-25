@@ -43,6 +43,9 @@ class KokoroBackend(TTSBackend):
             "voice": voice_id or self.default_voice,
             "speed": speech_rate if speech_rate is not None else self.default_rate,
             "response_format": "mp3",
+            # Kokoro-FastAPI reads markup aloud unless both switches are on (verified against the running image).
+            "ssml": True,
+            "allow_voice_tags": True,
         }
         try:
             resp = self._request_fn("POST", f"{self.endpoint}/v1/audio/speech", payload)

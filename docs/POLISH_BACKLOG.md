@@ -1087,5 +1087,15 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   voice (`lib/voice.ts`), a living stamp with moods and habits (`Mark`, `lib/companion/`), handwritten margin notes (`Margin`), and every page,
   empty state, loading line, error, toast, 404, command menu, nav caption, welcome chapter and intro rewritten in Nova's first-person voice.
   Third-person survives only in `/privacy` and `/welcome` factual claims, deliberately. Toasts and sheets lost their last soft/rounded corners.
+- **[done, 2026-10-25] "Hear it" read the SSML tags aloud** (Layer 9, see `docs/layer-9-architecture.md` Decision Log).
+- **[done, 2026-10-25] Dictation could never work in Docker:** the backend's default speech-to-text address was `stt:8880`, but the
+  container serves on 8000 (verified: refused on 8880, HTTP 200 on 8000). Fixed in `config/defaults.yaml`, `docker/.env.example` and the
+  local `docker/.env`; `tests/unit/test_docker_wiring.py` now checks the Kokoro and STT defaults against the compose container ports.
+  Verified live: Nova spoke a sentence and its own `/voice/transcribe` returned the same sentence.
+- **[open, 2026-10-25] First dictation after 5 idle minutes can fail once.** The STT server unloads its model when idle; the first
+  request reloads it, which can exceed the backend's 30 s httpx timeout (`api/state.py::build_stt_backend`), so `/voice/transcribe` answers
+  503 once and works on the retry. Fix options: a longer timeout for the transcribe call, or a startup warm-up request.
+- **[open, 2026-10-25] `docker/ollama.Dockerfile` and `docker/ollama-entrypoint.sh` are unused:** compose has no `ollama` service since it
+  moved to host Ollama (`host.docker.internal:11434`). Delete them or bring the service back; left alone pending a decision.
 - **Still not built (need a backend first):** attachments/media gallery (no storage or vision model),
   life-graph visualisation, WebSocket transport (SSE is live).

@@ -62,7 +62,7 @@ tts:                          # Layer-9 voice synthesis (Kokoro, OpenAI-compatib
   default_voice: af_sky
 
 stt:                          # Layer-9 speech-to-text (faster-whisper, OpenAI-compatible)
-  endpoint: ${STT_URL:-http://stt:8880}
+  endpoint: ${STT_URL:-http://stt:8000}
   model: small
 
 scheduler:

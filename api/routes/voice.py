@@ -32,7 +32,7 @@ def synthesize_voice(req: VoiceRequest, state=Depends(get_state)) -> Response:
     from backend.layer9_output.voice_synthesizer import synthesize
 
     prosody_mode = _MODE_TO_TYPING.get(req.conversation_mode, req.conversation_mode)
-    result = synthesize(req.text, backend, prosody_mode, voice_id=req.voice_id)
+    result = synthesize(req.text, backend, prosody_mode, apply_transforms=True, voice_id=req.voice_id)
     if not getattr(result, "ok", False):
         logger.warning("voice synthesis failed: %s", getattr(result, "error", "unknown"))
         raise HTTPException(status_code=503, detail="voice synthesis failed")

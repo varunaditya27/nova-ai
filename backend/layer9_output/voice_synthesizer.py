@@ -9,6 +9,7 @@ a non-ok AudioResult so the caller can fall back to text (§9).
 
 from __future__ import annotations
 
+import html
 import random as _random
 import re
 from typing import Optional
@@ -104,6 +105,8 @@ def generate_ssml(
     rng=_random,
 ) -> SSMLDocument:
     """Assemble a complete SSML document for TTS input (architecture doc §5.2)."""
+    # The reply is text, not markup: an unescaped "&" or "<" makes the SSML malformed and the TTS rejects it.
+    text = html.escape(text, quote=False)
     if apply_transforms:
         text = apply_voice_content_transforms(text)
     prosody = compute_prosody_params(conversation_mode)
