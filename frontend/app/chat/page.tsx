@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Search, Volume2, VolumeX } from "lucide-react";
 import { useMessages } from "@/lib/hooks/useMessages";
 import { useChatStream } from "@/lib/hooks/useChatStream";
 import { useVoice } from "@/lib/hooks/useVoice";
+import { TypingTracker } from "@/lib/chat/typingSignals";
 import { MessageStream } from "@/components/chat/MessageStream";
 import { Composer } from "@/components/chat/Composer";
 import { ChatSearch } from "@/components/chat/ChatSearch";
@@ -21,6 +22,7 @@ export default function Chat() {
   const qc = useQueryClient();
   const { messages, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } = useMessages();
   const stream = useChatStream();
+  const typing = useRef(new TypingTracker());
 
   const voice = useVoice();
   const [value, setValue] = useState("");
@@ -53,7 +55,7 @@ export default function Chat() {
     setValue("");
     setPending(text);
 
-    const result = await stream.send(text, sessionId);
+    const result = await stream.send(text, sessionId, typing.current.snapshot(text));
     if (result.sessionId) setSessionId(result.sessionId);
 
     if (result.phase === "error") return; // leave the turn + error visible for a retry
@@ -149,7 +151,15 @@ export default function Chat() {
               auto-speak
             </button>
           </div>
-          <Composer value={value} onChange={setValue} onSend={onSend} disabled={streaming} />
+          <Composer
+            value={value}
+            onChange={(v) => {
+              typing.current.change(v);
+              setValue(v);
+            }}
+            onSend={onSend}
+            disabled={streaming}
+          />
         </div>
       </div>
 

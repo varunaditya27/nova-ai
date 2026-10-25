@@ -1020,15 +1020,41 @@ each of these was invisible to mocked-step tests. Fixed unless marked `[open]`.
   nothing Layer 13 learned reached any prompt.
 - **[done] Packaging/tooling:** `background` was missing from `pyproject` `packages`;
   `frontend/package-lock.json` was out of sync so `npm ci` failed.
-- **[open] Recall has no relevance floor.** `select_recall` keeps any memory with
+- **[done] Recall had no relevance floor.** `select_recall` kept any memory with
   `effective_score > 0`, and 60% of the formula (emotional/temporal/importance) is query-
-  independent, so Nova's "most important" memories surface — and are presented to the planner as
-  relevant context — even for "hey". Needs a semantic-similarity floor calibrated against real
-  `nomic-embed-text` scores (can't be tuned with the offline stub embedder) and a decision on how
-  it coexists with mood-congruent recall.
-- **[open] Episodic promotion only captures high-arousal / life-event-keyword turns.** Calm,
-  substantive facts ("I'm vegetarian", "my sister visits next week") never become episodes; they
-  survive only if the per-turn UWM extraction picks them up. Worth deciding whether the promotion
-  rule should also admit self-disclosure turns.
-- **[open] SC-2's semantic classifier layer is still unwired** (no model); lexical + the LLM
-  `crisis_flag` remain the only layers.
+  independent, so Nova's "most important" memories surfaced — and were presented to the planner as
+  relevant context — even for "hey". `arbiter._relevant` now requires a cosine floor
+  (`memory.recall_min_semantic`, default 0.5), with a bypass for a near-exact emotional match when
+  the user is distressed (keeps mood-congruent recall). **Tune the 0.5 against real
+  `nomic-embed-text` scores** — it could not be calibrated with the offline stub embedder.
+  `tests/unit/api/test_recall_relevance_floor.py`.
+- **[done] Episodic promotion missed calm self-disclosure.** `stm.is_personal_disclosure`: a
+  statement of 8+ words about the user's own life ("I'm vegetarian and live in Pune") that is not
+  a question now promotes, alongside arousal and life-event keywords.
+- **[done] A goal could be completed or abandoned by unrelated chatter.** "I'm done for the day,
+  so tired" marked the user's most recently mentioned goal COMPLETED (persisted; fed accountability
+  and Year-in-Review): goal relevance is mostly query-independent and the completion keywords
+  were bare substrings ("done", "made it", "forget it"). Signals now need the message to be
+  semantically about the goal (`classify_signal_for_goal`, used by both the post-turn pipeline and
+  the pre-generation accountability provider) and the ambiguous keywords are gone.
+  `tests/unit/api/test_goal_signal_gate.py`.
+- **[done] `Goal.deadline` never populated.** The extractor prompt now carries today's date and
+  asks for an ISO `deadline_date`; `engine._parse_deadline` drops past/garbled dates.
+- **[done] Habit check-in tracking (was a missing sub-feature).** `progress_monitor.
+  record_habit_check_in`: "I went for a run this morning" checks in the best-matching active habit
+  — idempotent per period, streak resets after a missed period, feeds progress and momentum.
+  `GET /goals` now returns `deadline`, `milestones` and `habits` (with streaks) and `GoalCard`
+  renders them — previously decomposition output was invisible to the user.
+- **[done] `communication_model` never reached the persona.** `api/communication_style.py` derives
+  it deterministically from the message log (humor, slang, technical vocabulary, message length,
+  explicit "just tell me"/terse → directness) and feeds `resolve_persona_state` only — never
+  `compute_relationship_state`, so the style-calibration overwrite trap stays inert.
+- **[done] Layer 1 implicit signals now sent by the client.** `frontend/lib/chat/typingSignals.ts`
+  captures typing start, deletions, peak/final draft length and message bursts and posts them with
+  every turn (stream and fallback), making `composite_prior`'s branch reachable.
+- **[done] `/safety/events` `signal_types` always empty** — `evaluate()` now records the layers
+  that fired.
+- **Decided, not built:** a separate LLM crisis classifier. Layer 3's classification call already
+  supplies an LLM `crisis_flag` that the orchestrator ORs with the lexical layer; a second call
+  would add seconds to every turn without real independence. Auth, rate limiting, multi-user and
+  encryption-at-rest are out of scope for this single-user personal deployment.

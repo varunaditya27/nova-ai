@@ -7,6 +7,8 @@ evicted; each evicted turn is checked for promotion to episodic memory before di
 
 from __future__ import annotations
 
+import re
+
 from .schemas import ConversationTurn, ShortTermMemoryBuffer
 
 # High-arousal turns are promoted to episodic memory (§3.3).
@@ -18,6 +20,22 @@ LIFE_EVENT_KEYWORDS = (
     "graduated", "engaged", "got married", "fired", "promotion", "promoted",
     "accepted", "rejected", "offer", "interview",
 )
+
+
+# A calm, substantive statement *about the user's own life* ("I'm vegetarian and live in Pune",
+# "my sister Meera visits next week") is exactly what a long-term companion must remember, yet it
+# trips neither arousal nor a life-event keyword. Questions and short chatter are not disclosures.
+_MIN_DISCLOSURE_WORDS = 8
+_DISCLOSURE = re.compile(
+    r"\b(i am|i'm|i have|i've|i got|i work|i live|i study|i love|i hate|i prefer|i usually|"
+    r"i always|i never|my (?:\w+ )?(?:is|are|was|name|mom|mum|dad|sister|brother|friend|job|boss|"
+    r"partner|family|wife|husband|roommate))\b", re.IGNORECASE)
+
+
+def is_personal_disclosure(content: str) -> bool:
+    text = content.strip()
+    return (len(text.split()) >= _MIN_DISCLOSURE_WORDS and not text.endswith("?")
+            and _DISCLOSURE.search(text) is not None)
 
 
 def add_turn(buffer: ShortTermMemoryBuffer, turn: ConversationTurn) -> list[ConversationTurn]:
@@ -46,4 +64,6 @@ def should_promote(turn: ConversationTurn) -> bool:
     if turn.emotional_annotation and turn.emotional_annotation.arousal > PROMOTION_AROUSAL_THRESHOLD:
         return True
     content = turn.content.lower()
-    return any(keyword in content for keyword in LIFE_EVENT_KEYWORDS)
+    if any(keyword in content for keyword in LIFE_EVENT_KEYWORDS):
+        return True
+    return is_personal_disclosure(turn.content)

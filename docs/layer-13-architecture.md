@@ -1607,7 +1607,7 @@ What the user experiences across the cold start period:
 
 The implementation is **pure Python stdlib** (dataclasses + str-`Enum`, `re`, `datetime`, `uuid`)
 — no third-party dependencies, no LLM calls in any extractor or policy (matching the <20ms / <60ms
-performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1641
+performance targets in §10). Tests live in `tests/unit/` (66 tests for this layer; full suite 1647
 passing). Module map: schemas (§4.2/§5.1/§6.2) split by responsibility into `schemas/`
 (`elicitation.py`, `passive_signals.py`, `cold_start_state.py`, `graduation.py`,
 `feature_pacing.py`, `coordinator.py`); SC-1 passive (§4.5) in

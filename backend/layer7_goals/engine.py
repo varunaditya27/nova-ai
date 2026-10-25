@@ -35,6 +35,18 @@ def _safe(fn, fallback):
         return fallback
 
 
+def _parse_deadline(raw, now):
+    """The extractor LLM's ISO ``deadline_date`` → a datetime; an unparseable or already-past date
+    is dropped (a model guessing the wrong year must not create an instantly-overdue goal)."""
+    try:
+        parsed = datetime.fromisoformat(str(raw)[:10])
+    except (TypeError, ValueError):
+        return None
+    if now.tzinfo is not None:
+        parsed = parsed.replace(tzinfo=now.tzinfo)
+    return parsed if parsed.date() >= now.date() else None
+
+
 def run_goal_pipeline(
     message: str,
     goal_store: GoalStore,
@@ -63,7 +75,7 @@ def run_goal_pipeline(
     if relevant:
         top = relevant[0].goal
         progress_signal = _safe(
-            lambda: progress_monitor.classify_progress_signal(message, top), None
+            lambda: progress_monitor.classify_signal_for_goal(message, top, similarity_fn), None
         )
         if progress_signal is not None:
             progress_monitor.update_progress_score(top, progress_signal)
@@ -86,6 +98,16 @@ def run_goal_pipeline(
             top.last_mentioned_at = now
             goal_store.update_goal(top)  # persist progress through the store (store-agnostic)
             out.goals_updated.append(top.goal_id)
+
+    # SC-5 habits: "I went for a run this morning" checks in the best-matching active habit on any
+    # relevant goal (unconditional on the top-goal signal above — habits are their own surface).
+    if similarity_fn is not None:
+        for rel in relevant:
+            if _safe(lambda g=rel.goal: progress_monitor.record_habit_check_in(
+                    g, message, similarity_fn, now), None) is not None:
+                goal_store.update_goal(rel.goal)
+                if rel.goal.goal_id not in out.goals_updated:
+                    out.goals_updated.append(rel.goal.goal_id)
 
     # SC-4: accountability decision → GoalContextPacket (failure → no reference).
     packet = _safe(
@@ -123,6 +145,7 @@ def run_goal_pipeline(
                     confidence_at_creation=extraction.confidence,
                     signal_strength=extraction.signal_strength or GoalSignalStrength.EXPLICIT_STATED.value,
                     emotional_weight=float(data.get("emotional_weight", 0.0)),
+                    deadline=_parse_deadline(data.get("deadline_date"), now),
                     deadline_description=data.get("deadline_description") or None,
                     deadline_is_inferred=not bool(data.get("has_explicit_deadline", False)),
                     has_metric=bool(data.get("has_explicit_metric", False)),

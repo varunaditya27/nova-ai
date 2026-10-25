@@ -1748,4 +1748,10 @@ communication-style data. Full test suite (1588 passed, 1 skipped) verified befo
   `build_pipeline_steps(session_context_provider=…)`, joined into the planner's
   `response_instruction`): the last 6 in-session turns (scoped by session key; never another
   session) and up to 2 multi-episode chains. Plain language only, no timestamps or scores.
-  *Still open:* recall has no semantic-relevance floor (see `docs/POLISH_BACKLOG.md`).
+  **Recall now has a relevance floor** (same date): three of the four signals are query-
+  independent, so any memory with a positive effective score used to surface for any message.
+  `arbiter._relevant` requires cosine ≥ `memory.recall_min_semantic` (0.5; tune against real
+  `nomic-embed-text`), bypassed only for a near-exact emotional match (≥0.85) when the user is
+  distressed (valence ≤ −0.3) so mood-congruent recall (§18.3) survives. **Promotion** also admits
+  calm personal disclosure (`stm.is_personal_disclosure`: 8+ words, first-person fact about the
+  user's life, not a question).

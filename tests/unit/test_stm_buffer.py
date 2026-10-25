@@ -61,3 +61,11 @@ def test_no_promotion_low_arousal_casual():
 
 def test_promotion_life_event_keyword():
     assert stm.should_promote(_turn("I finally got the job at Infosys!")) is True
+
+
+def test_calm_personal_disclosure_is_promoted_but_chatter_and_questions_are_not():
+    assert stm.should_promote(_turn("I'm vegetarian and I live in Pune with my cousin")) is True
+    assert stm.should_promote(_turn("my sister Meera is visiting us next week from Delhi")) is True
+    assert stm.should_promote(_turn("what do you think I should have for dinner tonight?")) is False
+    assert stm.should_promote(_turn("ok thanks, that makes sense to me now")) is False
+    assert stm.should_promote(_turn("I'm good")) is False

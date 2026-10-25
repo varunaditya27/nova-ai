@@ -653,7 +653,7 @@ def make_goal_provider(session_factory, embed_client) -> Callable:
     against "goals yield to the present moment" (§11 principle 3) -- a mode/stage change between
     turns must never reference a goal using last turn's now-wrong gate decision."""
     from backend.layer7_goals.accountability_modifier import decide_goal_reference
-    from backend.layer7_goals.progress_monitor import classify_progress_signal
+    from backend.layer7_goals.progress_monitor import classify_signal_for_goal
     from backend.layer7_goals.schemas import GoalContextPacket
 
     def _sim(a, b):
@@ -664,7 +664,7 @@ def make_goal_provider(session_factory, embed_client) -> Callable:
         message = message or ""
         relevant = PostgresGoalStore(session_factory, user_id).get_relevant_goals(
             message, emotional_state=emotional_state, similarity_fn=_sim, now=now)
-        progress_signal = (classify_progress_signal(message, relevant[0].goal)
+        progress_signal = (classify_signal_for_goal(message, relevant[0].goal, _sim)
                           if relevant else None)
         return decide_goal_reference(relevant, progress_signal, emotional_state,
                                      conversation_mode, relationship_stage, now=now)
@@ -1327,6 +1327,7 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
     from infra.stm_store import InProcessSTMStore
     from api.session_context import make_session_context_provider
     from api.elicitation_capture import make_elicitation_answer_writer
+    from api.communication_style import make_communication_model_provider
     stm_store = InProcessSTMStore()
     deferred_writers = _chain_writers(
         make_state_update_writer(store, llm_clients["embed"], session_factory, threshold,
@@ -1361,6 +1362,8 @@ def build_app_state(config: Optional[dict] = None, *, llm_clients=None, engine=N
         system1=llm_clients["system1"], system2=llm_clients["system2"],
         embed=llm_clients["embed"], memory_store=store, session_writer=session_writer,
         await_prior_turn=post_turn.drain,
+        communication_provider=make_communication_model_provider(session_factory),
+        recall_min_semantic=config.get("memory", {}).get("recall_min_semantic", 0.5),
         cold_start=make_cold_start_provider(session_factory, grad_sessions),
         tool_manager=tool_manager,
         goal_provider=make_goal_provider(session_factory, llm_clients["embed"]),

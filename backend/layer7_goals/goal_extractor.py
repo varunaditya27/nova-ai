@@ -64,7 +64,7 @@ def is_duplicate_goal(
 
 
 def build_extraction_prompt(
-    user_message: str, prior_context: str, active_goal_summaries: str
+    user_message: str, prior_context: str, active_goal_summaries: str, today: str = ""
 ) -> str:
     """Assemble the goal-extraction prompt (architecture doc §3.4)."""
     return (
@@ -72,13 +72,15 @@ def build_extraction_prompt(
         "expressed a meaningful personal intention, aspiration, or goal. A goal requires "
         "sustained effort over time; single-use tasks and undirected venting are NOT goals. "
         "Do not infer goals that are not present; if uncertain, set confidence < 0.6.\n\n"
+        f"Today's date is {today or 'unknown'}.\n"
         f"User message: {user_message}\n\n"
         f"Prior context (last 3 turns): {prior_context}\n\n"
         f"User's existing active goals (for deduplication): {active_goal_summaries}\n\n"
         "Return JSON with goal_detected, is_update, goal_id_if_update, update_type, "
         "update_description, and new_goal (raw_statement, inferred_title, inferred_domain, "
         "inferred_direction, has_explicit_deadline, deadline_description, has_explicit_metric, "
-        "metric_description, emotional_weight, confidence, signal_strength)."
+        "deadline_date (an ISO YYYY-MM-DD date when the user states or clearly implies one, else "
+        "null), metric_description, emotional_weight, confidence, signal_strength)."
     )
 
 
@@ -107,7 +109,7 @@ def extract_goal(
         return result
 
     summaries = "; ".join(g.title for g in active_goals) or "(none)"
-    prompt = build_extraction_prompt(message, prior_context, summaries)
+    prompt = build_extraction_prompt(message, prior_context, summaries, now.date().isoformat())
     try:
         raw = llm_fn(prompt)
     except Exception:

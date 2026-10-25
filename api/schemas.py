@@ -153,12 +153,30 @@ class GoalUpdate(BaseModel):
     progress_score: float | None = None
 
 
+class MilestoneOut(BaseModel):
+    title: str
+    target_date: Optional[str] = None
+    status: str = "pending"
+
+
+class HabitOut(BaseModel):
+    title: str
+    frequency: str = "weekly"
+    current_streak: int = 0
+    best_streak: int = 0
+    total_check_ins: int = 0
+
+
 class GoalOut(BaseModel):
     goal_id: str
     title: str
     status: str
     progress_score: float = 0.0
     description: str = ""
+    deadline: Optional[str] = None
+    deadline_description: Optional[str] = None
+    milestones: list[MilestoneOut] = []
+    habits: list[HabitOut] = []
 
 
 # ── Memory ───────────────────────────────────────────────────────────────

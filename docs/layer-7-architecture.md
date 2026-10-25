@@ -1248,6 +1248,19 @@ real object shapes rather than mocked pipeline steps.
 
 ## 18. Decision Log
 
+- **2026-10-25 (first-principles re-audit):** (1) **Bug fixed — unrelated chatter could complete or
+  abandon a goal.** "I'm done for the day, so tired" marked the most recently mentioned goal
+  COMPLETED: relevance is mostly query-independent (recency/momentum/emotional weight clear the
+  0.25 floor on their own) and the completion keywords were bare substrings (`done`, `made it`,
+  `officially`; `forget it`, `not worth it` for abandonment). Signals now require the message to be
+  semantically about the goal (`progress_monitor.classify_signal_for_goal`, used by
+  `run_goal_pipeline` *and* `make_goal_provider`) and the ambiguous keywords were removed.
+  (2) `Goal.deadline` now populates: the extraction prompt carries today's date and asks for an ISO
+  `deadline_date`; past/garbled dates are dropped (`engine._parse_deadline`). (3) **Habit check-ins
+  are live** (`progress_monitor.record_habit_check_in`): first-person "I went for a run" or a
+  positive progress signal, matched to the best active habit (cosine ≥ 0.5); idempotent per
+  period, streak resets on a missed period, feeds progress + momentum. (4) `GET /goals` returns
+  `deadline`, `milestones` and `habits` and the goals page renders them.
 - **2026-08-04:** Phase 7 polish pass — `api/assembly.py`'s `_goal_directive` built its own
   goal-accountability directive independent of `decide_goal_reference`, missing all of §6.3's hard
   blocks (crisis/emotional_support/casual mode, brand-new relationships) and referencing up to 3

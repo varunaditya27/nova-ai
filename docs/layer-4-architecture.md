@@ -1414,6 +1414,15 @@ not a quick adapter.
 
 ## 16. Decision Log
 
+- **2026-10-25 (first-principles re-audit):** `communication_model` now reaches
+  `resolve_persona_state` live. `api/communication_style.py` derives it deterministically from the
+  last 40 user messages in the log (≥5 required): humor/slang from laugh/slang token share ≥15%,
+  `technical` vocabulary from technical-term share ≥15%, message length from the median word
+  count, directness from an explicit "just tell me"/"be direct" or a terse style. It is passed to
+  `resolve_persona_state` **only** — never to `compute_relationship_state`, so
+  `_apply_style_calibration`'s overwrite of `style_learning.py`'s EMA params stays inert (that latent
+  trap is therefore still latent, deliberately).
+
 - **2026-08-04 (Phase 4 polish pass):** Found `build_final_response_packet` (the real SC-1–SC-6
   orchestrator) had zero production callers — `api/assembly.py` ran a much thinner hand-assembled
   path instead, so SC-1/SC-3/SC-4 never ran live and `refine()` used a fixed rephrase prompt.

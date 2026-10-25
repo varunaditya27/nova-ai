@@ -1082,6 +1082,11 @@ silent surprise.
 
 ## 16. Decision Log
 
+- **2026-10-25 (first-principles re-audit):** the frontend now sends the implicit signals
+  (`frontend/lib/chat/typingSignals.ts` → `ChatRequest.user_typing_started_at`, `deletion_*`,
+  `peak/final_draft_length_chars`, `is_burst`/`burst_count`, on both `/chat/stream` and the `/chat`
+  fallback), so `composite_prior`'s deletion/burst inputs are real instead of always default.
+
 - **2026-08-04 (Phase 1 polish pass):** Audited the live `/chat` path and found most of Layer 1's
   signal was inert in production — `process_input_event` always got `attachments=[]` and a
   throwaway `ClientMetadata()`, with no `profile_store`/`thread_store` injected, so every turn

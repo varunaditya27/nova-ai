@@ -66,7 +66,8 @@ gap was found and why it wasn't fixed inline.
   computes `tie_strength` (see Layer 4 below); `classify()` reads it via `relationship_provider`.
   `advice_frustration_count` still has no real source anywhere — would need a genuinely new
   tracked counter (Layer 4/5), not attempted.
-- **`composite_prior`'s prior-adjustment branch is forwarded but still unreachable.** Layer 1's
+- **[done, 2026-10-25]** *(the client now sends deletion/burst/draft-length signals —
+  `frontend/lib/chat/typingSignals.ts`.)* Original note: **`composite_prior`'s prior-adjustment branch is forwarded but still unreachable.** Layer 1's
   `implicit_intensity` is no longer a pinned constant (latency is real, 2026-08-09), but hand-
   computed the formula: latency alone maxes `composite_prior` around ~0.50, still below the `>0.6`
   gate. Needs the deletion/burst client fields specifically (`docs/FRONTEND_TODO.md`), not just
@@ -99,7 +100,9 @@ gap was found and why it wasn't fixed inline.
   because `build_persona` always passes `communication_model=None` (Layer 2's UWM narrow-slice
   never extracts one). Whoever wires that extraction needs to fix this overwrite first, or it will
   silently discard `style_learning.py`'s learned values.
-- **`communication_model` also never reaches `resolve_persona_state` live** — SC-1's
+- **[done, 2026-10-25]** *(`communication_model` now reaches `resolve_persona_state` only, via
+  `api/communication_style.py` — the overwrite trap above stays inert by design.)* Original note:
+  **`communication_model` also never reaches `resolve_persona_state` live** — SC-1's
   humor/directness/technical-depth branches are effectively constant in production. Same shape as
   the `compute_relationship_state` trap above; needs a real EMA-params adapter. See
   `docs/POLISH_BACKLOG.md`.
@@ -167,7 +170,8 @@ gap was found and why it wasn't fixed inline.
   all. See `docs/layer-7-architecture.md`.
 - **[done, 2026-08-09]** `progress_monitor.run_staleness_scan` now has a real weekly caller,
   `background/goal_staleness_job.py`. See `docs/layer-7-architecture.md`.
-- **Habit check-in tracking is a genuine missing sub-feature** — `Habit` objects are created but
+- **[done, 2026-10-25]** *(habit check-ins now live: `progress_monitor.record_habit_check_in`, streaks
+  on `GET /goals`.)* Original note: **Habit check-in tracking is a genuine missing sub-feature** — `Habit` objects are created but
   never checked in anywhere; no habit check-in surface exists. Real feature work if prioritized.
   See `docs/POLISH_BACKLOG.md`.
 - **[done, 2026-08-11]** File-length cleanup — `schemas.py` (the only file over the cap) split

@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_state
-from api.schemas import GoalCreate, GoalOut, GoalUpdate
+from api.schemas import GoalCreate, GoalOut, GoalUpdate, HabitOut, MilestoneOut
 from backend.layer7_goals.schemas import Goal, GoalStatus
 
 _VALID_STATUS = {s.value for s in GoalStatus}
@@ -21,9 +21,16 @@ def _store(state):
 
 
 def _out(g) -> GoalOut:
-    return GoalOut(goal_id=str(g.goal_id), title=g.title, status=g.status,
-                   progress_score=getattr(g, "progress_score", 0.0),
-                   description=getattr(g, "description", "") or "")
+    iso = lambda d: d.isoformat() if d is not None else None
+    return GoalOut(
+        goal_id=str(g.goal_id), title=g.title, status=g.status,
+        progress_score=g.progress_score, description=g.description or "",
+        deadline=iso(g.deadline), deadline_description=g.deadline_description,
+        milestones=[MilestoneOut(title=m.title or m.description, target_date=iso(m.target_date),
+                                 status=m.status) for m in g.milestones],
+        habits=[HabitOut(title=h.title, frequency=h.frequency, current_streak=h.current_streak,
+                         best_streak=h.best_streak, total_check_ins=h.total_check_ins)
+                for h in g.habits if h.status == "active"])
 
 
 @router.get("", response_model=list[GoalOut])

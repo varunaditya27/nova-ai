@@ -51,7 +51,7 @@ def test_recall_hook_uses_configured_default_mode(monkeypatch):
 
     seen_modes = []
 
-    async def fake_arbiter(user_id, query, emotion, mode, now, store, embedder):
+    async def fake_arbiter(user_id, query, emotion, mode, now, store, embedder, **_):
         seen_modes.append(mode)
         return SimpleNamespace(recalled_memories=[])
 

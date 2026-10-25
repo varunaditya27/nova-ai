@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { postChat } from "@/lib/api/client";
+import type { TypingSignals } from "@/lib/chat/typingSignals";
 import {
   initialStreamState,
   parseSSE,
@@ -26,9 +27,9 @@ export function useChatStream() {
   const reset = useCallback(() => setState(initialStreamState), []);
 
   const fallback = useCallback(
-    async (message: string, sessionId?: string): Promise<StreamState> => {
+    async (message: string, sessionId?: string, signals?: TypingSignals): Promise<StreamState> => {
       try {
-        const resp = await postChat(message, sessionId);
+        const resp = await postChat(message, sessionId, signals);
         const next: StreamState = {
           phase: "done",
           text: resp.response,
@@ -60,7 +61,7 @@ export function useChatStream() {
   );
 
   const send = useCallback(
-    async (message: string, sessionId?: string): Promise<StreamState> => {
+    async (message: string, sessionId?: string, signals?: TypingSignals): Promise<StreamState> => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -73,7 +74,7 @@ export function useChatStream() {
         const res = await fetch(`${STREAM_BASE}/chat/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, session_id: sessionId }),
+          body: JSON.stringify({ message, session_id: sessionId, ...signals }),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
@@ -98,11 +99,11 @@ export function useChatStream() {
           }
         }
 
-        if (sawError) return fallback(message, sessionId);
+        if (sawError) return fallback(message, sessionId, signals);
         return local;
       } catch (err) {
         if ((err as Error).name === "AbortError") return local;
-        return fallback(message, sessionId);
+        return fallback(message, sessionId, signals);
       }
     },
     [fallback]

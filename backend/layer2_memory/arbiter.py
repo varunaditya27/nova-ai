@@ -63,6 +63,20 @@ def build_query_embedding(
     return [x / norm for x in combined] if norm else combined
 
 
+# Mood-congruent bypass (§18.3): a distressed user may be reminded of a closely matching past
+# distress even without topical overlap — but only on a near-exact emotional match.
+_DISTRESS_VALENCE = -0.3
+_EMOTIONAL_MATCH = 0.85
+
+
+def _relevant(components: dict, current_emotion: EmotionVector, min_semantic: float) -> bool:
+    """Three of the four recall signals are query-independent, so without a semantic floor the
+    user's "most important" memories surface for any message, even "hey"."""
+    if components["semantic"] >= min_semantic:
+        return True
+    return current_emotion.valence <= _DISTRESS_VALENCE and components["emotional"] >= _EMOTIONAL_MATCH
+
+
 def _current_strength(memory) -> float:
     return getattr(memory, "S_current", 1.0)
 
@@ -82,6 +96,7 @@ async def memory_arbiter(
     fuzzy_label_util=None,
     weights: RecallWeights = DEFAULT_WEIGHTS,
     active_narrative_chains: Optional[list] = None,
+    min_semantic: float = 0.0,
 ) -> MemoryPacket:
     """Run the full recall pipeline and assemble the MemoryPacket (§11.2)."""
 
@@ -116,6 +131,8 @@ async def memory_arbiter(
         recall_score, components = recall_scorer.score_memory(
             mem, query_emb, current_emotion, now, weights
         )
+        if not _relevant(components, current_emotion, min_semantic):
+            continue
         kind = context_gate.memory_gate_kind(mem)
         gate = context_gate.gate_value(conversation_mode, kind)
         s_current = _current_strength(mem)

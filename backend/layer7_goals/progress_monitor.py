@@ -14,11 +14,15 @@ the synchronous path that this module guarantees never blocks a response (§10).
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime
-from typing import Optional
+from typing import Callable, Optional
 
 from backend.layer7_goals.schemas import (
     Goal,
+    GoalSignalEvent,
+    Habit,
+    HabitFrequency,
     GoalSignalEventType,
     GoalStateChange,
     GoalStatus,
@@ -40,12 +44,13 @@ NEGATIVE_PROGRESS_SIGNALS = [
     "haven't touched it", "totally forgot", "been avoiding",
 ]
 COMPLETION_SIGNALS = [
-    "done", "finished", "completed it", "achieved", "got there", "hit my goal",
-    "made it", "crossed the finish line", "officially", "finally did it",
+    "completed it", "achieved", "got there", "hit my goal",
+    "crossed the finish line", "finally did it", "i did it", "reached my goal", "finished it",
+    "i finished", "i completed",
 ]
 ABANDONMENT_SIGNALS = [
-    "giving up", "gave up", "dropping it", "not worth it", "forget it",
-    "decided not to", "changed my mind about", "not doing that anymore",
+    "giving up on", "gave up on", "dropping it", "decided not to", "changed my mind about",
+    "not doing that anymore",
     "not realistic", "not the right time",
 ]
 
@@ -65,10 +70,26 @@ _MOMENTUM_WEIGHTS = {
     GoalSignalEventType.PROGRESS_POSITIVE.value: 1.0,
     GoalSignalEventType.PROGRESS_NEGATIVE.value: 0.5,
     GoalSignalEventType.REAFFIRMED.value: 0.3,
+    GoalSignalEventType.HABIT_CHECKED.value: 1.0,
 }
 _MOMENTUM_DECAY = 0.1
 _MOMENTUM_WINDOW_DAYS = 30
 _MOMENTUM_MAX_EVENTS = 20
+
+
+# A signal only counts for a goal the message is actually *about*. Goal relevance is mostly
+# query-independent (recency, momentum, emotional weight), so without this gate "I'm done for the
+# day" completed whichever goal was mentioned most recently.
+_MIN_GOAL_SEMANTIC = 0.5
+
+
+def classify_signal_for_goal(
+    message: str, goal: Goal, similarity_fn: Optional[Callable[[str, str], float]] = None
+) -> Optional[ProgressSignalClassification]:
+    from backend.layer7_goals.goal_extractor import _token_overlap
+    if (similarity_fn or _token_overlap)(message, goal.title) < _MIN_GOAL_SEMANTIC:
+        return None
+    return classify_progress_signal(message, goal)
 
 
 def classify_progress_signal(
@@ -110,6 +131,59 @@ def update_progress_score(goal: Goal, signal: ProgressSignalClassification) -> f
     delta = PROGRESS_DELTAS.get(signal.signal_type, 0.0)
     goal.progress_score = max(0.0, min(1.0, goal.progress_score + delta * signal.confidence))
     return goal.progress_score
+
+
+# First-person past-tense statements of having *done* the thing ("I went for a run this morning")
+# — a habit check-in that the generic progress keywords ("did it", "stuck to it") would miss.
+_DID_THE_THING = re.compile(
+    r"\b(i|we)\s+(just |finally |also |actually )?(went|did|ran|walked|worked out|practi[sc]ed|"
+    r"studied|read|wrote|meditated|stretched|cooked|trained|completed|finished|stuck|kept)\b",
+    re.IGNORECASE)
+_MIN_HABIT_SEMANTIC = 0.5
+
+
+def _period(when: datetime, frequency: str) -> int:
+    """Day index, or Monday-aligned week index for weekly habits — consecutive periods differ by 1."""
+    day = when.date().toordinal()
+    return (day - 1) // 7 if frequency == HabitFrequency.WEEKLY.value else day
+
+
+def record_habit_check_in(
+    goal: Goal, message: str, similarity_fn: Callable[[str, str], float], now: datetime
+) -> Optional[Habit]:
+    """Count the message as a check-in on the goal's best-matching active habit (§7 SC-5).
+
+    Idempotent per period (two runs in one day are one daily check-in); a missed period resets
+    the streak to 1. Returns the updated habit, or None when nothing was checked in.
+    """
+    positive = classify_progress_signal(message, goal)
+    done = _DID_THE_THING.search(message or "") or (
+        positive is not None and positive.signal_type in (
+            ProgressSignalType.PROGRESS_POSITIVE.value, ProgressSignalType.COMPLETED.value))
+    if not done:
+        return None
+    scored = [(similarity_fn(message, f"{h.title} {h.description}".strip()), h)
+              for h in goal.habits if h.status == "active"]
+    if not scored:
+        return None
+    best_score, habit = max(scored, key=lambda t: t[0])
+    if best_score < _MIN_HABIT_SEMANTIC:
+        return None
+    period = _period(now, habit.frequency)
+    last = None if habit.last_checked_in is None else _period(habit.last_checked_in, habit.frequency)
+    if last == period:
+        return None
+    habit.current_streak = habit.current_streak + 1 if last == period - 1 else 1
+    habit.best_streak = max(habit.best_streak, habit.current_streak)
+    habit.total_check_ins += 1
+    habit.last_checked_in = now
+    goal.progress_score = min(1.0, goal.progress_score + PROGRESS_DELTAS["habit_checked"])
+    goal.signal_events.append(GoalSignalEvent(
+        goal_id=goal.goal_id, event_type=GoalSignalEventType.HABIT_CHECKED.value,
+        timestamp=now, evidence_text=message, confidence=best_score))
+    goal.momentum_score = compute_momentum(goal.signal_events, now=now)
+    goal.last_mentioned_at = now
+    return habit
 
 
 def compute_momentum(signal_events: list, now: Optional[datetime] = None) -> float:

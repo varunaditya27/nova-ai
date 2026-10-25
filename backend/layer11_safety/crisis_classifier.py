@@ -183,7 +183,7 @@ def evaluate(
     return CrisisSignal(
         tier=final_tier, confidence=round(final_confidence, 4),
         session_id=sid, user_id=uid, detected_at=datetime.utcnow(),
-        detection_layers_fired=layers_fired,
+        detection_layers_fired=layers_fired, signal_types=list(layers_fired),
         immediately_actionable=final_tier in (CrisisTier.TIER_1.value, CrisisTier.TIER_2.value),
         longitudinal_context=longitudinal.context_summary,
         false_positive_risk=round(1.0 - final_confidence, 4),

@@ -222,6 +222,10 @@ Permanently removes the goal row (user-scoped).
 | `status` | string |
 | `progress_score` | float |
 | `description` | string |
+| `deadline` | ISO datetime \| null — from the user's stated date |
+| `deadline_description` | string \| null — e.g. "by December" |
+| `milestones` | `[{title, target_date \| null, status}]` — from Layer-7 decomposition |
+| `habits` | `[{title, frequency, current_streak, best_streak, total_check_ins}]` — active habits; checked in from chat ("I went for a run") |
 
 > Goals are also **extracted automatically** from `/chat` messages (Layer-7 pipeline). A goal with an
 > upcoming `deadline`/milestone seeds a proactive check-in (see `/proactive`).

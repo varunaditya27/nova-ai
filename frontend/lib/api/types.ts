@@ -130,6 +130,16 @@ export type Goal = {
   status: string;
   progress_score: number;
   description: string;
+  deadline: string | null;
+  deadline_description: string | null;
+  milestones: { title: string; target_date: string | null; status: string }[];
+  habits: {
+    title: string;
+    frequency: string;
+    current_streak: number;
+    best_streak: number;
+    total_check_ins: number;
+  }[];
 };
 
 /** GET /relationship (Layer 4/5) — stage + learned communication-style calibration. */

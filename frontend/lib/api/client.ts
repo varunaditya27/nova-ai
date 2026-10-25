@@ -2,6 +2,7 @@
  * The typed API client. Every call is same-origin against /api/* (Next rewrites to FastAPI).
  * JSON/blob endpoints live here; the SSE stream is read directly in useChatStream (Task 8).
  */
+import type { TypingSignals } from "@/lib/chat/typingSignals";
 import {
   ApiError,
   type CalendarOut,
@@ -241,8 +242,12 @@ export function removeMilestone(messageId: string): Promise<MessageOut> {
 }
 
 /** Non-streamed full turn — also the fallback when the SSE stream fails. */
-export function postChat(message: string, sessionId?: string): Promise<ChatResponse> {
-  return requestJson<ChatResponse>("/chat", jsonPost({ message, session_id: sessionId }));
+export function postChat(
+  message: string,
+  sessionId?: string,
+  signals?: TypingSignals
+): Promise<ChatResponse> {
+  return requestJson<ChatResponse>("/chat", jsonPost({ message, session_id: sessionId, ...signals }));
 }
 
 /** Synthesize speech. Throws (any non-200, incl. 503) so the caller can quietly stay text. */

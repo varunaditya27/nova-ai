@@ -131,6 +131,8 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
                          nova_positions_provider: Optional[Callable] = None,
                          session_context_provider: Optional[Callable] = None,
                          await_prior_turn: Optional[Callable] = None,
+                         recall_min_semantic: float = 0.5,
+                         communication_provider: Optional[Callable] = None,
                          vector_store=None,
                          layer1_config=None, timezone_offset_hours: float = 0.0,
                          region: str = "india", default_mode: str = "casual") -> PipelineSteps:
@@ -268,7 +270,7 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
             user_id, query,
             _emotion_from_input_packet(input_packet),
             ConversationMode(default_mode), datetime.now(timezone.utc),
-            store=recall_store, embedder=embedder))
+            store=recall_store, embedder=embedder, min_semantic=recall_min_semantic))
         return list(getattr(packet, "recalled_memories", []) or [])
 
     def _json_classifier(text):
@@ -482,12 +484,14 @@ def build_pipeline_steps(*, system1, system2, embed, memory_store,
         # SC-1 (persona_resolver) + SC-3 (tone_calibrator): real functions, real inputs — identity
         # beliefs above, the relationship state already loaded, Layer 3's background_state (now
         # live, see docs/layer-3-architecture.md §18), and (2026-08-09) the real
-        # psychological_model fetched above. communication_model stays None: it's owned live by
-        # style_learning.py, not the UWM (Layer 2 §23) — see _apply_style_calibration's overwrite
-        # trap note in docs/POLISH_BACKLOG.md's Layer 4 entry for why that must stay this way.
+        # psychological_model fetched above, and the communication_model derived from the message
+        # log (api/communication_style.py). It goes to resolve_persona_state ONLY — passing it to
+        # compute_relationship_state would let _apply_style_calibration overwrite the EMA-learned
+        # params style_learning.py owns (docs/POLISH_BACKLOG.md's Layer 4 entry).
         try:
             persona_state = resolve_persona_state(
                 identity_memory_entries=identity_beliefs, psychological_model=psychological_model,
+                communication_model=communication_provider(ctx.user_id) if communication_provider else None,
                 session_context={"conversation_mode": getattr(ctx, "conversation_mode", "casual")})
             packet.persona_state = persona_state
             constraints = ["Never fabricate emotions or feelings Nova doesn't have.",

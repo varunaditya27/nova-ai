@@ -28,7 +28,41 @@ export function GoalCard({ goal }: { goal: Goal }) {
         </span>
       </div>
       {goal.description && <p className="mt-1 text-sm text-ink-soft">{goal.description}</p>}
+      {goal.deadline && (
+        <p className="mt-1 font-mono text-[11px] text-ink-faint">
+          by {new Date(goal.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          {goal.deadline_description ? ` · ${goal.deadline_description}` : ""}
+        </p>
+      )}
       <Meter value={goal.progress_score} brass={done} className="mt-3" />
+
+      {goal.milestones.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1 text-[13px] text-ink-soft">
+          {goal.milestones.map((m) => (
+            <li key={m.title} className={m.status === "reached" ? "text-brass" : undefined}>
+              {m.status === "reached" ? "✓" : "○"} {m.title}
+              {m.target_date && (
+                <span className="text-ink-faint">
+                  {" "}· {new Date(m.target_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {goal.habits.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-1 text-[13px] text-ink-soft">
+          {goal.habits.map((h) => (
+            <li key={h.title}>
+              ↻ {h.title}
+              <span className="text-ink-faint">
+                {" "}· {h.frequency}
+                {h.current_streak > 0 ? ` · ${h.current_streak} in a row` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-3 flex items-center gap-1 text-ink-faint">
         <button onClick={() => nudge(-0.1)} aria-label="Less progress" className="rounded-sm p-1 hover:text-ink-soft">
